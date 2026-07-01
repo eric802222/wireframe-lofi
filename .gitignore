@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# 個人工作日誌（含內部專案痕跡）→ 保留在本機、不入庫
+process.log
+
+# 範例（僅本機參考，不入庫）
+examples/
+
+# render 產物（皆由 .wf.yaml 經 render.sh / wfyaml.py 衍生，可重生 → 不入庫）
+*.html
+*.png
+*.svg
+*.dot
+*.pdf
+*.debug.html
+prototype*.html
+
+# 注意：assets/*.json.gz（圖庫）與 assets/wf.css（封印 CSS）是自帶資產、runtime 必需 → 照常入庫

@@ -1,0 +1,152 @@
+:root{
+  /* 圓角 */    --wf-radius:3px; --wf-radius-pill:9999px;
+  /* 間距 scale */ --wf-space-sm:.25rem; --wf-space-md:.5rem; --wf-space-lg:1rem;
+  /* 字體 */    --wf-font:'Sarasa Mono TC','SarasaMono','Courier New',Courier,monospace;
+               --wf-font-size:14px; --wf-h1:1.45em; --wf-h2:1.18em; --wf-h3:1em;
+  /* 頁框 */    --wf-page-border:1px solid #cbd5e1; --wf-page-pad:16px;
+}
+
+* { box-sizing: border-box; }
+body { margin:0; padding:24px; background:#ffffff;
+       font-family:var(--wf-font); font-size:var(--wf-font-size); line-height:1; color:#1f2937; }
+.wf-root { width:780px; margin:0 auto;     /* 畫布在瀏覽器中永遠水平置中 */
+           border:var(--wf-page-border); border-radius:var(--wf-radius); padding:var(--wf-page-pad); }   /* 頁框：讓頁面邊界可見 */
+.flex-col > .wf-node, .flex-col > .wf-row, .flex-col > .wf-blocklink-a { width:100%; }
+.wf-node { }
+/* --- UX 連結（純 <a>，零 JS；下一頁 = 另一張 .salt 編出的 .html）--- */
+/* 互動 = 有指定動作(href)：只有連結類上色(teal) + ↗ + 游標 + hover outline */
+a { text-decoration:none; color:inherit; }
+a.wf-link { color:#0f766e; }                                   /* 提高特異度，蓋過 .wf-label 的深色 */
+a.wf-label.wf-link { text-decoration:underline; text-underline-offset:2px; }  /* 文字連結加底線，更明顯可點 */
+a.wf-btn.wf-link { border-color:#0d9488; background:#0d9488; color:#fff; font-weight:600; }  /* 實心填色 = 動作明顯 */
+.wf-link::after { content:' ↗'; font-size:.72em; opacity:.7; }
+.wf-blocklink-a { display:block; }
+.wf-blocklink { position:relative; }
+.wf-blocklink.wf-box { border-style:solid; border-color:#0f766e; }
+.wf-blocklink::after { content:'↗'; position:absolute; top:6px; right:10px; font-size:.8em; color:#0f766e; }
+/* 可互動(href) 才有游標與 hover 提示 */
+.wf-link, .wf-blocklink { cursor:pointer; }
+.wf-link:hover, .wf-blocklink:hover {
+  outline:2px solid #99f6e4; outline-offset:2px;
+}
+/* --- toggle/show/hide 互動（零-JS：隱藏 checkbox + label for + :has()）--- */
+.wf-gate { position:absolute; opacity:0; pointer-events:none; width:0; height:0; }  /* 隱藏的狀態 checkbox */
+.wf-trigger { cursor:pointer; user-select:none; }       /* 控制鈕：點擊切換對應 region */
+label.wf-trigger:not(.wf-select):not(.wf-btn) {          /* 裸 trigger（▾/▴）給個小可點外觀 */
+  display:inline-flex; align-items:center; justify-content:center; min-width:20px;
+  border:1px solid #9ca3af; border-radius:var(--wf-radius); padding:0 4px; color:#374151; }
+.wf-region { width:100%; }                               /* gate wrapper：撐滿（內層維持自己的 flex/grid）*/
+.wf-show-all .wf-region { display:block !important; }    /* 圖片 render 時一律全顯（不寫回 .html）*/
+/* --- :panel 懸浮面板（dropdown 面板）：低保真硬陰影(無 blur) + overlay，不推擠版面 --- */
+.wf-panel { background:#fff; box-shadow:2px 3px 0 rgba(31,41,55,.12); }   /* 0 模糊半徑 = 低保真硬陰影 */
+.wf-node:has(> .wf-panel) { position:relative; }          /* 觸發元件容器 = 面板定位基準 */
+.wf-region.wf-panel { position:absolute; top:100%; left:0; margin-top:4px;
+                      width:max-content; min-width:100%; z-index:20; }    /* 懸浮在觸發元件正下方 */
+.wf-show-all .wf-region.wf-panel { position:static; width:auto; min-width:0; margin-top:0; }  /* 圖片：回 in-flow 全可見 */
+/* --- @stages 狀態列：頂部標出當前狀態（單張圖自我說明）--- */
+.wf-stagebar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+               margin-bottom:14px; padding-bottom:10px; border-bottom:1px dashed #cbd5e1; font-size:12px; }
+.wf-stage-label { letter-spacing:.08em; color:#9ca3af; }
+.wf-stage-dot { padding:1px 8px; border:1px solid #d1d5db; border-radius:var(--wf-radius-pill); color:#9ca3af; }
+.wf-stage-cur { border-color:#0d9488; background:#f0fdfa; color:#0d9488; font-weight:700; }
+.wf-box { border:1px solid #9ca3af; border-radius:var(--wf-radius); }  /* 內距改由 wfyaml 依語義 scale 注入(預設 md)，可 padding: 覆寫 */
+.wf-box > .wf-title { display:inline-block; width:fit-content; align-self:flex-start; justify-self:start;
+                      margin:-22px 0 8px 0; padding:0 6px; background:#fff;
+                      font-size:12px; color:#6b7280; letter-spacing:.02em; }
+.wf-i { display:flex; align-items:center; }
+.wf-cell { display:flex; align-items:center; }
+.wf-spacer { flex:1 1 auto; }
+.wf-hr { border:0; border-top:1px solid #d1d5db; width:100%; margin:6px 0; }
+/* 上色規則：互動 = 有指定動作(href) 才上色；其餘控制項/狀態/顯示一律中性灰 */
+.wf-btn { border:1.5px solid #9ca3af; background:#fff; color:#374151;
+          border-radius:var(--wf-radius); padding:4px 8px; font:inherit; white-space:nowrap; }
+.wf-input { display:inline-block; min-width:140px; border:1px solid #cbd5e1;
+            background:#fff; color:#94a3b8; border-radius:var(--wf-radius); padding:2px 8px; }
+/* :field 表單欄位區塊：內部 input/select 吃滿容器寬（flex-row 表格內並排窄輸入不受影響）*/
+.wf-field .wf-input, .wf-field .wf-select { display:block; width:100%; min-width:0; }
+.wf-select { display:flex; justify-content:space-between; align-items:center;
+             border:1px solid #9ca3af; background:#fff; color:#374151;   /* 預設中性；要裝飾用 ^..^:tone-xxx */
+             border-radius:var(--wf-radius); padding:4px 8px; }
+.wf-select::after { content:' ▾'; }
+.wf-radio, .wf-check { color:#6b7280; }
+/* 語意色調（封印淡色票）— 放在控制項規則之後，故套到 box / select / button 都能蓋過中性底色。兩模式都顯色 */
+.wf-tone-feature { background:#eef2ff; border-color:#c7d2fe; color:#3730a3; }
+.wf-tone-info    { background:#f0f9ff; border-color:#bae6fd; color:#075985; }
+.wf-tone-warn    { background:#fffbeb; border-color:#fcd34d; color:#92400e; }
+.wf-tone-danger  { background:#fef2f2; border-color:#fecaca; color:#991b1b; }
+.wf-tone-success { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
+.wf-tone-muted   { background:#f9fafb; border-color:#e5e7eb; color:#6b7280; }
+/* action 色外框：標記「互動相關」（dropdown / 控制 / 連動）；填色=導航動作、此外框=互動但非導航 */
+.wf-tone-action  { background:#f0fdfa; border-color:#0d9488; border-width:1.5px; color:#0d9488; }
+.wf-tone-feature > .wf-title { background:#eef2ff; } .wf-tone-info > .wf-title { background:#f0f9ff; }
+.wf-tone-warn > .wf-title { background:#fffbeb; } .wf-tone-danger > .wf-title { background:#fef2f2; }
+.wf-tone-success > .wf-title { background:#f0fdf4; } .wf-tone-muted > .wf-title { background:#f9fafb; }
+.wf-tone-action > .wf-title { background:#f0fdfa; }
+/* 狀態標籤 chip：藥丸狀 + 灰階強調級別（muted/預設/strong）；刻意不用 teal/邊框，與按鈕區隔 */
+.wf-tag { display:inline-block; padding:1px 9px; border-radius:var(--wf-radius-pill); font-size:.85em; white-space:nowrap; line-height:1.5;
+          background:#d1d5db; color:#374151; }
+.wf-tag-muted  { background:#f3f4f6; color:#9ca3af; }
+.wf-tag-strong { background:#6b7280; color:#fff; }
+/* 分頁列：Salt 原生「資料夾頁籤」外觀 — 每個 tab 是邊框盒子，active 與內容相連 */
+.wf-tabs { width:100%; border-bottom:1px solid #9ca3af; padding-left:8px; align-items:flex-end; }
+.wf-tab { padding:5px 14px; color:#6b7280; background:#f3f4f6;
+          border:1px solid #cbd5e1; border-radius:var(--wf-radius) var(--wf-radius) 0 0;
+          margin-right:4px; margin-bottom:-1px; white-space:nowrap; }
+.wf-tab-active { color:#1f2937; font-weight:600; background:#fff;
+                 border-color:#9ca3af; border-bottom-color:#fff; }
+.wf-tab.wf-link { color:#0f766e; }       /* 連結 tab 才上色（href 規則）*/
+.wf-tab.wf-link::after { content:none; }
+.wf-warn { color:#b91c1c; }
+.wf-new  { color:#b45309; background:#fffbeb; padding:0 4px; border-radius:var(--wf-radius); }
+.wf-icon { color:#6b7280; }
+.wf-fa { height:.95em; width:auto; vertical-align:-0.12em; fill:currentColor; }
+.wf-lu { height:1.05em; width:1.05em; vertical-align:-0.18em; }
+.wf-label { color:#1f2937; }
+/* <label> badge：方角中性標籤（border-only，與 chip 的圓角填色區隔）*/
+.wf-badge { display:inline-block; padding:1px 6px; border:1px solid #9ca3af; border-radius:var(--wf-radius);
+            font-size:.85em; line-height:1.4; white-space:nowrap; color:#374151; }
+.wf-badge.wf-weight-bold  { background:#374151; border-color:#374151; color:#fff; }   /* 深色底白字 */
+.wf-badge.wf-weight-light { background:#f3f4f6; border-color:#d1d5db; color:#374151; } /* 灰底深色字 */
+/* 區塊字重修飾（:weight-light / :weight-bold）*/
+.wf-weight-light { font-weight:300; }
+.wf-weight-bold { font-weight:700; }
+/* creole 文字權重：<b> 主要/強調，<i> 次要/hint（灰、斜、略小，與主要文字、chip 區隔）*/
+.wf-b { font-weight:700; }
+.wf-hint { color:#9ca3af; font-style:italic; font-size:.88em; }
+/* 標題（# ## ###）：封印 3 級字級，低保真不微調 */
+.wf-h { font-weight:700; color:#1f2937; }
+.wf-h1 { font-size:var(--wf-h1); } .wf-h2 { font-size:var(--wf-h2); } .wf-h3 { font-size:var(--wf-h3); }
+/* [# ...] 邊註 → 右側 gutter：render 時量測 [^N] 標記高度、把 [#N] 對齊過去、遇疊往下推（位置烤進 HTML，零 JS）*/
+.wf-gutter { position:absolute; top:0; right:0; width:240px; }   /* 內部 .wf-mnote 由 render.sh 依錨點絕對定位 */
+.wf-nanchor { display:block; height:0; }   /* 無編號註解的隱形錨點（標記 [#] 出現位置）*/
+.wf-mnote { font-size:.8em; line-height:1.45; text-align:left;
+            color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-left:3px solid #f59e0b;
+            border-radius:var(--wf-radius); padding:6px 10px; }
+/* 參照標記 [^N] 與註解編號 [N]：同琥珀色系，靠數字對應（非高度）*/
+.wf-ref { font-size:.7em; vertical-align:super; color:#b45309; font-weight:700; margin:0 1px; }
+.wf-mnote-num { font-weight:700; color:#b45309; }
+/* handwritten / sketch 模式（' @handwritten 開啟）：手寫字體 + SVG 位移濾鏡讓實線變手繪感，零 JS */
+.wf-sketch { font-family:'Bradley Hand','Comic Sans MS','Segoe Print','Marker Felt',cursive; }
+.wf-sketch .wf-box, .wf-sketch .wf-btn, .wf-sketch .wf-tab,
+.wf-sketch .wf-input, .wf-sketch .wf-select, .wf-sketch .wf-hr,
+.wf-sketch .wf-tag { filter:url(#wf-rough); }
+
+.flex { display:flex; }
+.flex-row { flex-direction:row; }
+.flex-col { flex-direction:column; align-items:stretch; }
+.items-center { align-items:center; }
+.items-start { align-items:flex-start; }
+.justify-between { justify-content:space-between; }
+.justify-end { justify-content:flex-end; }
+.justify-start { justify-content:flex-start; }
+.justify-center { justify-content:center; }
+.justify-around { justify-content:space-around; }
+.gap-1 { gap:.25rem; } .gap-2 { gap:.5rem; } .gap-3 { gap:.75rem; } .gap-4 { gap:1rem; }
+.grid { display:grid; }
+.grid-cols-1 { grid-template-columns:repeat(1,minmax(0,1fr)); }
+.grid-cols-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.grid-cols-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.grid-cols-4 { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.grid-cols-5 { grid-template-columns:repeat(5,minmax(0,1fr)); }
+.grid-cols-6 { grid-template-columns:repeat(6,minmax(0,1fr)); }
+.gap-x-4 { column-gap:1rem; } .gap-y-3 { row-gap:.75rem; }
