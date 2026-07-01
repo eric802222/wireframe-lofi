@@ -65,3 +65,83 @@
   - **建議路徑**：先把 Tier1 全抽成 `:root` token(地基/便宜/馬上有 theme 感)；Tier2 skin 等真要為某目標產品做 mockup 時再逐元件補。
   - ✅已實作 Tier1 部分：**圓角**(`--wf-radius`/`-pill`)、**間距**(`--wf-space-sm/md/lg`，GAP 改指向 var)、**字體**(`--wf-font`/`--wf-font-size`/`--wf-h1|h2|h3`)皆抽進 `assets/wf.css` `:root`。實測覆蓋 `:root`(圓角/間距/字體)整體外觀即變 → token 機制成立。**色盤/tone、`--theme` 注入旗標、Tier2 skin 尚未做**(待需要)。
   - **待決**：density 總開關(compact/comfortable 一次調間距+padding)要不要？Tier2 先全元件還是先高頻(button/input/box/chip/tabs)？Tier3 是否至少保留 sketch flavor？image/捲軸 佔位在 mockup 的升級策略？
+
+---
+
+## 2026-07-02：以「記帳 app 5 頁實測」為壓力測試，收斂一批架構決策
+
+實測位置：`examples/expense-app/`，完整討論歷程：`TOOL-SUGGESTIONS.md`（根目錄）。以下按決策時間軸排列，供 loader/renderer 開發依此推進。
+
+### 排版原語 canonical form
+
+- [2026-07-02] **排版 canonical = sibling form，明拒 dict-form** → `row: {gap, items:[...]}` 這種 dict-form **拋 error**（非 warning）。理由：DISCUSSION 排版原語兩層已定（line 21, 24），支援 dict-form 會製造第三種寫法違背北極星②；當前 sibling form 本就是「dict 全部 key 屬於同一 container」，只是 items 用 direction key 藏起來的 sugar，AST 對齊靠 loader 一次 pick-up（`Container(direction, justify, align, gap, children)`），跟 React `<Row gap>` 完美對應。錯誤訊息**必須教育為何是 sibling**，附修法範例（見 actionable diagnostics）。修 `wfyaml.py:_items_of`。
+- [2026-07-02] **`_items_of` bug → 明拒 dict-form 的實作切點** → 目前 `v = d.get(direction)` 對 v 是 dict 時靜默 fallback 到外層 `d.get('items')` 拿到空 → 造成所有嵌套帶屬性的 row/col 靜默渲空（tx-item、app bar、預算列…全中招）。修法：dict 型 v 直接 raise ValidationError。這是本次實測發現「最痛的一個 bug」。
+
+### `grow` 與 `scroll` 語義
+
+- [2026-07-02] **`grow: true` 保留（不改名 `fill`）** → 討論考慮改名 `fill:` 求更語義，但 row/col 已限縮方向，`grow` 是 CSS/UI 通用詞（`flex-grow`）既有 mental model 命中；`fill` 反有 fill area / fill color 歧義；`spacer`(推擠) vs `grow`(區塊自填) 分工清楚，保留現名。
+- [2026-07-02] **`scroll:` / `scroll-x:` 純語義化**（修正 line 53 原設計「Tailwind 高度 token」）→ 移除 `scroll: h-*` 像素 token 支援（違反北極星② 不寫尺寸細節），改成純語義三態：
+  - `scroll: true` = 「這區塊可捲」，高度由父容器 / `grow: true` 決定 → `overflow-y:auto`
+  - `scroll: sm/md/lg/xl` = 語義級距，可 theme（跟 `gap:`/`padding:` 家族對齊 line 27）→ `max-height: var(--wf-scroll-*)`；預設 `8/16/32/48rem`
+  - `scroll-x:` 對稱處理
+  組合語義天然成立：`grow: true` + `scroll: true` = 「填滿剩餘 + 可捲」，不需要 `scroll: fill` 之類的聯集寫法。修 `wfyaml.py:479-482`。原設計「保底 16rem」的 fallback 移除，改為 P0.7 schema validation 早失敗。
+
+### Schema Validation + Fail-Fast（架構層決策，AST codegen 前置）
+
+- [2026-07-02] **建立 Schema Validation + Fail-Fast 架構**（貼 poka-yoke / actionable diagnostics / TypeScript `tsc` 前置類比）→ 目前 wfyaml.py 對錯誤 YAML 是**靜默降級**（dict-form 讀不到 items 靜默渲空、typo 靜默 fallback、tone 錯值靜默無效果）→ 使用者/LLM 生成的 YAML 出錯沒有信號回饋。決策：wfyaml.py loader 該扮演 `tsc` 角色，validation 過了才進 render/expand。分兩層：
+  - **P0.7a 結構 schema**：container 恰一個 direction key、leaf 恰一個 role key、未知 key warning（帶 Levenshtein 建議「是不是 X?」）、container/leaf 屬性混掛偵測
+  - **P0.7b 語義集合**：gap/padding 屬 `none/sm/md/lg/xl`、align/justify 屬 enum、tone 屬 Layer1 集合（收斂後 lock-in）、scroll 屬 `true/sm/md/lg/xl`、slot 引用存在、include 檔案存在、icon 名在 vocab（見 canonical icon vocab）
+  - **Actionable diagnostics 格式**（Rust compiler 風格）：檔名 + 行號 + YAML 路徑 + 位置標示 + 為何錯 + 修法範例
+  - **實作切點**：loader validate(doc) → 拋 ValidationError；CLI `--strict`（預設） vs `--lenient`（過渡）；獨立 `wireframe-lofi lint` 子命令；`schemas/wf.schema.json` 供 IDE YAML 擴充
+  - **與 AST → code 關係**：codegen 前置強制門，錯誤責任明確歸給 YAML 作者不外漏
+
+### Leaf 家族擴充（P1）
+
+- [2026-07-02] **新增 `progress` leaf**（P1，強烈建議）→ `progress: {value: 0-1, tone, label?}` 或 scalar `progress: 0.5`。value 用 0–1 語義比例（非像素/百分比字串），tone 走 Layer1，label 走 inline markdown。記帳/預算/募款/專案剛需，目前只能用 `status.strong: 78%` chip 湊，沒有 fill bar 視覺。
+- [2026-07-02] **`avatar` leaf 定案**（收斂 line 45 待補項）→ `avatar: {label, size}` 或 scalar `avatar: EC`。**視覺封印邊界**：不接受 `src: photo.jpg`（真圖）/`bg: red`（真色）等視覺逃生口參數，只允許 label（縮寫字母）+ size（sm/md/lg 語義 scale），跟 `image:` 打叉框對稱。
+- [2026-07-02] **`chart` leaf 暫緩** → `image: {label, ratio}` 已定位為「佔位打叉框」，chart 佔位用 image + label 已足夠傳達意圖；新增 chart 只是視覺別名、語義沒質變，違反「核心精簡」原則。等真的多次遇到「需要區分 chart 佔位 vs 圖片佔位」再議。
+- [2026-07-02] **葉子 canonical = dict-form（收斂 line 262 待補項）** → 明拒字串 sugar `"role: 值"`，只留 `{role: 值}`。理由：字串 sugar 要 wfyaml 內部 mini-parser 切 `role: value`，這正是 line 13「不手刻 parser」決策的例外洞；移除後 100% 靠 `yaml.safe_load`。AST codegen 只需認 dict role，不需雙 code path。遷移期出 warning。
+
+### Slot / Component 擴充
+
+- [2026-07-02] **Slot 展開多項的對齊問題 → 建議 `wrap` 屬性或 grouping helper**（P2）→ app bar `[slot: title, slot: actions]` 中 actions 展開為多個 icon 時，`justify: between` 會把所有子項攤開而非「actions 群組靠右」。目前繞開：內包一層 list-form row `- row: [ - slot: actions ]`。建議：`slot: actions\n wrap: row` 讓 slot 支援展開時自動包容器。優先級中，可靠現有繞開 pattern 過渡。
+- [2026-07-02] **`include` 支援 `slots:` 參數**（P4 E5，React children 對齊）→ 現行 `include with:` 只替換葉子字串，無法傳「一段內容」當子節點。擴充：component 可以挖 `- slot: content`（跟 layout 對稱），include 時 `slots: {content: [...]}` 填。對照 React 就是 `<Card>{children}</Card>` 的 slots 版。**設計對齊**：layout 有 slots、component 也可有 slots，兩者機制**完全一致**（三層對稱 line 23 延伸）。
+
+### 動線 / 路由 / Meta 對 AST 的立場
+
+- [2026-07-02] **`to:` 值 grammar 形式化**（P4 E3） → `to:` 只接 `<page>('#'<stage>('.'<state>)?)?` 或純 hash `'#'<stage>('.'<state>)?`；page/stage/state 皆 `[a-z][a-z0-9-]*`。AST 表示 `RouteRef {page, stage, state}`。Codegen 對應：React Router `/{page}/{stage}/{state}`、Next.js App Router `app/[page]/[stage]/[state]/page.tsx`、純 hash → 頁面內 state。違反 grammar → P0.7 lint error。
+- [2026-07-02] **`routes:` = single URL 對 codegen 的意涵**（收斂 line 16 到 AST 面）→ 明講立場：`routes:` 產出的每個路由對應**獨立 URL / route path**（不是 client-side useState）。codegen 到 React Router 每路由一個 `<Route>`；到 Next.js 每路由一個 `page.tsx`。這保留深連結、分享、瀏覽器 back 能力。
+- [2026-07-02] **`canvas:` 標記為 render meta（AST 忽略）**（P4 E6）→ `canvas: 390x844` 只給 wfyaml render 用（HTML 外框、PNG 尺寸、置底基準）；對 AST → code，React/Vue app 不定畫布、iOS/Android 用 safe area → codegen 忽略 canvas。明講 canvas 屬 meta 家族（跟 name / Layer2 / debug / flowmap 同族），不進產品 AST。
+- [2026-07-02] **事件槽立場：wireframe-lofi 不做**（P4 E7）→ 真產品有 onClick/onSubmit/onChange，wireframe-lofi 只表達「畫面+動線」（`to:` = 導航），不表達事件行為。理由貼 line 57 保真度旋鈕邏輯：事件屬 mockup 高保真階段，wireframe 是低保真層；加事件槽會膨脹詞彙且破北極星①。**明講 doc 有這行**避免後人問「怎麼標 onClick」。codegen 產出的 React 只有 layout + 導航（`to:` → `router.push`），事件由後續填。
+
+### AST 對齊：Container / Leaf schema 明列
+
+- [2026-07-02] **Container 屬性 schema lock-in**（P4 E1）→ 節點 shape 明列（AST 節點形狀鎖住）：
+  ```
+  Container { direction: 'row'|'col'|'grid'; justify; align; gap; padding;
+              box; grow; scroll; scroll-x; span; tracks; children }
+  ```
+  加上 cross-cutting `Metadata { name; tone; to; note; spotlight }` 可掛任意節點。AST → React 幾乎 1:1：`<Row justify align gap data-name>{children}</Row>`。
+- [2026-07-02] **Leaf 屬性 schema lock-in**（P4 E2）→ 每個 role 的 value shape 與可掛 metadata 明列成表（見 TOOL-SUGGESTIONS.md P4 E2）。跨葉子規則：`to:` 只在 button/link/容器有效、`checked` 只在 checkbox/radio，其他情形 P0.7 lint 出 warning。
+
+### Icon 語彙 lock-in（跨平台對齊）
+
+- [2026-07-02] **Canonical icon vocab（~30 個核心語義名 + 跨平台 mapping）**（P4 E4）→ 目前 `icon: swap`/`minus` 打錯靜默顯示「◻ 未找到」，且 FA/Lucide 名直通綁死 web。建議建立跨平台 canonical vocab：
+  - **~30 個核心語義名**：導覽（home/back/forward/close/menu/more）、動作（add/remove/edit/delete/save/share/download/upload）、狀態（check/warn/info/question）、資料（search/filter/sort/calendar）、使用者（user/bell/settings）、金融場景（wallet/card/receipt/chart-pie/chart-bar）
+  - **跨平台 mapping table**：canonical → FA / Lucide / SF Symbols / Material Symbols
+  - **Escape hatch**：`icon: {set: fa, name: fa-custom}` 直通具體圖庫，但**不參與 codegen**（標記為 platform-specific）
+  - AST → RN 範例：`icon: home` → `<HomeIcon />`（從 vocab 表映射）
+
+### Layer 1 tone 候選 lock-in（實測回饋）
+
+- [2026-07-02] **Layer 1 tone 候選 6 名（實測驗證，收斂 line 37 待議）**：
+  - `danger`（支出/超支/警示）、`success`（收入/健康/綠燈）、`warn`（接近上限 70–99%）
+  - `feature`（主要 CTA/focused/active tab）、`info`（中性資訊）、`muted`（去強調）
+  - **命名軸分工**：警示軸 `info → warn → danger`（對應 line 37 severity 提議）；正向 `success` 獨立；強調度 `feature`/`muted` 非顏色是強調機制
+  - **建議沿用單一 tone 名稱空間不拆 severity**：實作最順手的接口，記帳 app 這種混合場景 6 名已足夠覆蓋。若日後需拆，可保留 tone 為 façade、內部映射到 severity 軸。
+  - Loader P0.7 lint：tone 值必須在此 6 名集合，其他 warning。
+
+### 其他小結
+
+- [2026-07-02] **`with:` 替換範圍實測確認 + 文件補強**（收斂）→ `_subst` 已支援對任何 leaf 字串位置的 `{{}}` 替換（含 dict role value：`text: "{{category}}"`、`tone: "{{tone}}"`、`button: {text: "{{label}}"}`），被 P0 bug 掩蓋才誤判為壞掉。README 應明講「`{{}}` 適用於任何葉子字串位置，不限頂層 scalar」並補 test。
+- [2026-07-02] **`name:` 隱形語意實測確認**（line 20 對齊）→ `name: tab-home` 正確寫入 `data-name="tab-home"` 且不渲染，與設計一致，無需調整。
