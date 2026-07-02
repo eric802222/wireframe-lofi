@@ -831,7 +831,7 @@ def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=N
 
 
 BUNDLE_CSS = r"""
-body.wf-bundle{display:flex;margin:0;align-items:flex-start;font-family:'Sarasa Mono TC','Courier New',monospace;}
+body.wf-bundle{display:flex;margin:0;align-items:flex-start;font-family:var(--wf-font,'Sarasa Mono TC','Courier New',monospace);}
 #wf-nav{position:sticky;top:0;flex:0 0 190px;max-height:100vh;overflow:auto;padding:12px;
   border-right:1px solid #e5e7eb;font:12px/1.5 sans-serif;background:#fafafa;}
 #wf-nav .wf-navgrp{margin-bottom:6px;}
