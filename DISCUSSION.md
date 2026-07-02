@@ -412,3 +412,10 @@
   - **屬性值 token**:裸值(`gap: section`、`frame: strong`)。
 - **`$` 前綴 marker:考慮後否決**——雖能一眼標 origin,但覺得**冗餘**。改由 **built-in 為已知封閉集 + lint/introspection** 分辨內建 vs 專案;未知裸名→lint error、未知 token→warn+退回。
 - **origin 分辨責任**:lint/introspection(枚舉生效詞彙、標源),不進語法。
+
+### 更正:box 不容器化,維持 primitive（2026-07-02,推翻上則 A/B 的 box 部分）
+- [2026-07-02] **box 維持原始 framing 屬性 `box: true`,不做語義容器家族**。撤銷 `box.header/section/footer`;也不另切 `frame` 屬性(box:true 本身即框)。
+- **理由**:box 是 primitive(框這個原始能力),和 gap/tone 同層;把它做成語義 token 家族(box.*)是把 primitive 混進語義命名,不乾淨。
+- **專案語義區塊**(header/section…)→ 走 widget / `name:` 標籤 / **專案自己的家族**(如 `card.hero`);這些內部可用 box,但不命名為 `box.*`。
+- **保留**:組合型 token 機制(overlay.* 內建 + 專案自定家族)、命名空間分層、屬性值 token 化——只是 box 留在 primitive 層、不參與語義容器命名。
+- **實作面**:無需改碼(box.*/frame 皆未實作)。
