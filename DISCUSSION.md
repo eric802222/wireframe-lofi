@@ -382,3 +382,33 @@
 - ✅ Phase 1 引用型 token(gap)+ CSS var 別名 + fallback + lint warn。
 - ✅ Phase 2 組合型 overlay.* token + wf-role 指紋。
 - ⏳ 待實作:box 容器家族 + frame 屬性/token、組合型一般化(任意專案家族)、frame/tone/scroll 納引用型、`--tokens` 旗標、DTCG 匯入、lint 併 P0.7、z 帶改名。
+
+### 命名空間 / box 容器化 / frame 屬性化（2026-07-02，定案;`$` marker 否決）
+
+本輪把「容器身份、box、frame、命名空間」一次收斂。
+
+**A. box 容器化 + frame 降級為屬性**
+- 舊 `box: true` 同時扛「容器 + 框線」→ 拆:
+  - **`box` / `box.header` / `box.section` / `box.footer`** = 語義**容器家族**(③),專案在 `wf.tokens.yaml` 定義一包屬性預設。
+  - **`frame`** = 視覺**屬性**(⑤,裸值);`frame: true/false`(內建)或 `frame: subtle/strong…`(專案 semantic → DTCG `border` 複合)。
+  - box 預設框由**角色 style**(`.wf-box`/`.wf-role-box-*`)給、`frame` 可覆寫。「畫框是視覺,不該是語義容器的本質」。
+
+**B. 容器 semantic token = 屬性預設包(tier 鏈)**
+- `box.section` = `{gap:sm, frame:strong, padding:sm}`;`overlay.drawer` = `{pin,modal,layer}`。
+- 包裡每個值各自再解析:`gap:sm`→primitive、`frame:strong`→border token→複合。形成 **容器 token → 屬性 token → primitive** 三層鏈(DTCG alias chain)。
+- 展開機制通用(overlay/box/任意專案家族共用一條);展開後留 `wf-role` 指紋。node 顯式屬性覆寫 token 預設。
+
+**C. box 是「隱含的基底語義容器」**
+- 洞察:`widget` / `overlay.drawer` / `box.section` 全是「box + 角色 + 屬性包」的特化。共同基底 = 語義容器(box)+ `wf-role` + 屬性包。
+- 實作收斂成**一條**「語義容器展開器」;`widget` 是同底 + caps/示意 的特製子渲染(唯一特例)。「box 家族不是新增,是把已隱含的基底顯性化」。
+
+**D. 命名空間分層（`$` marker 否決 —— 冗餘）**
+- **文件/組合層(grammar 關鍵字,封閉)**:`page` `canvas` `routes` `body` `extends` `include` `with` `slots`/`slot` `as` `when`。不套命名空間、不 token 化、無 marker;靠「已知關鍵字 + 位置」辨識;未知頂層 key → lint error。
+- **內容層(節點身份)**:
+  - **一次性**:`name: 說明`(通用 box + 標籤)。
+  - **內建角色**:裸 `row`/`box`/`widget` 或內建點式家族 `overlay.drawer`/`text.title`。
+  - **專案 token**:`family.variant` 點式(`box.section`/`card.hero`),定義在 `wf.tokens.yaml`。**點式結構由專案自組**(扁平或分層)。
+  - **參數/區域變數**:`{{title}}`(`with:` 填,局部);與全域 token 不同 scope。
+  - **屬性值 token**:裸值(`gap: section`、`frame: strong`)。
+- **`$` 前綴 marker:考慮後否決**——雖能一眼標 origin,但覺得**冗餘**。改由 **built-in 為已知封閉集 + lint/introspection** 分辨內建 vs 專案;未知裸名→lint error、未知 token→warn+退回。
+- **origin 分辨責任**:lint/introspection(枚舉生效詞彙、標源),不進語法。
