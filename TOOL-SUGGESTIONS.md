@@ -641,10 +641,11 @@ Ring 1  語義 token（opt-in，AI 讀 wf.tokens.yaml 即懂 · 不背）
         值換皮，詞彙不變。專案帶自己的字典。已有 Phase 1/2 引用 + 組合型。
 
 Ring 2  輸出模式（旗標，不進 YAML · 讀者面）
-        --style clean/sketch/mockup
-        --fidelity wireframe/mockup
+        --style clean/sketch              ← wireframe 側美學（乾淨/手繪）
+        --mockup <theme.yaml>             ← 有此旗標 = mockup 模式；theme 決定綁定
         --emit html/png/ast/react
-        --audience pm/eng/customer/discuss     ← sugar 別名
+        --audience pm/eng/customer/discuss  ← sugar 別名
+        規則：沒 --mockup = wireframe（硬夾 Ring 0）；有 = mockup + theme 綁定。
         renderer/emitter 決定產什麼，作者不動 YAML。
 ```
 
@@ -653,14 +654,14 @@ Ring 2  輸出模式（旗標，不進 YAML · 讀者面）
 - **AI 最少負擔**：Ring 0 恆定小；Ring 1 靠 `wireframe-lofi list` introspection 查（不背）；Ring 2 是 CLI 不進 YAML。
 - **wireframe / mockup / product 不混**：fidelity mode 結構性防漂移（8c953bb）—— 預設 renderer 硬夾 Ring 0，畫不出 mockup；要 mockup 得明給 `--mockup`。**靠模式旗標切，不靠作者自律**。
 - **Pipeline**：
-  - wireframe → mockup：Ring 0 YAML 不動，加 `wf.tokens.yaml` + `--mockup`
+  - wireframe → mockup：Ring 0 YAML 不動，`--mockup themes/<name>.yaml` 進 mockup 模式
   - mockup → AST → code：`--emit ast` 產結構化節點樹（走 P4 E1/E2 schema），再進 codegen
-- **版控**：YAML + tokens.yaml + style CSS 全 plain text，git diff/blame 天然 work
+- **版控**：YAML + tokens/*.yaml + themes/*.yaml 全 plain text，git diff/blame 天然 work
 - **多受眾**：同一份 YAML 交叉旗標
-  - PM：`--fidelity mockup --style mockup --tokens brand.yaml`
+  - PM：`--mockup themes/brand.yaml`
   - Eng：`--emit ast` → JSON 給 codegen
-  - 客戶：`--fidelity wireframe --bundle` → 可點原型
-  - 討論：`--fidelity wireframe --style sketch --debug`
+  - 客戶：`--bundle`（wireframe，可點原型）
+  - 討論：`--style sketch --debug`（wireframe，手繪 + 評審迴路）
 
 ### 關鍵不混淆原則（一句話）
 
@@ -701,6 +702,122 @@ Ring 2  輸出模式（旗標，不進 YAML · 讀者面）
 ```
 
 一份 prompt 涵蓋所有情境，AI 無論產 wireframe / mockup / codegen 都用同一組詞彙。
+
+---
+
+## P7 — Theme-as-binding-YAML（四層架構 + 消費規則）
+
+把「component 純語境 / theme 走綁定 / primitive 誰都可用 / page 組出畫面」收斂成明確的四層 + 消費矩陣。
+
+### 四層 + 消費矩陣
+
+```
+Primitive  = 原子刻度（spacing/tones/sizes/radius/z-scale）
+Component  = 純語境合約（is/can/layer/pin/結構）— 禁物理視覺
+Page       = 組合 Component + Primitive 出畫面
+Theme      = 綁定物理到 Component 名（用 Primitive 值），render 時注入
+```
+
+**誰能用誰**：
+| 誰 | 可用 | 不可用 |
+|----|------|--------|
+| Component | Primitive | Theme（不知道自己會被誰 theme） |
+| Page | Component + Primitive | Theme（作者不 aware theme） |
+| Theme | Primitive | Component（單向綁定進來，不反向讀） |
+
+### 為什麼這強在對 AST → code
+
+現況 style 是 CSS-driven（`assets/styles/<name>/style.css`），CSS 是 web-only。要 codegen 到 SwiftUI / React Native 時，theme 資訊卡在 web。
+
+**Theme-as-binding-YAML**：
+- Theme 是**資料**，可跨 target 翻譯
+- Web codegen：theme YAML → CSS
+- Native codegen：theme YAML → SwiftUI modifier / RN StyleSheet
+- 一份 theme 定義，多平台吃
+
+補齊 Ring 2 `--emit ast` → code 那段缺口（P5.2）。
+
+### 檔案結構
+
+```
+src/
+  page.wf.yaml
+  components/                # 純語境合約
+    global.yaml
+    mall/cart.yaml
+  tokens/                    # Primitive 分檔
+    spacing.yaml
+    tones.yaml
+    sizes.yaml
+    z-scale.yaml             # base/overlay/notify/top
+  themes/                    # 綁定
+    mockup.yaml              # 標準 mockup 綁定
+    brand.yaml               # 專案品牌 mockup
+```
+
+### Theme 檔範例
+
+```yaml
+# themes/mockup.yaml
+bindings:
+  section:
+    padding: tokens.spacing.cozy
+    frame: strong
+    layer: top
+  card.hero:
+    padding: tokens.spacing.loose
+    frame: shadow
+```
+
+### 明確劃線（避免花俏術語）
+
+Theme YAML 的 key 對應 Component key（**同名綁定**），render 時 theme 疊到 component 實例上 —— 就是 **binding**（同 CSS-in-JS / styled-components）。**不用「多態」等術語**。
+
+### 消費規則 lint（P0.7 併入）
+
+| 規則 | 違反例 | 錯誤處理 |
+|-----|--------|---------|
+| Component YAML 禁物理視覺 key | component 定義出現 `border: 5px` | error |
+| Component YAML 禁引用 `theme.*` | `padding: theme.mockup.pad` | error |
+| Page YAML 禁引用 `theme.*` | 同上 | error |
+| Theme YAML 禁引用 `component.*` | binding 反查 component | error |
+| 未知 primitive 引用 | `tokens.spacing.xxxxx` | warn（退回 md）|
+
+### CLI 對接（吃掉 `--fidelity` 旗標）
+
+```bash
+# wireframe（預設，硬夾 Ring 0）
+wfl render page.wf.yaml
+wfl render --style sketch page.wf.yaml
+
+# mockup（有 --mockup <theme> 就是 mockup 模式）
+wfl render --mockup themes/mockup.yaml page.wf.yaml
+wfl render --mockup themes/brand.yaml page.wf.yaml
+```
+
+- 沒 `--mockup` → wireframe，`--style` 決定線框美學（clean/sketch）
+- 有 `--mockup <file>` → mockup 模式 + 該 theme 綁定
+- **`--fidelity` 消失**（theme 存在本身就是 fidelity 訊號）
+- **`--style mockup` 移除**（mockup 樣貌由 theme 決定，不是 style）
+- **`--style sketch` 跟 `--mockup` 互斥**（語義衝突，error）
+
+### 好處總結
+
+1. **Component 更純**：純語境，物理視覺零污染
+2. **Theme 可攜**：YAML 資料，跨平台翻譯
+3. **codegen 路線清晰**：`--emit ast` + theme.yaml → target-specific code
+4. **CLI 更少旗標**：`--fidelity` 消失，`--mockup <theme>` 一箭雙鵰
+5. **Anti-drift 更嚴**：進 mockup 要**明講哪個 theme**，不能空喊
+
+### 對現況的具體改動
+
+| 項 | 現況 | 需要做 |
+|----|------|-------|
+| `wf.tokens.yaml` 單檔 | 一個檔混所有 token | 拆成 `tokens/primitives/*.yaml` + `tokens/overlay.yaml` 等 |
+| Style CSS binding | `assets/styles/<name>/style.css` | 保留（web renderer 實作），新增 `themes/*.yaml` 資料層 |
+| `--fidelity` 旗標 | `--wireframe / --mockup` | 移除 flag，改由 `--mockup <theme>` 之存在判別 |
+| `--style mockup` | 有此選項 | 移除（跟 `--mockup <theme>` 撞用途） |
+| P0.7 lint | 部分規則 | 加消費規則 5 條 |
 
 ---
 
@@ -766,6 +883,7 @@ Ring 2  輸出模式（旗標，不進 YAML · 讀者面）
 | **P5.3** | `--audience` sugar 別名 | 多受眾動態輸出的 CLI 打包 | ~10 行 |
 | **P5.4** | Ring 0 字母表 明列（文件） | AI 一眼看完全部原語 | 文件 |
 | **P6 ⏳待討論** | Flow-scoped 聚焦輸出（`--entry` 自動 walk `to:` 圖 / `flows/<name>.yaml` manifest） | 巨型專案 POC 評審的正確粒度；不動 YAML 詞彙、走 flowmap 現有 walk | 未定 |
+| **P7** | Theme-as-binding-YAML 四層架構 + `--mockup <theme>` 取代 `--fidelity` | Component 純語境、Theme 可攜資料、AST codegen 路線清晰、CLI 少一旗標 | 中量（tokens 拆檔 + themes/ 新增 + 5 條 lint） |
 
 ---
 

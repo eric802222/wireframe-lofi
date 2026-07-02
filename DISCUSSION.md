@@ -484,4 +484,40 @@
 - **屬 Ring 2 擴充**：不動 YAML 詞彙、走既有動線、~30 行複用 flowmap；符合 anti-drift。
 - **附加價值**：flow 天然是團隊分工/PR/評審排程單位；`flows/` 目錄=專案 sitemap。
 - **狀態**：**方向紀錄，未承諾實作**。等真的多條 flow 需求拉動再做（YAGNI）。細節見 `TOOL-SUGGESTIONS.md` 優先序表 P6 欄。
+
+### Theme-as-binding-YAML：四層架構 + CLI 收斂（2026-07-03，設計定案，待實作）
+
+起於使用者提出「theme 用 binding 執行、component 專注語境、page 用 component/primitive、theme 綁 primitive」的乾淨模型，與後續「`--fidelity` 冗餘、`--mockup <theme>` 一箭雙鵰」的收斂。
+
+- [2026-07-03] **四層 + 消費矩陣**：
+  - **Primitive** = 原子刻度（spacing/tones/sizes/radius/z-scale）
+  - **Component** = 純語境合約（is/can/layer/pin/結構）— **禁物理視覺**
+  - **Page** = 組 Component + Primitive 出畫面
+  - **Theme** = 綁定物理到 Component 名（用 Primitive 值），render 時注入
+  - **誰可用誰**：Component 只能用 Primitive；Page 用 Component + Primitive；Theme 用 Primitive（單向綁 Component 名，不反查 Component）。
+- [2026-07-03] **相對現況強在何處**：現況 style 是 CSS-driven（web-only），theme 資訊卡在 web；改成 **YAML-driven binding** → theme 是資料可跨 target 翻譯（web→CSS、native→SwiftUI/RN），補齊 Ring 2 `--emit ast` → code 路線缺口（P5.2）。
+- [2026-07-03] **命名不用「多態」等術語**：Theme YAML key 對 Component key 同名 → render 時疊上，就是 **binding**（同 CSS-in-JS / styled-components），命名直白。
+- [2026-07-03] **CLI 收斂：`--mockup <theme.yaml>` 取代 `--fidelity`**：
+  - 沒 `--mockup` = wireframe 模式（結構性防漂移，硬夾 Ring 0），`--style clean/sketch` 決定線框美學
+  - 有 `--mockup <file>` = mockup 模式 + 該 theme 綁定
+  - **`--fidelity` 旗標消失**（theme 存在本身即 fidelity 訊號）
+  - **`--style mockup` 移除**（跟 `--mockup <theme>` 撞用途；mockup 樣貌由 theme 決定不是 style）
+  - **`--style sketch` × `--mockup` 互斥**（語義衝突 → error）
+  - 好處：進 mockup 要**明講哪個 theme**（品牌 A / B / 標準），不能空喊 → anti-drift 更嚴。
+- [2026-07-03] **檔案結構**：
+  ```
+  src/
+    page.wf.yaml
+    components/               # 純語境合約
+    tokens/                   # Primitive 分檔（spacing/tones/sizes/z-scale）
+    themes/                   # 綁定（mockup.yaml、brand.yaml…）
+  ```
+- [2026-07-03] **P0.7 消費規則 lint**（併入 schema validation）：
+  - Component YAML 禁物理視覺 key（`border: 5px` → error）
+  - Component YAML 禁引用 `theme.*`
+  - Page YAML 禁引用 `theme.*`
+  - Theme YAML 禁引用 `component.*`（反查禁止）
+  - 未知 primitive 引用 → warn 退回預設
+- [2026-07-03] **對三環架構的定位**：四層是**如何組織 Ring 1 資產**（primitive → component → page；theme 側路綁定），三環是**如何暴露給作者/AI/讀者**。兩者正交、不衝突。
+- [2026-07-03] **對現況改動**：`wf.tokens.yaml` 拆成 `tokens/*.yaml`（primitive 分類）；現有 `assets/styles/<name>/style.css` 保留為 web renderer 實作細節；新增 `themes/*.yaml` 資料層；`--fidelity` 移除；P0.7 lint 加消費規則 5 條。細節見 `TOOL-SUGGESTIONS.md` P7 節。
 - [2026-07-02] **定位**:這是「單一語義源 × 漸進保真」從口號變可執行輸出模式,也是 token 系統的**前置地基**——**先於**任何進一步 token 擴充(有它才安全地讓 token 變豐富而不失焦)。
