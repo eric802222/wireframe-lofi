@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 """
-wireframe-yaml compiler (prototype v0.1)
+wireframe-lofi compiler
 
-把「語義化 YAML」編譯成低保真、零 JS 的 HTML wireframe。
-設計脈絡見 DISCUSSION.md；核心取捨：
+把「語義化 YAML」編譯成低保真、零 JS 的 HTML wireframe。設計脈絡見 DISCUSSION.md。
 
-- 結構解析全交給 yaml.safe_load（免手刻 parser）；本檔只做「YAML 樹 → HTML」的分派。
-- 葉子是語義 role（text.title / button / status…），非視覺標記；渲染用自帶的
-  封印 CSS 與 icon 函式（fa_svg / lu_svg / ICONS）。
-- 顏色封印（只 tone / severity 語義色）；尺寸走 Tailwind token、間距走語義 scale。
+三環架構（見 TOOL-SUGGESTIONS.md P5）：
+- Ring 0 結構原語（恆定）：`wfyaml.py list --ring 0` 一次看完
+- Ring 1 專案 semantic token（opt-in）：tokens/*.yaml 或 wf.tokens.yaml
+- Ring 2 輸出旗標（不進 YAML）：--style clean|sketch / --mockup <theme> / --bundle / --debug
 
-v0.1 涵蓋：canvas / body（獨立頁）、extends+slots（layout 合併）、include+with+as:placeholder、
-row/col/grid（+box/justify/align/spacer/span/gap/padding/欄寬）、葉子詞彙全表、行內 markdown、
-checkbox/radio task-list 語法、to/link、tone、name、Layer2 spotlight/note（基本）。
-待補（見 README）：routes 多輸出、as:{stage,state} 元件變體、when: 節點過濾。
+核心取捨：
+- 結構解析全交給 yaml.safe_load（免手刻 parser）；本檔只做「YAML 樹 → HTML」的分派
+- 葉子是語義 role（text.title / button / status…），非視覺標記
+- 顏色封印（只 tone 語義色 6 名）；尺寸走 Tailwind token；間距走語義 scale
+- Fail-Fast：靜默失敗禁止；未知值/typo 一律 error（POC 階段無 deprecated 相容包袱）
+
+子命令：
+- `wfyaml.py <file>` 編譯成 .html
+- `wfyaml.py --bundle <files>` 併成 prototype.html
+- `wfyaml.py --debug <file>` 出評審模式
+- `wfyaml.py list [--ring 0|1] [--basedir <dir>]` introspection
+- `wfyaml.py lint <files>` schema validation + fail-fast diagnostics
 """
 import sys, os, re, html, gzip, json, base64, glob, yaml
 
@@ -209,6 +216,7 @@ JUSTIFY = {'between': 'space-between', 'end': 'flex-end', 'start': 'flex-start',
 ALIGN = {'center': 'center', 'top': 'flex-start', 'bottom': 'flex-end',
          'start': 'flex-start', 'end': 'flex-end',   # col 交錯軸 = 水平；start/end 是 CSS Flex 標準
          'baseline': 'baseline', 'stretch': 'stretch'}
+SCROLL_SCALE = {'sm': '8rem', 'md': '16rem', 'lg': '32rem', 'xl': '48rem'}  # P0.5 純語義級距
 CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'embed', 'slot'}
 LEAF_ROLES = ['text.title', 'text.heading', 'text.label', 'text.strong', 'text.hint', 'text',
               'input', 'select', 'button', 'status.badge', 'status.muted', 'status.strong', 'status',
@@ -237,7 +245,7 @@ def _stamp(node, src, path=''):
         for i, v in enumerate(node):
             _stamp(v, src, f'{path}[{i}]')
 
-# ---- 額外 CSS（基底 wf.css 沒有的：image 佔位 / spotlight / severity 別名 / 欄位標籤）----
+# ---- 額外 CSS（基底 wf.css 沒有的：image 佔位 / spotlight / 欄位標籤 / progress / avatar）----
 CSS_EXTRA = r"""
 .wf-image { display:flex; align-items:center; justify-content:center; min-height:64px;
   border:1px dashed #9ca3af; color:#9ca3af; border-radius:var(--wf-radius); font-size:.85em;
@@ -688,32 +696,28 @@ def render_container(d, xcls, xattr, src=None, base=''):
         style.append('min-height:0')
         if direction == 'grid':    # grid 撐滿時讓列分佈填滿（預設 items-start 由 align: 覆寫）
             style.append('align-content:stretch')
-    _SCROLL_SCALE = {'sm': '8rem', 'md': '16rem', 'lg': '32rem', 'xl': '48rem'}
+    # scroll（垂直）：true = 高度由父容器/grow 決定；sm/md/lg/xl = 語義級距上限
     if d.get('scroll'):
         cls.append('wf-scroll')
         sv = d['scroll']
-        if sv is True:
-            pass
-        elif isinstance(sv, str) and sv in _SCROLL_SCALE:
-            style.append('max-height:' + _SCROLL_SCALE[sv])
-        else:
-            raise ValueError(f"scroll: 只接 true 或 sm/md/lg/xl（收到 {sv!r}）")
-    if d.get('scroll-x'):
-        cls.append('wf-scroll-x')
-        svx = d['scroll-x']
-        if svx is True:
-            pass
-        elif isinstance(svx, str) and svx in _SCROLL_SCALE:
-            style.append('max-width:' + _SCROLL_SCALE[svx])
-        else:
-            raise ValueError(f"scroll-x: 只接 true 或 sm/md/lg/xl（收到 {svx!r}）")
-    if isinstance(d.get('span'), int):
-        style.append(f'grid-column:span {d["span"]}')
-    if d.get('scroll'):
-        style.append('padding-right:%s' % GAP['md'])   # HTML 右 gutter = md；PNG 由 .wf-show-all 覆寫成 15px+md
+        if sv is not True:
+            if not (isinstance(sv, str) and sv in SCROLL_SCALE):
+                raise ValueError(f"scroll: 只接 true 或 sm/md/lg/xl（收到 {sv!r}）")
+            style.append('max-height:' + SCROLL_SCALE[sv])
+        style.append('padding-right:' + GAP['md'])   # HTML 右 gutter = md；PNG 由 .wf-show-all 覆寫成 15px+md
         body += ('<div class="wf-sb" aria-hidden="true"><div class="wf-sb-btn">▲</div>'
                  '<div class="wf-sb-track"><div class="wf-sb-thumb"></div></div>'
                  '<div class="wf-sb-btn">▼</div></div>')
+    # scroll-x（水平）：對稱處理
+    if d.get('scroll-x'):
+        cls.append('wf-scroll-x')
+        svx = d['scroll-x']
+        if svx is not True:
+            if not (isinstance(svx, str) and svx in SCROLL_SCALE):
+                raise ValueError(f"scroll-x: 只接 true 或 sm/md/lg/xl（收到 {svx!r}）")
+            style.append('max-width:' + SCROLL_SCALE[svx])
+    if isinstance(d.get('span'), int):
+        style.append(f'grid-column:span {d["span"]}')
     st = f' style="{";".join(style)}"' if style else ''
     return f'<div class="{" ".join(cls)}"{st}{_attrs(xattr)}>{body}</div>'
 
@@ -766,7 +770,7 @@ def is_container(d):
 
 
 # --------------------------------------------------------------------------
-# item 分派 + 共用包裝（name / tone / severity / to / spotlight / note / span）
+# item 分派 + 共用包裝（name / tone / to / spotlight / note / span / pin / modal / layer）
 # --------------------------------------------------------------------------
 _LAYER_Z = {'base': 1, 'overlay': 10, 'notify': 20, 'top': 30}   # 封閉語意 z-scale（帶→z-index，封 renderer）
 
@@ -811,7 +815,7 @@ def render_item(it, src=None, path=None):
         elif content not in (None, True):
             d.setdefault('col', [content])
     name = d.pop('name', None)
-    tone = d.pop('tone', None) or d.pop('severity', None)
+    tone = d.pop('tone', None)
     is_widget = 'widget' in d
     block_to = d.pop('to', None) if (is_container(d) or is_widget) else None
     spot = d.pop('spotlight', None)
@@ -888,7 +892,7 @@ def build_gutter():
 
 
 # --------------------------------------------------------------------------
-# 模板：extends + slots / include + with + as:placeholder（資料結構合併，非字串替換）
+# 模板：extends + slots / embed + with + as:placeholder（資料結構合併，非字串替換）
 # --------------------------------------------------------------------------
 def _resolve(name, basedir):
     exts = [''] if name.endswith(('.yaml', '.yml')) else ['.wf.yaml', '.yaml', '.yml']
@@ -930,7 +934,7 @@ def _match(when, ctx):
 
 
 def expand(items, basedir, ctx, stack=()):
-    """一次 pass：when: 過濾（依 ctx）+ include 展開（as 決定變體/繼承 ctx）。ctx = {stage, state}。"""
+    """一次 pass：when: 過濾（依 ctx）+ embed 展開（as 決定變體/繼承 ctx）。ctx = {stage, state}。"""
     out = []
     for it in items:
         if isinstance(it, dict) and 'when' in it:      # 節點級 when：不命中當前路由 → 整塊移除
@@ -946,7 +950,7 @@ def expand(items, basedir, ctx, stack=()):
                 raise ValueError(f"模板循環引用：{' -> '.join(stack + (path,))}")
             comp = yaml.safe_load(open(path)) or {}
             if _DEBUG:
-                _stamp(comp, str(name))            # component 節點來源 = 其 include 名
+                _stamp(comp, str(name))            # component 節點來源 = 其 embed 名
             cdir = os.path.dirname(path) or '.'
             if as_ == 'placeholder':                    # 降階佔位（ctx 無意義）
                 content, child_ctx = (comp.get('placeholder') or _auto_stub(name)), ctx
@@ -957,7 +961,7 @@ def expand(items, basedir, ctx, stack=()):
             content = _subst(content, params)
             content = expand(content, cdir, child_ctx, stack + (path,))
             ann = {k: it[k] for k in ('note', 'spotlight', 'name', 'tone', 'to') if k in it}
-            if ann:                      # include 帶標註 → 包一層 col 承載（否則標註會被丟掉）
+            if ann:                      # embed 帶標註 → 包一層 col 承載（否則標註會被丟掉）
                 for pk in ('__src', '__path'):
                     if pk in it:
                         ann[pk] = it[pk]
@@ -1025,9 +1029,6 @@ def _viewport_wh(c):
         a, _, b = s.partition('x')
         return (int(a) if a else None), (int(b) if b else None)
     return (int(s) if s.isdigit() else None), None
-
-# 相容別名（呼叫端可能用舊名）
-_canvas_wh = _viewport_wh
 
 
 def _route_entry(r):
@@ -1179,8 +1180,8 @@ _ENUMS = {
     'padding': {'none', 'sm', 'md', 'lg', 'xl'},
     'align': {'top', 'bottom', 'start', 'end', 'center', 'baseline', 'stretch'},
     'justify': {'start', 'end', 'center', 'between', 'around'},
-    'scroll': {True, 'sm', 'md', 'lg', 'xl'},
-    'scroll-x': {True, 'sm', 'md', 'lg', 'xl'},
+    'scroll':   {True} | set(SCROLL_SCALE),
+    'scroll-x': {True} | set(SCROLL_SCALE),
     'tone': {'feature', 'info', 'success', 'warn', 'danger', 'muted'},
     'pin': {'center', 'left', 'right', 'top', 'bottom',
             'top-left', 'top-right', 'bottom-left', 'bottom-right',
@@ -1259,7 +1260,7 @@ def _walk_lint(node, path, diag):
     has_leaf_role = keys & set(LEAF_ROLES)
     is_widget = 'widget' in keys
     is_slot_marker = 'slot' in keys and len(keys - {'slot', 'name', 'tone'}) == 0
-    is_embed = 'embed' in keys or 'include' in keys
+    is_embed = 'embed' in keys
     has_overlay_sugar = keys & _OVERLAY_SUGARS
 
     # 3. container 恰一個 direction key
