@@ -234,3 +234,10 @@
 - **兩種用法**:輕量(只 caps)/ 豐富(內部排版 + `to:` demo 動線)。demo 深度 = **視覺示意 + 可導覽**(零-JS 的 `to:`,非真過濾資料;真互動要 JS 且等於替元件庫做事,不做)。
 - **通用優先於具名**:先一個通用 `widget` 接住所有(含沒見過的 rich editor/map);常用的 table/chart 之後再加具名 kind 做較貼的示意渲染,共用同一「宣告能力 + 自我聲明」基座。
 - 幾乎全複用現成機制:內部走既有容器/leaf 渲染;`to:` 走剛做好的動線(單頁/bundle/debug + flowmap 皆通,walk_to 遞迴自然涵蓋 widget body)。
+
+### widget API 命名定案：`is` + `can`（巢狀 dict-form）（2026-07-02，取代上方 kind/caps）
+
+- [2026-07-02] **形式=巢狀 dict-form（屬 leaf 家族，非 container）**：widget 是多屬性元件，跟 `button:{text,to,icon}`、`image:{label,w,h}` 同族 → 屬性巢狀在 widget 底下。曾誤判該用 container 的 sibling-form（`row:` 那套），套錯家族。巢狀還把 widget 內在屬性(is/can/body)與節點 metadata(name/tone/to 掛同層)乾淨分層。
+- [2026-07-02] **命名 `kind→name→label→is` 的收斂**：使用者逐一否決 kind(k8s 術語)、name(撞既有隱形 metadata 保留字)、label(不直覺)。根因：一直用**名詞式術語**命名「這是什麼」。改成 **`is`(是什麼) + `can`(能做什麼)** 一對 copula+modal → 讀成句子、短小白話、無術語、無撞車，與使用者偏好的 `can` 同語感。`caps→can` 同理（能力天生是動詞）。
+- [2026-07-02] **最終形**：純量簡寫 `widget: 工單表格` = `{is: 工單表格}`；完整 `widget: {is, can, body}`。`is`=標籤(顯示)、`can`=能力 chips、`body`=選填內部示意(複用容器/leaf/`to:`)。`name/tone/to` 仍為節點層 metadata 掛 widget 同層、正交。
+- [2026-07-02] **命名教訓**：`caps`/`kind` 當初是把「實作者的概念詞(capabilities/kind)」順手當 key，非從作者閱讀出發——與工具「語義由作者意圖命名」原則相違。作者面新 key 應先唸唸看「像不像人話」。

@@ -220,20 +220,25 @@ content:
 
 複雜元件（表格、圖表、富文字編輯器…）的**內部排法歸元件庫**，wireframe 不該釘死。`widget` 是一個**自我聲明示意的容器**：宣告它*能做什麼*、選填示意*大概長怎樣*，並**自帶「◫ 示意」標記** → 內部一律讀作代表性、非規格，實作依設計/元件庫。
 
+讀成一句話：**`is`（是什麼）+ `can`（能做什麼）**。屬性巢狀在 widget 底下（同 `button`/`image` 這類 leaf）。
+
 ```yaml
-# 輕量：只宣告能力
-- widget: { kind: 工單表格, caps: [search, filter, sort, paginate] }
+# 純量簡寫：widget: 就是「是什麼」
+- widget: 工單表格
+
+# 輕量：宣告能力
+- widget: { is: 工單表格, can: [search, filter, sort, paginate] }
 
 # 豐富：示意內部排版 + 接 to: 走 prototype 動線（點列跳詳情）
 - widget:
-    kind: 工單表格
-    caps: [search, filter, sort]
+    is: 工單表格
+    can: [search, filter, sort]
     body:
       - row: [狀態, 單號, 建立時間, 操作]                         # 示意欄頭
       - { row: [待處理, "#1024", 07-01, 檢視], to: ticket-detail }  # 點列跳頁
 ```
 
-- `kind`：元件類型標籤；`caps`：能力標籤 → chips；`body`：選填內部示意（複用 row/col/grid/leaf 與 `to:`）。
+- `is`：這是什麼（純量簡寫即此值）；`can`：能做什麼 → chips；`body`：選填內部示意（複用 row/col/grid/leaf 與 `to:`）。
 - demo = **視覺示意 + 可導覽**（零-JS 的 `to:` 動線；不做真資料過濾——那屬 mockup/實作）。
 - 你可以畫得細、又不越權：內部走關係型低保真詞彙，且元件自我聲明是代表性的。**細節 ≠ 規定**。
 - 通用 `widget` 接住所有（含沒見過的元件）；常用的 `table:`/`chart:` 具名版之後擴充，共用同一「宣告能力 + 自我聲明」基座。

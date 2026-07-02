@@ -61,7 +61,7 @@ a.wf-btn.wf-link { border-color:#0d9488; background:#0d9488; color:#fff; font-we
 .wf-hr { border-top-color:#d1d5db; }
 /* 示意複雜元件（widget）：虛線框（區別實心 box=代表性）+ 「示意」標記 + 斜體註腳 = 自我聲明視覺語言 */
 .wf-widget { border:1px dashed #cbd5e1; border-radius:var(--wf-radius); padding:var(--wf-space-md); background:#fcfcfd; }
-.wf-widget-kind { font-weight:600; color:#475569; }
+.wf-widget-label { font-weight:600; color:#475569; }
 .wf-widget-tag { font-size:.72em; color:#64748b; background:#f1f5f9; border:1px solid #e2e8f0;
                  border-radius:var(--wf-radius-pill); padding:1px 8px; letter-spacing:.03em; white-space:nowrap; }
 .wf-widget-foot { font-size:.72em; font-style:italic; color:#94a3b8; }

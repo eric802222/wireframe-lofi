@@ -555,23 +555,25 @@ def render_container(d, xcls, xattr, src=None, base=''):
 
 
 def render_widget(d, xcls, xattr, src=None, path=None):
-    """示意複雜元件（table/chart/rich editor…的代表物）。自我聲明保真度：
-    宣告能力(caps) 與/或 示意內部排版(body，複用 row/col/grid/leaf 與 to: 動線)，
-    但自帶「示意」標記 → 內部一律讀作代表性、非規格，實作內部歸元件庫。"""
+    """示意複雜元件（table/chart/rich editor…的代表物）。屬 leaf 家族的巢狀 dict-form
+    （同 button/image：屬性掛在 widget 底下，與節點 metadata name/tone 分層）。自我聲明保真度：
+    宣告能力(can) 與/或 示意內部排版(body，複用 row/col/grid/leaf 與 to: 動線)，
+    但自帶「示意」標記 → 內部一律讀作代表性、非規格，實作內部歸元件庫。
+    讀成一句話：`is`（是什麼）+ `can`（能做什麼）。純量簡寫 `widget: 工單表格` = `{is: 工單表格}`。"""
     w = d['widget']
     if not isinstance(w, dict):
-        w = {} if w is True else {'kind': w}
-    kind = w.get('kind', '元件')
-    caps = w.get('caps') or []
+        w = {} if w is True else {'is': w}
+    ident = w.get('is', '元件')
+    can = w.get('can') or []
     body = w.get('body')
     bpath = (f'{path}.widget.body' if path else 'widget.body')
 
-    head = (f'<div class="wf-widget-head"><span class="wf-widget-kind">{esc(kind)}</span>'
+    head = (f'<div class="wf-widget-head"><span class="wf-widget-label">{esc(ident)}</span>'
             f'<span class="wf-widget-tag">◫ 示意</span></div>')
-    caps_html = ''
-    if caps:
-        chips = ''.join(f'<span class="wf-tag wf-tag-muted">{esc(c)}</span>' for c in caps)
-        caps_html = f'<div class="wf-widget-caps">{chips}</div>'
+    can_html = ''
+    if can:
+        chips = ''.join(f'<span class="wf-tag wf-tag-muted">{esc(c)}</span>' for c in can)
+        can_html = f'<div class="wf-widget-caps">{chips}</div>'
     if body is None:
         body_html = ''
     elif isinstance(body, dict):
@@ -583,7 +585,7 @@ def render_widget(d, xcls, xattr, src=None, path=None):
     foot = '<div class="wf-widget-foot">實作依設計／元件庫</div>'
 
     cls = ['wf-node', 'wf-widget'] + xcls
-    return f'<div class="{" ".join(cls)}"{_attrs(xattr)}>{head}{caps_html}{body_html}{foot}</div>'
+    return f'<div class="{" ".join(cls)}"{_attrs(xattr)}>{head}{can_html}{body_html}{foot}</div>'
 
 
 def _ckeys(it):
