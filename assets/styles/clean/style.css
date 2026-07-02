@@ -19,8 +19,11 @@ a.wf-btn.wf-link { border-color:#0d9488; background:#0d9488; color:#fff; font-we
 /* box / 表單控制 外觀 */
 .wf-box { border:1px solid #9ca3af; border-radius:var(--wf-radius); }
 .wf-btn { border:1.5px solid #9ca3af; background:#fff; color:#374151; border-radius:var(--wf-radius); }
-.wf-input { border:1px solid #cbd5e1; background:#fff; color:#94a3b8; border-radius:var(--wf-radius); }
+.wf-input { border:1px solid #cbd5e1; background:#fff; color:#94a3b8; border-radius:var(--wf-radius); max-width:20rem; }
 .wf-select { border:1px solid #9ca3af; background:#fff; color:#374151; border-radius:var(--wf-radius); }
+/* 預設收窄：多數情況 input: 搜尋 免寫寬度；要特別寬用欄軌 grow / 比例覆寫。
+   表單欄位（.wf-field 內）仍填滿欄寬，不受此上限限制。 */
+.wf-field .wf-input { max-width:none; }
 .wf-radio, .wf-check { color:#6b7280; }
 /* 語意色調 */
 .wf-tone-feature { background:#eef2ff; border-color:#c7d2fe; color:#3730a3; }

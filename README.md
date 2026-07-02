@@ -152,22 +152,33 @@ content:
 | `col: [a, b]` / `row: [a, b]` | 直/橫排；值為 list 即 items 簡寫 |
 | `row: between` / `justify: between` | 主軸對齊 `between`/`end`/`start`/`center`/`around`（`row` 主軸=橫；`col` 主軸=直，可置底/頭尾撐開） |
 | `align: top` | 交錯軸對齊：`center`(預設)/`top`/`bottom`/`baseline`/`stretch` |
-| `grid: 3` / `grid: [w-24, flex-1, w-24]` | N 等欄 / 指定欄寬（見下） |
+| `grid: 3` / `grid: [w-24, grow, w-24]` | N 等欄 / 指定欄寬（見下） |
 | 子項 `span: 2` | grid 跨欄 |
 | `box: true` | 外框（只畫框；要標題請用 `text.title`/`text.heading`，語義化） |
 | `spacer:`（當一個 item） | 不對稱推擠（撐開剩餘） |
-| `grow: true`（掛容器上） | 該容器吃掉父主軸剩餘空間（主體區撐滿→footer 自然置底；比 spacer 更語義） |
+| `grow: true`（掛容器上） | 該容器吃掉父主軸剩餘空間（主體區撐滿→footer 自然置底；比 spacer 更語義）。grid 欄軌用 `grow` 同義 |
 | `gap: md` / `padding: lg` | **語義**間距（見下），非 `gap-4` |
 | `scroll: h-48` / `scroll-x: true` | 捲動區：HTML 真捲軸（封頂 + overflow）；PNG 全展開 + 畫捲軸示意（只看圖也看得到全部內容並知道會捲） |
 
-**欄寬用 Tailwind token**（`grid` 的 track）：`flex-1`（撐滿）、`w-auto`（依內容）、`w-24`（=6rem）、
-`w-1/2`（分數）、`120px`。例：`grid: [w-24, flex-1, w-24]` = 左右固定、中間撐開。
+**欄寬是「關係」，不是「量值」**（`grid` 的 track）。正道是關係型 —— 隨容器縮放、合低保真：
+
+| 正道（關係型） | 意涵 |
+|------|------|
+| `grow`（撐滿剩餘） | 與節點屬性 `grow: true` **同一個字、同一心智模型**。別名 `fill`/`w-full`/`flex-1`（`flex-1` 是實作詞，建議用 `grow`） |
+| `fit`（依內容） | 收到內容寬。別名 `w-auto`/`auto` |
+| `60%` / `w-1/2`（比例） | 「約佔六成、置中」寫 `grid: [grow, 60%, grow]` —— 關係清楚、隨容器縮放，不必挑像素 |
+
+> **逃生門**：`w-24`(=6rem)/`w-96`/`120px` 等**絕對量值會破壞低保真契約**（等於在寫視覺規格），僅真的必要時用。
+> 慣用式 `grid: [w-40, grow]`（label gutter 固定 + 內容撐滿）仍合理 —— 固定的只是標籤欄；要避免的是把**內容本身**（如搜尋框）釘成 `w-96`。
+> 例：`grid: [w-24, grow, w-24]` = 左右固定、中間撐開。
+
+`input` 已內建預設寬上限（收窄，`select` 本就依內容）→ 多數情況 `input: 搜尋` 免寫寬度；要特別寬窄才用欄軌 `grow`/比例覆寫。表單欄位（`.wf-field` 內）仍填滿欄寬。
 
 > **置底/固定視窗**：`canvas` 設高度(如 `820x520`)時，body 會撐滿該高 → 用 `spacer:` 或 `col` + `justify:end|between` 可把 footer/動作列釘到底。
 
 **間距用語義 scale**（可 theme，非數字階）：`none` / `sm` / `md`(**預設**) / `lg`。`gap`（子項間距）與 `box` 內距
 都預設 `md`，用 `gap:`/`padding:` 覆寫（`box` 內距亦吃 `padding:`）。
-> 尺寸走 Tailwind、間距走語義——因為間距是設計系統節奏核心，語義名換 theme 只改一張對照表。
+> **間距=節奏（語義刻度）、寬度=關係（填滿/依內容/比例）**——間距是設計系統節奏核心，語義名換 theme 只改一張對照表；寬度只有相對容器才有意義，故走關係型而非另發明一套刻度。
 
 ### 4. 葉子（語義角色，`role: 值`；scalar 或 map）
 

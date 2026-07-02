@@ -179,3 +179,23 @@
   - inline 句中連結是「詞可點跳頁」的**唯一**表達（button/to: 是區塊塞不進句中）；用 `to:` 前綴宣告意圖（與 block `to:` 同字彙）。
 - [2026-07-02] **反而是「少一條判斷」**：`_href` 移除 `if '://' in t` 嗅探 → 它變純動線解析器（外部永不流經）；`mailto/tel/#` 自然歸字面、免特例。這正是使用者要的「意圖在語彙、判斷不在 compiler」。
 - [2026-07-02] **實作**：`inline()` 的 `[字](目標)`：`to:` 前綴→`_href(去前綴)`，否則字面（已 esc）。`_href` 去掉 `://` 守衛。`link:` 葉子維持字面 `esc(to)`（外部）。flowmap `walk_to` 加掃 inline `[字](to:目標)`、且跳過 `link:` 子樹（外部不計入動線）。三模式 + flowmap 實測通過。
+
+### 寬度語彙回歸「關係型」：`grow` 統一、絕對值降為逃生門（2026-07-02，設計採納，待實作）
+
+- [2026-07-02] **起點（helpdesk QPKG 專案回饋）**：畫 wireframe 常需「搜尋框收窄置中」之類寬度意圖，目前只能用絕對量值（`grid:[w-8,w-96]`）湊 → 已在寫**視覺規格**而非**低保真結構關係**。
+- [2026-07-02] **核心論點：間距=節奏、寬度=關係（兩者性質不同，不可照搬 scale）**：
+  - 間距是離散節奏刻度（`gap/padding` 走 `none/sm/md/lg` + theme 對照表），「md 間距」在哪都差不多 → scale 語義成立。
+  - 寬度只有**相對容器**才有意義，天生語彙是**填滿/依內容/佔幾成/滿版**，硬塞 `sm/md/lg` 是把關係偽裝成量值。
+  - 分水嶺：關係型（`full`/fill/fit/比例）= 語義、合低保真 ✅；絕對量值（`w-96`）= 規格、踩線 ❌。作者能自然接受 `full` 正因它是「100%/填滿」的**關係**。
+- [2026-07-02] **這是先前「間距語義化、寬度維持 Tailwind」定案的精煉，非推翻**：Tailwind token 續用，但 README 重 framing → 關係型(grow/fit/%)=正道、絕對值(w-N)=逃生門。
+- [2026-07-02] **提案與現況核對（實測程式）**：
+  1. **`grow` 統一 track 與節點**（主）：現況同概念兩名字——節點屬性 `grow: true`（`wfyaml.py:534`）vs grid 欄軌 `flex-1`（`_track` map 到 `1fr`）。建議 `_track` 的 `('flex-1','fill','w-full')→1fr` 那組加入 `'grow'`，讓欄軌與節點同一個字：`grid:[w-56, grow]`、`grid:[grow, 60%, grow]`。改動一行。
+     - **維護者補充**：`flex-1` 是**實作洩漏詞**（與先前「grid/flex 讓 LLM 誤以為實作要照做」同坑）→ `grow`（意圖詞）應為**正名主詞**，`flex-1` 降為相容別名，非平級。
+  2. **`fit` 正名依內容**：`_track` 現況 `('w-auto','fit','auto')→auto` **已 map**，只差 README 以 `fit` 為語義正名。
+  3. **比例（`%`/分數）為收窄正道**：`grid:[grow, 60%, grow]` 關係清楚、隨容器縮放，不挑像素。（`_track` 已支援 `%` 與 `w-a/b` 分數→fr。）
+  4. **絕對 `w-N` 降為逃生門**：不移除，README 明講「破壞低保真契約、僅必要時用」。慣用式 `grid:[w-40, grow]`（label gutter 固定 + 內容關係型）仍合理；要收斂的是**內容本身硬寬**（如搜尋框釘 `w-96`）。
+- [2026-07-02] **加分項：葉子內建預設寬**（`input`/`select`）→ 多數情況 `input: 搜尋` 免寫寬度，只有特別寬/窄才覆寫；把「不必湊像素」內建進工具，比命名更治本。
+  - **維護者補充（實作坑）**：(a) 此屬視覺預設，依 style 解耦應進 `styles/clean/style.css`，非 `render_leaf`；(b) `.wf-field .wf-input{width:100%}` 已存在，若對 `.wf-input` 加預設 `max-width` 會反把該撐滿的表單欄位釘死 → 須 scope 到非 field（或 field 內 `max-width:none`）。
+- [2026-07-02] **維護者結論：方向成立、與北極星②一致、無阻斷問題**。實作範圍小（`_track` 一行 + README 三處 + clean.css 預設寬）。
+- [2026-07-02] **已實作**：`_track` 的 `1fr` 組加入 `grow`（正名主詞，`flex-1`/`fill`/`w-full` 為相容別名）；`fit` 本已在 `auto` 組（僅 README 正名）；README 欄寬段改為關係型正道表 + `w-N` 逃生門 framing + 「間距=節奏、寬度=關係」；`styles/clean/style.css` 給 `.wf-input` 加 `max-width:20rem`（`select` 本就依內容，不加以免被撐寬）。
+  - **實作中發現**：base wf.css 的 `.wf-field .wf-input{width:100%}` 其實是**死碼**——無任何 emitter 產生 `.wf-field` 容器（只有 `text.label` 的 `wf-fieldlabel`）。輸入框本就是 `inline-block` 內容寬、不填滿寬欄，故 `max-width` 對既有 inline 用法無影響。`.wf-field .wf-input{max-width:none}` 守衛保留為該（現死）慣例的防護，日後真做 field 容器兩條規則即協作。死碼清理另議。

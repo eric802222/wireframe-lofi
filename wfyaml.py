@@ -294,11 +294,12 @@ def esc(s):
 
 
 def _track(tok):
-    """grid 欄寬 token → CSS track（Tailwind 詞彙）。"""
+    """grid 欄寬 token → CSS track。寬度=關係：正道是 grow(填滿) / fit(依內容) / N%(比例)；
+    絕對量值 w-N 是逃生門（破壞低保真，僅必要時用）。grow 與節點屬性 grow: true 同一心智模型。"""
     t = str(tok).strip()
-    if t in ('flex-1', 'fill', 'w-full'):
+    if t in ('grow', 'flex-1', 'fill', 'w-full'):   # grow=正名主詞；其餘為相容別名
         return '1fr'
-    if t in ('w-auto', 'fit', 'auto'):
+    if t in ('fit', 'w-auto', 'auto'):              # fit=依內容正名
         return 'auto'
     m = re.match(r'[wh]-(\d+)$', t)             # Tailwind spacing：w-24/h-64 → rem
     if m:
