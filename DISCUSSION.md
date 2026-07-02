@@ -419,3 +419,17 @@
 - **專案語義區塊**(header/section…)→ 走 widget / `name:` 標籤 / **專案自己的家族**(如 `card.hero`);這些內部可用 box,但不命名為 `box.*`。
 - **保留**:組合型 token 機制(overlay.* 內建 + 專案自定家族)、命名空間分層、屬性值 token 化——只是 box 留在 primitive 層、不參與語義容器命名。
 - **實作面**:無需改碼(box.*/frame 皆未實作)。
+
+### 統一擴充願景 + `list leaf` 探索;附防漂移原則（2026-07-02，記錄為「opt-in / 按需再建」的方向,非承諾）
+
+**願景(方向,未實作)**
+- **統一擴充**:同一條 `family.variant`/新家族機制套到**所有節點**——擴既有家族(`text.error`、`row.jumbo`)或定義新家族(`section`);擴既有→base 由家族決定,新家族→token 宣告 `base`。展開=基底+屬性包+`wf-role` 指紋,屬性各自走既有解析。overlay/box 那套推廣到全部。
+- **`list leaf`(introspection)**:`wfyaml --list` 枚舉所有語意節點(built-in + project)+ 標源 + 用法/展開。AI 動筆前先 list → 一次看懂全部詞彙 + origin。
+- **這證成 `$` 可拿掉**:discovery/origin 交給 `list`(工具回答),不塞進語法。
+
+**⚠️ 防漂移原則(明確寫下,免得工具失焦)**
+- [2026-07-02] **身份不動**:工具是「**低保真 UI/UX 快速討論**」;token 系統是**選配腳註**,收進進階章節,新手/核心路徑看不到、不受影響。
+- **兩個真實風險**:① **概念重量**——即使 opt-in,一整套 token 詞彙「看起來很重」本身就違反①(低心智)。② **注意力漂移**——設計 token 不該吸走本該投在核心(真實 wireframe 使用、動線/評審迴路)的心力;做成 design-token 引擎會失 niche、且打不贏 Style Dictionary/Tokens Studio/Figma。
+- **YAGNI 收手**:Phase 1/2(gap/overlay)**已證明 pattern**;**不**投機式把 list/family 一般化/DTCG 引擎全建出來,**等真有專案要 mockup-align 才拉動**。
+- **記錄 ≠ 承諾**:本區塊是保存思考,不代表要實作;實作優先級**低於**核心低保真/討論體驗。
+- **判準**:任何 token 功能要通過「零設定核心是否更快更簡?新手是否仍看不到複雜?是否有真實需求拉動?」三問,否則不做。
