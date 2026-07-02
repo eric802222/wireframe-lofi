@@ -180,6 +180,13 @@ content:
 都預設 `md`，用 `gap:`/`padding:` 覆寫（`box` 內距亦吃 `padding:`）。
 > **間距=節奏（語義刻度）、寬度=關係（填滿/依內容/比例）**——間距是設計系統節奏核心，語義名換 theme 只改一張對照表；寬度只有相對容器才有意義，故走關係型而非另發明一套刻度。
 
+**專案 semantic token（選配，`wf.tokens.yaml`）**：想用**用途**命名而非大小時，在來源夾放 `wf.tokens.yaml`：
+
+```yaml
+gap: { section: lg, list: sm }     # 用途名 → 引用內建刻度
+```
+→ 即可寫 `gap: section`（意圖自明、一處改全站變、可對齊某產品的設計系統）。**純選配**：沒有此檔就用內建 `none/sm/md/lg`；未知名優雅退回 `md` + 提示。詳見 `DISCUSSION.md`「semantic token」。
+
 ### 4. 葉子（語義角色，`role: 值`；scalar 或 map）
 
 **文字家族**（權重/角色，非視覺）：

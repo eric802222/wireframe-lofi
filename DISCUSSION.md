@@ -316,3 +316,9 @@
 - [2026-07-02] **非任務漂移**:這就是既定「單一語義源 × 漸進保真」旋鈕的實作——同一份 YAML 不動,換 token 表就從通用低保真→講某產品語言。**沒有這層,migrate 成 mockup 只能改 YAML,那才破②**。
 - [2026-07-02] **破的唯一方式**:讓 token 表變畫圖的強制前提,或把工具做成重型 design-system 平台。
 - [2026-07-02] **一句話**:低保真預設零設定即可畫;semantic token 純選配、只在對齊產品時疊上;工具詞彙不增長(專案自帶字典);內建預設當可攜地板 + 缺失優雅退回。
+
+### semantic token Phase 0+1 實作:引用型 token(gap 驗證)（2026-07-02，已實作）
+- [2026-07-02] **載入機制**:`_load_tokens(basedir)` 探測選配 `wf.tokens.yaml`(compile_all/bundle 各載一次);不存在→`_TOKENS` 空、全走內建 primitive(零設定護欄)。
+- [2026-07-02] **引用型解析**:`_tokens_css()` 把 `gap: {section: lg}` 編成 `:root{--wf-gap-section:var(--wf-space-lg)}`(放 clean 之後→可引用 primitive);`_gap(name)`:內建刻度直用 / 專案 token→`var(--wf-gap-<名>)` / 未知→退回 `md`+stderr warn(可攜地板 + 優雅退回 + lint)。`render_container` 的 gap/padding 改走 `_gap`。
+- [2026-07-02] **實測**:有 token→`gap: section/list` 生效(section 寬、list 緊);移掉 token 檔同份 YAML 仍渲染(退回 md + warn);全 examples 回歸無誤(頂層無 token 檔、primitive 照舊)。三條護欄驗證通過。
+- [2026-07-02] **待續**:Phase 2 組合型(overlay 角色 dialog/toast 由 token 定義、render_item 展開);tone/scroll 納入引用型;`--tokens` 顯式旗標;DTCG 匯入;lint 併入 P0.7。

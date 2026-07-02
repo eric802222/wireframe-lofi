@@ -143,6 +143,41 @@ def lu_svg(name):
 
 # ---- 語義 scale / 對照表（集中一處 → 可 theme）----
 GAP = {'none': '0', 'sm': 'var(--wf-space-sm)', 'md': 'var(--wf-space-md)', 'lg': 'var(--wf-space-lg)'}  # 語義間距 scale→CSS var(可 theme)；預設 md
+
+# ---- 專案 semantic token（選配；wf.tokens.yaml）----
+# 引用型 token：意圖名 → primitive 刻度。零設定=不載，全走內建 primitive。可攜地板：內建名恆效，
+# token 只覆寫/加名，缺失優雅退回（未知名 → 內建預設 + lint warning）。詳見 DISCUSSION「semantic token」。
+_TOKENS = {}
+
+
+def _load_tokens(basedir):
+    """探測 basedir/wf.tokens.yaml（選配）。不存在則 _TOKENS 空、全用內建 primitive。"""
+    global _TOKENS
+    p = os.path.join(basedir or '.', 'wf.tokens.yaml')
+    _TOKENS = (yaml.safe_load(open(p, encoding='utf-8')) or {}) if os.path.exists(p) else {}
+
+
+def _tokens_css():
+    """引用型 token 編成 :root 別名（如 --wf-gap-section: var(--wf-space-lg)）。放 clean 之後 → 可引用 primitive。"""
+    lines = []
+    for name, prim in (_TOKENS.get('gap') or {}).items():
+        lines.append(f'--wf-gap-{esc_attr(name)}:{GAP.get(str(prim), str(prim))};')
+    return (':root{' + ''.join(lines) + '}') if lines else ''
+
+
+def _gap(name):
+    """gap/padding 值解析：內建 primitive 直用；專案 token → var 別名；未知 → 退回 md + warn。"""
+    n = str(name)
+    if n in GAP:
+        return GAP[n]
+    if n in (_TOKENS.get('gap') or {}):
+        return f'var(--wf-gap-{n})'
+    sys.stderr.write(f"[warn] 未知 gap/padding 值「{n}」→ 退回 md（可在 wf.tokens.yaml 定義為 semantic token）\n")
+    return GAP['md']
+
+
+def esc_attr(s):
+    return re.sub(r'[^A-Za-z0-9_-]', '-', str(s))
 JUSTIFY = {'between': 'space-between', 'end': 'flex-end', 'start': 'flex-start',
            'center': 'center', 'around': 'space-around'}
 ALIGN = {'center': 'center', 'top': 'flex-start', 'bottom': 'flex-end',
@@ -497,10 +532,10 @@ def render_container(d, xcls, xattr, src=None, base=''):
 
     cls = ['wf-node'] + xcls
     style = []
-    style.append('gap:' + GAP[d['gap'] if d.get('gap') in GAP else 'md'])   # 預設 md
+    style.append('gap:' + _gap(d.get('gap', 'md')))   # 預設 md；semantic token 走 _gap 解析
     pad = d.get('padding')                     # box 內距走 scale，預設 md；非 box 不寫則無
-    if pad in GAP:
-        style.append('padding:' + GAP[pad])
+    if pad is not None:
+        style.append('padding:' + _gap(pad))
     elif boxed:
         style.append('padding:' + GAP['md'])
 
@@ -877,7 +912,7 @@ def _width_css(sel, w, h, has_notes):
 def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=None, debug=False):
     content, w, h, notes = _render_page(doc, provider, basedir, ctx, cur_label, all_labels)
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + (DEBUG_CSS if debug else '')
-                         + _style_css() + _width_css('.wf-root', w, h, notes))
+                         + _style_css() + _tokens_css() + _width_css('.wf-root', w, h, notes))
     page_attr = f' data-wf-page="{esc(_PAGE_BASE)}"' if debug else ''
     head = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><style>{css}</style>'
             f'</head><body><div class="wf-root"{page_attr}>')
@@ -905,6 +940,7 @@ def bundle(files, debug=False, title='prototype', style=None):
     debug=True → 疊評審回饋層（模式切換 + 跨頁匯出，單檔共用一份 localStorage）。"""
     global _PAGE_BASE, _DEBUG, _BUNDLE, _STYLE
     _DEBUG, _BUNDLE, _STYLE = debug, True, style
+    _load_tokens(os.path.dirname(files[0]) if files else '.')   # 專案 semantic token（探首檔所在夾）
     secs, navs, overrides, pids = [], [], [], []
     for f in files:
         src = open(f).read()
@@ -934,7 +970,7 @@ def bundle(files, debug=False, title='prototype', style=None):
         sel += f',body:not(:has(.wf-pg:target)) #nav-{pids[0]}'
         overrides.append(sel + '{background:#0f766e;color:#fff;font-weight:600;}')
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + BUNDLE_CSS + (DEBUG_CSS if debug else '')
-                         + _style_css() + ''.join(overrides))
+                         + _style_css() + _tokens_css() + ''.join(overrides))
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
     return (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><title>{esc(title)}</title>'
             f'<style>{css}</style></head><body class="wf-bundle">'
@@ -946,6 +982,7 @@ def compile_all(src, basedir='.', base='', debug=False, style=None):
     debug=True → 注入 --debug 評審回饋層（JS+localStorage）；否則維持零 <script>。"""
     global _PAGE_BASE, _DEBUG, _STYLE
     _PAGE_BASE, _DEBUG, _STYLE = base, debug, style
+    _load_tokens(basedir)              # 探測選配的 wf.tokens.yaml（專案 semantic token）
     doc = yaml.safe_load(src) or {}
     if debug:
         _stamp(doc, base)          # 頁面節點蓋來源(base)+路徑，供 debug 定位
