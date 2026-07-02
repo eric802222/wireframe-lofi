@@ -208,6 +208,7 @@ def esc_attr(s):
 JUSTIFY = {'between': 'space-between', 'end': 'flex-end', 'start': 'flex-start',
            'center': 'center', 'around': 'space-around'}
 ALIGN = {'center': 'center', 'top': 'flex-start', 'bottom': 'flex-end',
+         'start': 'flex-start', 'end': 'flex-end',   # col 交錯軸 = 水平；start/end 是 CSS Flex 標準
          'baseline': 'baseline', 'stretch': 'stretch'}
 CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'embed', 'include', 'slot'}
 LEAF_ROLES = ['text.title', 'text.heading', 'text.label', 'text.strong', 'text.hint', 'text',
@@ -684,12 +685,26 @@ def render_container(d, xcls, xattr, src=None, base=''):
         style.append('min-height:0')
         if direction == 'grid':    # grid 撐滿時讓列分佈填滿（預設 items-start 由 align: 覆寫）
             style.append('align-content:stretch')
-    if d.get('scroll'):            # 垂直捲：封頂高度 + overflow（HTML 真捲、PNG 展開+示意）
+    if d.get('scroll'):            # 垂直捲：P0.5 純語義化
         cls.append('wf-scroll')
         sv = d['scroll']
-        style.append('max-height:' + (_track(sv) if sv is not True else '16rem'))
-    if d.get('scroll-x'):          # 水平捲
+        # true = 高度由父容器 / grow: true 決定（配合使用）；sm/md/lg/xl = 語義 scale；相容 Tailwind h-* token（deprecated）
+        _SCROLL_SCALE = {'sm': '8rem', 'md': '16rem', 'lg': '32rem', 'xl': '48rem'}
+        if sv is True:
+            pass  # 只加 wf-scroll class 走 overflow-y:auto；高度交給父容器/grow 決定
+        elif isinstance(sv, str) and sv in _SCROLL_SCALE:
+            style.append('max-height:' + _SCROLL_SCALE[sv])
+        else:
+            # 舊 Tailwind h-* / 具體像素 token：deprecated 但仍支援
+            sys.stderr.write(f"[warn] scroll: `{sv}` 已 deprecated，請用 scroll: true/sm/md/lg/xl（DISCUSSION P0.5）\n")
+            style.append('max-height:' + _track(sv))
+    if d.get('scroll-x'):          # 水平捲：對稱處理
         cls.append('wf-scroll-x')
+        svx = d['scroll-x']
+        if svx is True:
+            pass
+        elif isinstance(svx, str) and svx in _SCROLL_SCALE:
+            style.append('max-width:' + _SCROLL_SCALE[svx])
     if isinstance(d.get('span'), int):
         style.append(f'grid-column:span {d["span"]}')
     if d.get('scroll'):
@@ -1163,6 +1178,221 @@ def _argval(flag):
     return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv and sys.argv.index(flag) + 1 < len(sys.argv) else None
 
 
+# --------------------------------------------------------------------------
+# P0.7 Schema Validation & Fail-Fast — lint 子命令實作
+# --------------------------------------------------------------------------
+# 合法值集（DISCUSSION 定案；tone/scroll/gap/padding/align/justify/pin/layer/spotlight.kind）
+_ENUMS = {
+    'gap': {'none', 'sm', 'md', 'lg', 'xl'},
+    'padding': {'none', 'sm', 'md', 'lg', 'xl'},
+    'align': {'top', 'bottom', 'start', 'end', 'center', 'baseline', 'stretch'},
+    'justify': {'start', 'end', 'center', 'between', 'around'},
+    'scroll': {True, 'sm', 'md', 'lg', 'xl'},
+    'scroll-x': {True, 'sm', 'md', 'lg', 'xl'},
+    'tone': {'feature', 'info', 'success', 'warn', 'danger', 'muted'},
+    'pin': {'center', 'left', 'right', 'top', 'bottom',
+            'top-left', 'top-right', 'bottom-left', 'bottom-right',
+            'top-center', 'bottom-center', 'left-center', 'right-center'},
+    'layer': {'base', 'overlay', 'notify', 'top'},
+}
+# 已知頂層 grammar keys（未知 → warn typo）
+# body: 主要內容區；content/placeholder: component 檔頂層（完整/降階佔位）
+_GRAMMAR_KEYS = {'viewport', 'canvas', 'body', 'extends', 'with', 'slots', 'routes',
+                 'content', 'placeholder'}
+# 已知 container 屬性 keys（sibling 掛在容器 dict 上）
+_CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'box', 'gap', 'padding',
+                    'justify', 'align', 'span', 'grow', 'scroll', 'scroll-x',
+                    'name', 'tone', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
+                    'embed', 'include', 'with', 'slot', 'as', 'when'}
+_DIRECTION_KEYS = {'row', 'col', 'grid'}
+# 方向類容器（DISCUSSION：page/layout/component/widget/overlay 家族 sugar）
+_STRUCTURE_UNITS = {'page', 'layout', 'component', 'widget'}
+_OVERLAY_SUGARS = {'dialog', 'drawer', 'sheet', 'toast', 'loading'}
+_DEPRECATED = {
+    'canvas': 'viewport',
+    'include': 'embed',
+    'badge': 'status.badge',
+}
+
+
+def _levenshtein(a, b):
+    """簡短 Levenshtein 距離；供未知 key 建議 typo 修正。"""
+    if a == b: return 0
+    if not a: return len(b)
+    if not b: return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def _suggest_key(unknown, known_set, max_dist=2):
+    cands = sorted(((_levenshtein(unknown, k), k) for k in known_set), key=lambda x: x[0])
+    return cands[0][1] if cands and cands[0][0] <= max_dist else None
+
+
+class _Diag:
+    def __init__(self):
+        self.errors = []
+        self.warnings = []
+
+    def error(self, path, msg, hint=None):
+        self.errors.append((path, msg, hint))
+
+    def warn(self, path, msg, hint=None):
+        self.warnings.append((path, msg, hint))
+
+    def dump(self, file_label, out=sys.stderr):
+        for level, items in (('error', self.errors), ('warn', self.warnings)):
+            for path, msg, hint in items:
+                head = f'\033[1;31m{level}\033[0m' if level == 'error' else f'\033[1;33m{level}\033[0m'
+                print(f'{head}: {file_label}', file=out)
+                print(f'  → path: {path or "<root>"}', file=out)
+                print(f'  → {msg}', file=out)
+                if hint:
+                    for line in hint.split('\n'):
+                        print(f'  hint: {line}', file=out)
+
+
+def _walk_lint(node, path, diag):
+    """遞迴 lint YAML 結構樹。只走結構節點，跳過 leaf value dict / with / as / meta 值。"""
+    if isinstance(node, list):
+        for i, item in enumerate(node):
+            _walk_lint(item, f'{path}[{i}]', diag)
+        return
+    if not isinstance(node, dict):
+        return
+
+    keys = set(node.keys()) - {'__src', '__path'}
+
+    # 1. deprecated 檢查
+    for old, new in _DEPRECATED.items():
+        if old in keys:
+            diag.warn(path, f"`{old}:` 已 deprecated，請改用 `{new}:`",
+                      f"直接替換：{old} → {new}")
+
+    # 2. 判斷節點類型
+    has_direction = keys & _DIRECTION_KEYS
+    has_leaf_role = keys & set(LEAF_ROLES)
+    is_widget = 'widget' in keys
+    is_slot_marker = 'slot' in keys and len(keys - {'slot', 'name', 'tone'}) == 0
+    is_embed = 'embed' in keys or 'include' in keys
+    has_overlay_sugar = keys & _OVERLAY_SUGARS
+
+    # 3. container 恰一個 direction key
+    if len(has_direction) > 1:
+        diag.error(path, f"container 恰能有一個方向 key（收到 {sorted(has_direction)}）",
+                   "row / col / grid 三者互斥，請只留一個")
+
+    # 4. leaf 恰一個 role key
+    if len(has_leaf_role) > 1:
+        diag.error(path, f"leaf 節點只能有一個 role key（收到 {sorted(has_leaf_role)}）",
+                   "一個節點只承載一個 leaf role；分開成多個 items")
+
+    # 5. container 屬性混掛 leaf
+    if has_leaf_role and has_direction:
+        diag.warn(path, "同時存在 leaf role 與 container direction key",
+                  "leaf 節點不掛 row/col/grid；請拆成父容器 + 子 leaf")
+
+    # 6. scale 值域檢查（sibling 屬性）
+    for key, allowed in _ENUMS.items():
+        if key in node:
+            v = node[key]
+            if v not in allowed:
+                proj = (_TOKENS.get(key) or {})
+                if str(v) in proj:
+                    continue
+                sugg = _suggest_key(str(v), {str(x) for x in allowed})
+                hint = f"合法值：{sorted(str(x) for x in allowed)}"
+                if sugg and sugg != str(v):
+                    hint = f"是不是「{sugg}」？\n" + hint
+                diag.error(f'{path}.{key}', f"未知 {key} 值 `{v}`", hint)
+
+    # 7. spotlight.kind 檢查（scalar 或 dict）
+    if 'spotlight' in node:
+        sp = node['spotlight']
+        kind = sp.get('kind') if isinstance(sp, dict) else sp
+        if kind and kind not in ('focus', 'new', 'change', 'click'):
+            diag.error(f'{path}.spotlight', f"未知 spotlight.kind `{kind}`",
+                       "合法值：focus / new / change / click")
+
+    # 8. 未知 key typo 檢查（只對通用 container 節點；leaf / widget / overlay sugar 有各自 shape）
+    if not is_widget and not has_overlay_sugar and not has_leaf_role and not is_slot_marker and not is_embed:
+        known = _CONTAINER_ATTRS | _GRAMMAR_KEYS | set(LEAF_ROLES) | _OVERLAY_SUGARS | {'widget', 'is', 'can'}
+        for k in keys:
+            if k in known or k in _DEPRECATED or k in ('placeholder', 'content', 'default'):
+                continue
+            sugg = _suggest_key(k, known)
+            hint = f"是不是「{sugg}」？" if sugg else "未在已知詞彙集（見 `wfyaml.py list --ring 0`）"
+            diag.warn(f'{path}.{k}', f"未知 key `{k}`", hint)
+
+    # 9. 遞迴子節點：只走結構性 key，跳過 leaf value / meta / 參數
+    # 結構性 key：direction values (list) / items / body / slots values / routes items
+    _RECURSE_INTO = _DIRECTION_KEYS | {'items', 'body'}   # 這些 value 是結構樹
+    for k, v in node.items():
+        if k in ('__src', '__path'):
+            continue
+        sub_path = f'{path}.{k}' if path else k
+        if k in _RECURSE_INTO:
+            if isinstance(v, list):
+                for i, item in enumerate(v):
+                    _walk_lint(item, f'{sub_path}[{i}]', diag)
+            elif isinstance(v, dict):
+                _walk_lint(v, sub_path, diag)
+        elif k == 'slots':
+            # slots 的 key 是使用者定義的 slot 名（不是 vocab key）→ 只走各 slot 的內容
+            if isinstance(v, dict):
+                for slot_name, slot_content in v.items():
+                    _walk_lint(slot_content, f'{sub_path}.{slot_name}', diag)
+        elif k == 'routes':
+            # routes 內每項是路由 dict，含 slots/body
+            if isinstance(v, list):
+                for i, r in enumerate(v):
+                    _walk_lint(r, f'{sub_path}[{i}]', diag)
+        # 其他 key（with/as/note/spotlight/button 等的 dict value）不遞迴 lint —— 屬 value 空間
+
+
+def _lint_file(path):
+    """對單一檔案跑 lint。回傳 (error_count, warning_count)。"""
+    try:
+        doc = yaml.safe_load(open(path, encoding='utf-8')) or {}
+    except Exception as e:
+        print(f'\033[1;31merror\033[0m: {path}', file=sys.stderr)
+        print(f'  → YAML 解析失敗：{e}', file=sys.stderr)
+        return 1, 0
+    diag = _Diag()
+    # 頂層 keys：允許 grammar keys；未知頂層 → warn
+    top_keys = set(doc.keys()) if isinstance(doc, dict) else set()
+    for k in top_keys:
+        if k in _GRAMMAR_KEYS or k in _DEPRECATED or k in _STRUCTURE_UNITS:
+            continue
+        sugg = _suggest_key(k, _GRAMMAR_KEYS)
+        hint = f"是不是「{sugg}」？" if sugg else f"合法頂層 key：{sorted(_GRAMMAR_KEYS)}"
+        diag.warn('<root>', f"未知頂層 key `{k}`", hint)
+    # deprecated 頂層
+    for old, new in _DEPRECATED.items():
+        if old in top_keys and old in _GRAMMAR_KEYS.union({'canvas'}):
+            diag.warn('<root>', f"`{old}:` 已 deprecated，請改用 `{new}:`",
+                      f"直接替換：{old} → {new}")
+    # 走 body / slots / routes（slots 的 key 是使用者 slot 名，只走各值；routes 每項是路由 dict）
+    basedir = os.path.dirname(path) or '.'
+    _load_tokens(basedir)
+    if isinstance(doc, dict):
+        if 'body' in doc:
+            _walk_lint(doc['body'], 'body', diag)
+        if 'slots' in doc and isinstance(doc['slots'], dict):
+            for slot_name, slot_content in doc['slots'].items():
+                _walk_lint(slot_content, f'slots.{slot_name}', diag)
+        if 'routes' in doc and isinstance(doc['routes'], list):
+            for i, r in enumerate(doc['routes']):
+                _walk_lint(r, f'routes[{i}]', diag)
+    diag.dump(path)
+    return len(diag.errors), len(diag.warnings)
+
+
 def main():
     debug = '--debug' in sys.argv
     do_bundle = '--bundle' in sys.argv
@@ -1221,6 +1451,20 @@ def main():
         _list_vocab(basedir, ring=list_ring)
         return
 
+    # ---- lint 子命令：P0.7 Schema Validation + Fail-Fast ----
+    if len(sys.argv) >= 2 and sys.argv[1] == 'lint':
+        files = [a for a in sys.argv[2:] if not a.startswith('-')]
+        if not files:
+            print("usage: wfyaml.py lint <file.wf.yaml> [...]", file=sys.stderr)
+            sys.exit(1)
+        total_err, total_warn = 0, 0
+        for f in files:
+            e, w = _lint_file(f)
+            total_err += e
+            total_warn += w
+        print(f"\n═══ 總計：{total_err} error / {total_warn} warning ═══", file=sys.stderr)
+        sys.exit(2 if total_err else (1 if total_warn else 0))
+
     out_path = _argval('-o')
     style = _argval('--style')
     skip = {'--debug', '--bundle', '-o', out_path, '--style', style}
@@ -1228,6 +1472,7 @@ def main():
     if not args:
         print("usage: wfyaml.py [--debug] [--bundle [-o out.html]] [--style <name>] <file.wf.yaml> [...]", file=sys.stderr)
         print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection：列 Ring 0 原語 + Ring 1 專案 token", file=sys.stderr)
+        print("       wfyaml.py lint <file.wf.yaml> [...]              # P0.7 schema validation + fail-fast", file=sys.stderr)
         sys.exit(1)
     if do_bundle:
         out = out_path or os.path.join(os.path.dirname(args[0]) or '.',

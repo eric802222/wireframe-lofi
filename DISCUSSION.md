@@ -547,4 +547,21 @@
   - **不撞名**：HTML `<meta name="viewport">` 是文件 property；YAML `viewport: 390x844` 是頁面 property，同意涵、無實際衝突，AI 秒懂。
 - [2026-07-03] **實作**：wfyaml `_viewport_of(node)` 認 `viewport:` 為 canonical；相容 `canvas:` 走 deprecated warn。`_canvas_wh` 改名 `_viewport_wh`（保留舊名為別名向後相容）。`list` 子命令 Ring 0 grammar/meta 家族詞彙同步更新。
 - [2026-07-03] **遷移**：examples/expense-app sed 換名（`^canvas:` → `^viewport:`）；5 頁 + bundle 回歸通過。舊 YAML 檔繼續 work 但會出 warn 引導遷移。
+
+### P0.7 lint 子命令實作（2026-07-03，已實作）+ P0.5 scroll 純語義化補齊
+
+- [2026-07-03] **`wfyaml.py lint <file>` 子命令 land**：Schema Validation + Fail-Fast，Rust compiler 風格 actionable diagnostics（檔名 + YAML path + 為何錯 + hint/建議）。回傳 exit code 0/1/2（clean/warn/error）供 CI 掛。
+- [2026-07-03] **檢查條款**：
+  1. **container 恰一個方向 key**（row/col/grid 互斥）→ error
+  2. **leaf 恰一個 role key** → error
+  3. **container+leaf key 混掛** → warn
+  4. **Scale 集合驗證**：`gap`/`padding`/`align`/`justify`/`scroll`/`tone`/`pin`/`layer` 全部按 `_ENUMS` 檢查；允許 Ring 1 專案 token（讀 `_TOKENS`）
+  5. **`spotlight.kind`** in `focus/new/change/click`
+  6. **未知 key typo** → warn + Levenshtein 建議「是不是 X？」
+  7. **Deprecated key** (`canvas`/`include`/`badge`) → warn 指向 canonical (`viewport`/`embed`/`status.badge`)
+- [2026-07-03] **走訪策略**：只走結構性 key（`body`/`slots.*`/`routes[]`/direction key list/`items`），跳過 leaf value dict（`button:{text,to,icon}` 等）/ `with:` / `as:` / `note:` / `spotlight:` 內部值——避免 leaf value dict 內鍵被誤判為節點 keys。
+- [2026-07-03] **lint 抓到既有真 bug**：`align: end` 在 ALIGN dict 沒定義（`col` 交錯軸=水平需要 start/end，但原本只有 top/bottom/center/baseline/stretch）→ 補進 ALIGN + `_ENUMS`（CSS Flex 標準對齊）。
+- [2026-07-03] **順手完成 P0.5 scroll 純語義化**（前案定案未實作）：`scroll: true` × `grow: true` = 「填滿剩餘 + 可捲」（`overflow-y:auto`，無 max-height）；`scroll: sm/md/lg/xl` = 語義級距（`8/16/32/48rem`），舊 Tailwind `h-*` token 走 deprecated warn 但仍支援。`scroll-x` 對稱。examples/expense-app 的 layout `scroll: h-160` 改回 canonical `scroll: true`。
+- [2026-07-03] **Grammar keys 擴充**：`content` / `placeholder`（component 檔頂層）加進 `_GRAMMAR_KEYS`。
+- [2026-07-03] **驗證**：examples/expense-app 8 個 YAML 檔 lint 全 clean（0 error / 0 warning）；記帳 app 5 頁 + bundle 回歸零視覺變化。
 - [2026-07-02] **定位**:這是「單一語義源 × 漸進保真」從口號變可執行輸出模式,也是 token 系統的**前置地基**——**先於**任何進一步 token 擴充(有它才安全地讓 token 變豐富而不失焦)。
