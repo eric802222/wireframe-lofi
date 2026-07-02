@@ -978,10 +978,20 @@ def _fill_slots(items, slots):
     return out
 
 
+def _viewport_of(node):
+    """從 node 取出 viewport 值。相容 canvas: 走 deprecated warn（DISCUSSION 2026-07-03）。"""
+    if 'viewport' in node:
+        return node['viewport']
+    if 'canvas' in node:
+        sys.stderr.write("[warn] canvas: 已改名為 viewport:（deprecated，過渡期支援；語義從「畫布」→「視口」更貼響應式設計本意）\n")
+        return node['canvas']
+    return None
+
+
 def resolve_body(doc, provider, basedir, ctx):
-    """回傳 (body_items, canvas)。slots/body 來自 provider（無路由=doc；有路由=該路由項）。
-    extends/with/canvas 屬 doc 級（各路由共用）。ctx = 當前路由 {stage, state}，供 when: 過濾與元件繼承。"""
-    canvas = doc.get('canvas')
+    """回傳 (body_items, viewport)。slots/body 來自 provider（無路由=doc；有路由=該路由項）。
+    extends/with/viewport 屬 doc 級（各路由共用）。ctx = 當前路由 {stage, state}，供 when: 過濾與元件繼承。"""
+    viewport = _viewport_of(doc)
     if 'extends' in doc:
         layout = yaml.safe_load(open(_resolve(doc['extends'], basedir))) or {}
         if _DEBUG:
@@ -989,17 +999,18 @@ def resolve_body(doc, provider, basedir, ctx):
         params = {**(doc.get('with') or {}), **(provider.get('with') or {})}
         body = _fill_slots(layout.get('body', []), provider.get('slots', {}) or {})
         body = _subst(body, params)
-        canvas = canvas or layout.get('canvas')
+        viewport = viewport or _viewport_of(layout)
     else:
         body = provider.get('body', [])
     body = expand(body, basedir, ctx)
-    return body, canvas
+    return body, viewport
 
 
 # --------------------------------------------------------------------------
 # 組頁
 # --------------------------------------------------------------------------
-def _canvas_wh(c):
+def _viewport_wh(c):
+    """解析 viewport 尺寸字串：'390x844' / '1100x' / 'x800' / '390' → (w, h)。"""
     if c is None:
         return None, None
     s = str(c)
@@ -1007,6 +1018,9 @@ def _canvas_wh(c):
         a, _, b = s.partition('x')
         return (int(a) if a else None), (int(b) if b else None)
     return (int(s) if s.isdigit() else None), None
+
+# 相容別名（呼叫端可能用舊名）
+_canvas_wh = _viewport_wh
 
 
 def _route_entry(r):
@@ -1033,8 +1047,8 @@ def _render_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=No
     """渲染一頁的 .wf-root 內容（不含 <html>/head）→ (content, w, h, has_notes)。"""
     global _NOTES, _NCOUNT
     _NOTES, _NCOUNT = [], 0
-    body, canvas = resolve_body(doc, provider, basedir, ctx or {})
-    w, h = _canvas_wh(canvas)
+    body, viewport = resolve_body(doc, provider, basedir, ctx or {})
+    w, h = _viewport_wh(viewport)
     inner = render_container({'col': body}, [], {}, _PAGE_BASE, '')   # 頂層 flex-col（避免 inline span 並排）
     bar = _stagebar(all_labels, cur_label) if all_labels else ''
     return bar + inner + build_gutter(), w, h, bool(_NOTES)
@@ -1160,7 +1174,7 @@ def main():
         if want_r0:
             print("═══ Ring 0：結構原語（恆定，AI 必背）═══")
             print("\n[Grammar 關鍵字]")
-            print("  canvas / body / extends / embed / with / slot / slots / as / routes / default / when / items")
+            print("  viewport / body / extends / embed / with / slot / slots / as / routes / default / when / items")
             print("\n[結構單元類型]")
             print("  page / layout / component / widget")
             print("\n[Container]")
@@ -1185,7 +1199,7 @@ def main():
             print("\n[標註面] (Layer 2)")
             print("  note / spotlight")
             print("\n[Meta（隱形）]")
-            print("  name / canvas")
+            print("  name / viewport")
         if want_r1:
             _load_tokens(basedir)
             print("\n═══ Ring 1：專案 semantic token（opt-in，讀 tokens/*.yaml + wf.tokens.yaml）═══")

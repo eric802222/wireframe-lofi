@@ -538,4 +538,13 @@
   - `--emit ast/react/swiftui` codegen（P5.2）—— 等 P0.7 schema validation 上線再議
   - `--audience` sugar（P5.3）—— CLI shim，後補
 - [2026-07-03] **執行順序**：Phase 0（換名 + 移旗標 + 兩枚 leaf）→ Phase 1（items/badge 合併）→ Phase 2（tokens 目錄 + `list` 子命令）→ 5 頁記帳 app 回歸驗證。細節動作見 `TOOL-SUGGESTIONS.md` 尾段動作表。
+
+### ⚠️ `canvas:` → `viewport:` 換名（2026-07-03，已實作）
+
+- [2026-07-03] **決策**：`canvas: 390x844` 改成 `viewport: 390x844`。理由：
+  - 語義精準：wireframe-lofi 不是繪圖工具，是「示意頁面在多大螢幕上呈現」；`viewport` 是響應式設計的核心詞（HTML meta / CSS vw/vh / RN Dimensions / iOS safe area），命中此意圖；`canvas` 是「畫布」隱喻（Illustrator/Figma/HTML5 canvas API）不對。
+  - **AI 友善**：viewport 在 Web/RN/iOS 訓練資料密度極高，codegen 自然對齊（`viewport: 390x844` → CSS `@media` / RN `Dimensions.get('window')`）；canvas 反有 HTML5 `<canvas>` API 混淆風險。
+  - **不撞名**：HTML `<meta name="viewport">` 是文件 property；YAML `viewport: 390x844` 是頁面 property，同意涵、無實際衝突，AI 秒懂。
+- [2026-07-03] **實作**：wfyaml `_viewport_of(node)` 認 `viewport:` 為 canonical；相容 `canvas:` 走 deprecated warn。`_canvas_wh` 改名 `_viewport_wh`（保留舊名為別名向後相容）。`list` 子命令 Ring 0 grammar/meta 家族詞彙同步更新。
+- [2026-07-03] **遷移**：examples/expense-app sed 換名（`^canvas:` → `^viewport:`）；5 頁 + bundle 回歸通過。舊 YAML 檔繼續 work 但會出 warn 引導遷移。
 - [2026-07-02] **定位**:這是「單一語義源 × 漸進保真」從口號變可執行輸出模式,也是 token 系統的**前置地基**——**先於**任何進一步 token 擴充(有它才安全地讓 token 變豐富而不失焦)。
