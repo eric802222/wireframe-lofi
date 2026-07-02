@@ -122,7 +122,7 @@ def fa_svg(style, name):
             _fa_cache[key] = (f'<svg class="wf-fa" viewBox="0 0 {w} {h}" '
                               f'xmlns="http://www.w3.org/2000/svg"><path d="{path}"/></svg>')
         else:
-            _fa_cache[key] = f'<span class="wf-icon" title="fa:{style}:{name} (未找到)">◻</span>'
+            raise ValueError(f"icon: fa:{style}:{name} 未找到（請確認 name 存在於 assets/fa-icons.json.gz）")
     return _fa_cache[key]
 
 
@@ -138,7 +138,7 @@ def lu_svg(name):
                                'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
                                f'stroke-linejoin="round">{inner}</svg>')
         else:
-            _lu_cache[name] = f'<span class="wf-icon" title="lu:{name} (未找到)">◻</span>'
+            raise ValueError(f"icon: lu:{name} 未找到（請確認 name 存在於 assets/lucide-icons.json.gz）")
     return _lu_cache[name]
 
 # ---- 語義 scale / 對照表（集中一處 → 可 theme）----
@@ -193,14 +193,13 @@ def _tokens_css():
 
 
 def _gap(name):
-    """gap/padding 值解析：內建 primitive 直用；專案 token → var 別名；未知 → 退回 md + warn。"""
+    """gap/padding 值解析：內建 primitive 直用；專案 token → var 別名；未知 → error（fail-fast）。"""
     n = str(name)
     if n in GAP:
         return GAP[n]
     if n in (_TOKENS.get('gap') or {}):
         return f'var(--wf-gap-{n})'
-    sys.stderr.write(f"[warn] 未知 gap/padding 值「{n}」→ 退回 md（可在 wf.tokens.yaml 定義為 semantic token）\n")
-    return GAP['md']
+    raise ValueError(f"未知 gap/padding 值「{n}」（合法：{sorted(GAP)}；或在 tokens/*.yaml 定義為 semantic token）")
 
 
 def esc_attr(s):
@@ -210,10 +209,10 @@ JUSTIFY = {'between': 'space-between', 'end': 'flex-end', 'start': 'flex-start',
 ALIGN = {'center': 'center', 'top': 'flex-start', 'bottom': 'flex-end',
          'start': 'flex-start', 'end': 'flex-end',   # col 交錯軸 = 水平；start/end 是 CSS Flex 標準
          'baseline': 'baseline', 'stretch': 'stretch'}
-CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'embed', 'include', 'slot'}
+CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'embed', 'slot'}
 LEAF_ROLES = ['text.title', 'text.heading', 'text.label', 'text.strong', 'text.hint', 'text',
               'input', 'select', 'button', 'status.badge', 'status.muted', 'status.strong', 'status',
-              'badge', 'alert', 'icon', 'divider', 'tabs', 'image', 'checkbox', 'radio', 'link',
+              'alert', 'icon', 'divider', 'tabs', 'image', 'checkbox', 'radio', 'link',
               'progress', 'avatar']
 TEXT_CLASS = {'text': 'wf-label', 'text.title': 'wf-h wf-h1', 'text.heading': 'wf-h wf-h2',
               'text.label': 'wf-label wf-fieldlabel', 'text.strong': 'wf-b', 'text.hint': 'wf-hint'}
@@ -426,7 +425,14 @@ def _icon(val):
     name = str(val)
     if name in ICONS:
         return f'<span class="wf-icon">{ICONS[name]}</span>'
-    return fa_svg('fas', name)
+    # 先試 FA，失敗轉試 Lucide；兩者皆無 → 錯誤（禁靜默）
+    try:
+        return fa_svg('fas', name)
+    except ValueError:
+        try:
+            return lu_svg(name)
+        except ValueError:
+            raise ValueError(f"icon: `{name}` 在 FA / Lucide 都找不到（請確認 canonical 名稱）")
 
 
 def _slug(s):
@@ -514,16 +520,11 @@ def render_leaf(d, xcls, xattr):
         if to:
             return f'<a href="{_href(to)}" class="{cls("wf-btn wf-link")}"{A}>{inner}</a>'
         return f'<button class="{cls("wf-btn")}"{A}>{inner}</button>'
-    if role in ('status', 'status.muted', 'status.strong', 'status.badge'):
-        # status.badge = 舊 badge 合併進 status 家族（方角變體），wf-badge class 保留視覺
-        lvl = {'status.muted': ' wf-tag-muted', 'status.strong': ' wf-tag-strong',
-               'status.badge': ' wf-badge'}.get(role, '')
-        if role == 'status.badge':
-            return f'<label class="{cls("wf-badge")}"{A}>{inline(val)}</label>'
-        return f'<span class="{cls("wf-tag" + lvl)}"{A}>{inline(val)}</span>'
-    if role == 'badge':
-        sys.stderr.write("[warn] badge: 已合併進 status 家族改名 status.badge:（deprecated，過渡期支援）\n")
+    if role == 'status.badge':
         return f'<label class="{cls("wf-badge")}"{A}>{inline(val)}</label>'
+    if role in ('status', 'status.muted', 'status.strong'):
+        lvl = {'status.muted': ' wf-tag-muted', 'status.strong': ' wf-tag-strong'}.get(role, '')
+        return f'<span class="{cls("wf-tag" + lvl)}"{A}>{inline(val)}</span>'
     if role == 'alert':
         return f'<span class="{cls("wf-warn")}"{A}><span class="wf-icon">⚠</span> {inline(val)}</span>'
     if role == 'icon':
@@ -566,38 +567,40 @@ def render_leaf(d, xcls, xattr):
         return f'<div class="{cls("wf-tabs flex flex-row")}"{A}>{out}</div>'
     if role == 'progress':
         # value 0-1 語義比例；label 走 inline markdown
-        # 注意：tone/name 應寫在節點層（跟 progress key 同層 sibling），而非 value 內。
+        # tone/name 必須寫節點層（跟 progress key 同層 sibling），非 value 內。
         if isinstance(val, dict):
+            if 'tone' in val or 'name' in val:
+                raise ValueError("progress: tone/name 必須寫在節點層（跟 progress key 同層 sibling），非 value 內")
             v = val.get('value', 0)
             label = val.get('label', '')
-            # 相容 & 提醒：若 tone/name 誤寫在 value 內，警告並忽略（走節點層是 canonical）
-            if 'tone' in val or 'name' in val:
-                sys.stderr.write(f"[warn] progress: tone/name 應寫在節點層（跟 progress key 同層），非 value 內。當前值忽略。\n")
         else:
             v = val
             label = ''
         try:
-            pct = max(0.0, min(1.0, float(v))) * 100
+            f = float(v)
         except (TypeError, ValueError):
-            sys.stderr.write(f"[warn] progress.value 需為 0-1 數字（收到 {v!r}）→ 退回 0\n")
-            pct = 0
+            raise ValueError(f"progress.value 需為 0-1 數字（收到 {v!r}）")
+        if not (0.0 <= f <= 1.0):
+            raise ValueError(f"progress.value 需在 0-1 範圍（收到 {f}）")
+        pct = f * 100
         lbl_html = f'<span class="wf-progress-label">{inline(label)}</span>' if label else ''
         return f'<div class="{cls("wf-progress")}"{A}><div class="wf-progress-fill" style="width:{pct:.1f}%"></div>{lbl_html}</div>'
     if role == 'avatar':
         # 只接 label(字母縮寫) + size(sm/md/lg)；禁 src/bg（守北極星② 視覺封印）
         if isinstance(val, dict):
             if 'src' in val or 'bg' in val:
-                sys.stderr.write(f"[warn] avatar 禁 src/bg（違反視覺封印）→ 忽略\n")
+                raise ValueError("avatar 禁 src/bg（違反視覺封印；只接 label + size）")
             label = val.get('label', '')
             size = val.get('size', 'md')
         else:
             label = str(val or '')
             size = 'md'
         if size not in ('sm', 'md', 'lg'):
-            sys.stderr.write(f"[warn] avatar.size 只接 sm/md/lg（收到 {size!r}）→ 退回 md\n")
-            size = 'md'
+            raise ValueError(f"avatar.size 只接 sm/md/lg（收到 {size!r}）")
         return f'<div class="{cls(f"wf-avatar wf-avatar-{size}")}"{A}>{esc(label)}</div>'
-    return f'<span class="wf-label">{esc(d)}</span>'
+    # 走到這裡 = 節點沒任何已知 leaf role → 明確錯誤而非靜默 fallback
+    keys = list(d.keys()) if isinstance(d, dict) else [type(d).__name__]
+    raise ValueError(f"leaf 節點沒有已知 role key（收到 keys={keys}；合法：{sorted(LEAF_ROLES)}）")
 
 
 # --------------------------------------------------------------------------
@@ -685,26 +688,25 @@ def render_container(d, xcls, xattr, src=None, base=''):
         style.append('min-height:0')
         if direction == 'grid':    # grid 撐滿時讓列分佈填滿（預設 items-start 由 align: 覆寫）
             style.append('align-content:stretch')
-    if d.get('scroll'):            # 垂直捲：P0.5 純語義化
+    _SCROLL_SCALE = {'sm': '8rem', 'md': '16rem', 'lg': '32rem', 'xl': '48rem'}
+    if d.get('scroll'):
         cls.append('wf-scroll')
         sv = d['scroll']
-        # true = 高度由父容器 / grow: true 決定（配合使用）；sm/md/lg/xl = 語義 scale；相容 Tailwind h-* token（deprecated）
-        _SCROLL_SCALE = {'sm': '8rem', 'md': '16rem', 'lg': '32rem', 'xl': '48rem'}
         if sv is True:
-            pass  # 只加 wf-scroll class 走 overflow-y:auto；高度交給父容器/grow 決定
+            pass
         elif isinstance(sv, str) and sv in _SCROLL_SCALE:
             style.append('max-height:' + _SCROLL_SCALE[sv])
         else:
-            # 舊 Tailwind h-* / 具體像素 token：deprecated 但仍支援
-            sys.stderr.write(f"[warn] scroll: `{sv}` 已 deprecated，請用 scroll: true/sm/md/lg/xl（DISCUSSION P0.5）\n")
-            style.append('max-height:' + _track(sv))
-    if d.get('scroll-x'):          # 水平捲：對稱處理
+            raise ValueError(f"scroll: 只接 true 或 sm/md/lg/xl（收到 {sv!r}）")
+    if d.get('scroll-x'):
         cls.append('wf-scroll-x')
         svx = d['scroll-x']
         if svx is True:
             pass
         elif isinstance(svx, str) and svx in _SCROLL_SCALE:
             style.append('max-width:' + _SCROLL_SCALE[svx])
+        else:
+            raise ValueError(f"scroll-x: 只接 true 或 sm/md/lg/xl（收到 {svx!r}）")
     if isinstance(d.get('span'), int):
         style.append(f'grid-column:span {d["span"]}')
     if d.get('scroll'):
@@ -935,11 +937,7 @@ def expand(items, basedir, ctx, stack=()):
             if not _match(it['when'], ctx):
                 continue
             it = {k: v for k, v in it.items() if k != 'when'}
-        if isinstance(it, dict) and ('embed' in it or 'include' in it):
-            if 'include' in it and 'embed' not in it:
-                import sys as _sys
-                print(f'  warn: include: 已改名為 embed:（deprecated，過渡期支援）—— {it["include"]!r}', file=_sys.stderr)
-                it = {**it, 'embed': it['include']}
+        if isinstance(it, dict) and 'embed' in it:
             name = it['embed']
             params = it.get('with', {}) or {}
             as_ = it.get('as')
@@ -994,13 +992,7 @@ def _fill_slots(items, slots):
 
 
 def _viewport_of(node):
-    """從 node 取出 viewport 值。相容 canvas: 走 deprecated warn（DISCUSSION 2026-07-03）。"""
-    if 'viewport' in node:
-        return node['viewport']
-    if 'canvas' in node:
-        sys.stderr.write("[warn] canvas: 已改名為 viewport:（deprecated，過渡期支援；語義從「畫布」→「視口」更貼響應式設計本意）\n")
-        return node['canvas']
-    return None
+    return node.get('viewport')
 
 
 def resolve_body(doc, provider, basedir, ctx):
@@ -1197,22 +1189,16 @@ _ENUMS = {
 }
 # 已知頂層 grammar keys（未知 → warn typo）
 # body: 主要內容區；content/placeholder: component 檔頂層（完整/降階佔位）
-_GRAMMAR_KEYS = {'viewport', 'canvas', 'body', 'extends', 'with', 'slots', 'routes',
+_GRAMMAR_KEYS = {'viewport', 'body', 'extends', 'with', 'slots', 'routes',
                  'content', 'placeholder'}
 # 已知 container 屬性 keys（sibling 掛在容器 dict 上）
 _CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'box', 'gap', 'padding',
                     'justify', 'align', 'span', 'grow', 'scroll', 'scroll-x',
                     'name', 'tone', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
-                    'embed', 'include', 'with', 'slot', 'as', 'when'}
+                    'embed', 'with', 'slot', 'as', 'when'}
 _DIRECTION_KEYS = {'row', 'col', 'grid'}
-# 方向類容器（DISCUSSION：page/layout/component/widget/overlay 家族 sugar）
 _STRUCTURE_UNITS = {'page', 'layout', 'component', 'widget'}
 _OVERLAY_SUGARS = {'dialog', 'drawer', 'sheet', 'toast', 'loading'}
-_DEPRECATED = {
-    'canvas': 'viewport',
-    'include': 'embed',
-    'badge': 'status.badge',
-}
 
 
 def _levenshtein(a, b):
@@ -1268,13 +1254,7 @@ def _walk_lint(node, path, diag):
 
     keys = set(node.keys()) - {'__src', '__path'}
 
-    # 1. deprecated 檢查
-    for old, new in _DEPRECATED.items():
-        if old in keys:
-            diag.warn(path, f"`{old}:` 已 deprecated，請改用 `{new}:`",
-                      f"直接替換：{old} → {new}")
-
-    # 2. 判斷節點類型
+    # 判斷節點類型
     has_direction = keys & _DIRECTION_KEYS
     has_leaf_role = keys & set(LEAF_ROLES)
     is_widget = 'widget' in keys
@@ -1323,7 +1303,7 @@ def _walk_lint(node, path, diag):
     if not is_widget and not has_overlay_sugar and not has_leaf_role and not is_slot_marker and not is_embed:
         known = _CONTAINER_ATTRS | _GRAMMAR_KEYS | set(LEAF_ROLES) | _OVERLAY_SUGARS | {'widget', 'is', 'can'}
         for k in keys:
-            if k in known or k in _DEPRECATED or k in ('placeholder', 'content', 'default'):
+            if k in known or k in ('placeholder', 'content', 'default'):
                 continue
             sugg = _suggest_key(k, known)
             hint = f"是不是「{sugg}」？" if sugg else "未在已知詞彙集（見 `wfyaml.py list --ring 0`）"
@@ -1367,16 +1347,11 @@ def _lint_file(path):
     # 頂層 keys：允許 grammar keys；未知頂層 → warn
     top_keys = set(doc.keys()) if isinstance(doc, dict) else set()
     for k in top_keys:
-        if k in _GRAMMAR_KEYS or k in _DEPRECATED or k in _STRUCTURE_UNITS:
+        if k in _GRAMMAR_KEYS or k in _STRUCTURE_UNITS:
             continue
         sugg = _suggest_key(k, _GRAMMAR_KEYS)
         hint = f"是不是「{sugg}」？" if sugg else f"合法頂層 key：{sorted(_GRAMMAR_KEYS)}"
         diag.warn('<root>', f"未知頂層 key `{k}`", hint)
-    # deprecated 頂層
-    for old, new in _DEPRECATED.items():
-        if old in top_keys and old in _GRAMMAR_KEYS.union({'canvas'}):
-            diag.warn('<root>', f"`{old}:` 已 deprecated，請改用 `{new}:`",
-                      f"直接替換：{old} → {new}")
     # 走 body / slots / routes（slots 的 key 是使用者 slot 名，只走各值；routes 每項是路由 dict）
     basedir = os.path.dirname(path) or '.'
     _load_tokens(basedir)
@@ -1389,7 +1364,8 @@ def _lint_file(path):
         if 'routes' in doc and isinstance(doc['routes'], list):
             for i, r in enumerate(doc['routes']):
                 _walk_lint(r, f'routes[{i}]', diag)
-    diag.dump(path)
+    if diag.errors or diag.warnings:
+        diag.dump(path)
     return len(diag.errors), len(diag.warnings)
 
 
@@ -1474,6 +1450,16 @@ def main():
         print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection：列 Ring 0 原語 + Ring 1 專案 token", file=sys.stderr)
         print("       wfyaml.py lint <file.wf.yaml> [...]              # P0.7 schema validation + fail-fast", file=sys.stderr)
         sys.exit(1)
+    # ---- render 前 lint gate（--no-lint 可略過；errors 早失敗、warnings 印但續）----
+    skip_lint = '--no-lint' in sys.argv
+    if not skip_lint:
+        total_err = 0
+        for f in args:
+            e, _w = _lint_file(f)
+            total_err += e
+        if total_err:
+            print(f"\n═══ lint 阻斷 render：共 {total_err} error（用 --no-lint 略過）═══", file=sys.stderr)
+            sys.exit(2)
     if do_bundle:
         out = out_path or os.path.join(os.path.dirname(args[0]) or '.',
                                        'prototype' + ('.debug' if debug else '') + '.html')
@@ -1485,7 +1471,7 @@ def main():
         basedir = os.path.dirname(path) or '.'
         stem = re.sub(r'\.(wf\.)?ya?ml$', '', path)
         base = os.path.basename(stem)
-        suffix = '.debug.html' if debug else '.html'   # debug 版另存，不覆蓋乾淨產物
+        suffix = '.debug.html' if debug else '.html'
         for rid, htmlout in compile_all(src, basedir, base, debug=debug, style=style):
             out = stem + (('.' + rid) if rid else '') + suffix
             open(out, 'w').write(htmlout)
