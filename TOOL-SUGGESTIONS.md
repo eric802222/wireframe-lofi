@@ -625,6 +625,85 @@ DISCUSSION line 16：「一條路由 = 一張輸出 = 一個 URL」。對 codege
 
 ---
 
+## P5 — 三環同心架構 & Pipeline 支援
+
+為六個訴求（AI 最少 token / 最少元素 / wireframe·mockup·product 不混 / 支援 wireframe→mockup→AST→code / 版控 / 多受眾動態輸出）**收斂到單一設計**：分三個同心環，職責正交。
+
+### 架構
+
+```
+Ring 0  結構原語（~15 個，AI 必背 · 恆定不成長）
+        row / col / grid / box + text.* / button / input / icon / status / ...
+        所有輸出模式共用同一組。這是 AI 的字母表。
+
+Ring 1  語義 token（opt-in，AI 讀 wf.tokens.yaml 即懂 · 不背）
+        gap: section、tone: brand、overlay.drawer、frame: strong ...
+        值換皮，詞彙不變。專案帶自己的字典。已有 Phase 1/2 引用 + 組合型。
+
+Ring 2  輸出模式（旗標，不進 YAML · 讀者面）
+        --style clean/sketch/mockup
+        --fidelity wireframe/mockup
+        --emit html/png/ast/react
+        --audience pm/eng/customer/discuss     ← sugar 別名
+        renderer/emitter 決定產什麼，作者不動 YAML。
+```
+
+### 為什麼六個訴求同時解決
+
+- **AI 最少負擔**：Ring 0 恆定小；Ring 1 靠 `wireframe-lofi list` introspection 查（不背）；Ring 2 是 CLI 不進 YAML。
+- **wireframe / mockup / product 不混**：fidelity mode 結構性防漂移（8c953bb）—— 預設 renderer 硬夾 Ring 0，畫不出 mockup；要 mockup 得明給 `--mockup`。**靠模式旗標切，不靠作者自律**。
+- **Pipeline**：
+  - wireframe → mockup：Ring 0 YAML 不動，加 `wf.tokens.yaml` + `--mockup`
+  - mockup → AST → code：`--emit ast` 產結構化節點樹（走 P4 E1/E2 schema），再進 codegen
+- **版控**：YAML + tokens.yaml + style CSS 全 plain text，git diff/blame 天然 work
+- **多受眾**：同一份 YAML 交叉旗標
+  - PM：`--fidelity mockup --style mockup --tokens brand.yaml`
+  - Eng：`--emit ast` → JSON 給 codegen
+  - 客戶：`--fidelity wireframe --bundle` → 可點原型
+  - 討論：`--fidelity wireframe --style sketch --debug`
+
+### 關鍵不混淆原則（一句話）
+
+> **YAML 詞彙 = Ring 0 + Ring 1**（作者面）；**輸出樣貌 = Ring 2**（讀者面）。
+> 作者永遠不用想「我在做 wireframe 還是 mockup」，模式是讀者側旗標；
+> AI 也永遠不會誤把 mockup 值塞進 wireframe YAML（fidelity mode 硬夾）。
+
+### 現況 gap（最少改動補齊三環）
+
+| 項 | 現況 | 需要做 | 修改量 |
+|----|------|-------|-------|
+| **P5.1 `wireframe-lofi list`** | 無 introspection | 列出 Ring 0 全部原語 + 專案 Ring 1（解析 wf.tokens.yaml）+ 用法/展開 | ~50 行 CLI |
+| **P5.2 `--emit ast`** | 只 emit html/png/svg | 產結構化節點樹（JSON，走 P4 E1/E2 schema），codegen 前置 | 中量，走 render tree serialize |
+| **P5.3 `--audience` sugar** | 無 | 打包 `fidelity + style + tokens + emit` 三四旗標成別名 | ~10 行 CLI shim |
+| **P5.4 Ring 0 明列** | 散在 README 各節 | 一節「Ring 0 字母表」列全部 ~15 個原語 + 對應 Ring 1 opt-in 說明 + Ring 2 旗標對照 | 文件 |
+
+### 與現有系統對齊
+
+- **fidelity mode（8c953bb）** = Ring 2 的一環，已 land 且是三環結構的關鍵支柱
+- **`--style` 解耦（a368d72）** = Ring 2 的另一環，已 land
+- **semantic token Phase 1/2** = Ring 1 的實作，已 land
+- **anti-drift 原則（8d06e63）** = 三環自動符合 —— Ring 0 恆小、Ring 1 opt-in、Ring 2 不吃作者心力
+- **widget（7b08c1c）** = Ring 0 成員（自我聲明示意元件），非 Ring 1 token
+- **P0/P0.5/P0.7 lint** = 分模式規則：wireframe 嚴（夾 Ring 0）、mockup 鬆（放 Ring 1）
+
+### AI prompt 範例（三環的 payoff）
+
+```
+你是 wireframe-lofi 作者。可用詞彙：
+- Ring 0（結構原語，恆定）：`wireframe-lofi list --ring 0` 輸出
+- Ring 1（本專案語義 token）：`wireframe-lofi list --ring 1` 輸出（讀 wf.tokens.yaml）
+- Ring 2（輸出旗標）：pm/eng/customer/discuss 別名，你不需要寫進 YAML
+
+規則：
+1. 只用 Ring 0 + Ring 1 詞彙寫 YAML
+2. 不寫視覺細節（px/hex/字體）— 用語義 token
+3. 不表達事件（onClick 等）— wireframe 只表達畫面+動線
+```
+
+一份 prompt 涵蓋所有情境，AI 無論產 wireframe / mockup / codegen 都用同一組詞彙。
+
+---
+
 ## 給 DISCUSSION.md 的實作回饋（實測資料）
 
 以下是 wireframe-lofi 尚未定案的議題，本次 5 頁記帳 app 實測可作為證據餵回：
@@ -682,6 +761,10 @@ DISCUSSION line 16：「一條路由 = 一張輸出 = 一個 URL」。對 codege
 | **P4 E9** | 葉子 canonical = dict-form（明拒字串 sugar） | 收斂 DISCUSSION 待補 | 文件 + 遷移 |
 | **P4 E10** | `routes:` = single URL（codegen 立場） | 深連結能力保留 | 文件 |
 | **回饋** | Layer 1 tone 候選 lock-in（6 個名稱） | 收斂 line 37 待議 | 討論 |
+| **P5.1** | `wireframe-lofi list` introspection | AI/作者查 Ring 0+Ring 1 詞彙 | ~50 行 CLI |
+| **P5.2** | `--emit ast` | codegen 前置；wireframe→AST→code 缺這段 | 中量 |
+| **P5.3** | `--audience` sugar 別名 | 多受眾動態輸出的 CLI 打包 | ~10 行 |
+| **P5.4** | Ring 0 字母表 明列（文件） | AI 一眼看完全部原語 | 文件 |
 
 ---
 

@@ -445,4 +445,33 @@
 - [2026-07-02] **順手解掉的漂移憂慮**:概念重量(定義再多、預設體驗純低保真)、可攜性(無 `--mockup` 永遠低保真可攜)、單一語義源(旗標切保真度)、失焦(要 mockup 是刻意動作,身份不動)。
 - [2026-07-02] **統一規則**:wireframe 模式 = 只認內建詞彙;任何專案 richness 一律夾回內建低保真。
 - [2026-07-02] **對現況小調整**:Phase 1 的 `gap: section` 目前永遠出值;改為**預設夾內建刻度、`--mockup` 才解全套**;加 `--mockup`/`--fidelity` 旗標 + resolver 分模式。
+
+### 三環同心架構定案（2026-07-02，收斂全部訴求為單一設計）
+
+起於使用者統合思考:最少 token 讓 AI 理解 + 最少元素讓 AI 創作 + wireframe/mockup/product 不混 + 支援 wireframe→mockup→AST→code 開發鏈路 + 版控 + 多受眾動態輸出。
+
+- [2026-07-02] **三環同心，職責正交**:
+  - **Ring 0 結構原語（~15 個，AI 必背，恆定不成長）**:`row`/`col`/`grid`/`box` + `text.*`/`button`/`input`/`icon`/`status`/… 所有輸出模式共用同一組。AI 字母表。
+  - **Ring 1 語義 token（opt-in，AI 讀 `wf.tokens.yaml` 即懂，不背）**:`gap: section`、`tone: brand`、`overlay.drawer`、`frame: strong`。值換皮詞彙不變。Phase 1/2 已 land。
+  - **Ring 2 輸出模式（旗標，不進 YAML，讀者面）**:`--style clean/sketch/mockup`、`--fidelity wireframe/mockup`、`--emit html/png/ast/react`、`--audience pm/eng/customer/discuss`(sugar 別名)。
+- [2026-07-02] **關鍵不混淆原則**:**YAML 詞彙 = Ring 0 + Ring 1**(作者面)；**輸出樣貌 = Ring 2**(讀者面)。作者永遠不用想「我在做 wireframe 還是 mockup」——模式是讀者側旗標;AI 也永遠不會誤把 mockup 值塞進 wireframe YAML(fidelity mode 硬夾)。
+- [2026-07-02] **六訴求同時解決的推導**:
+  - AI 最少負擔:Ring 0 恆定小、Ring 1 靠 introspection 查、Ring 2 不進 YAML。
+  - 三面不混:靠 fidelity mode **結構性防漂移**(renderer 硬夾)，不靠作者自律。
+  - Pipeline:wireframe→mockup=加 tokens+`--mockup`；mockup→AST→code=`--emit ast`+codegen。
+  - 版控:YAML/tokens.yaml/style CSS 全 plain text，git-native。
+  - 多受眾:同一份 YAML 交叉旗標(PM/Eng/客戶/討論)。
+- [2026-07-02] **與現有系統對齊**:fidelity mode(8c953bb)/`--style`解耦(a368d72)/semantic token Phase 1/2/anti-drift 原則(8d06e63)/widget(7b08c1c) 全部落在三環正確位置——結構驗證方向定案。
+- [2026-07-02] **現況 gap(補齊三環最少改動)**:
+  - **P5.1 `wireframe-lofi list`** introspection 子命令(枚舉 Ring 0 + 專案 Ring 1，AI/作者查詞彙)——~50 行 CLI
+  - **P5.2 `--emit ast`**(產結構化節點樹 JSON，走 P4 E1/E2 schema，codegen 前置)——中量
+  - **P5.3 `--audience` sugar**(打包 fidelity+style+tokens+emit 成 pm/eng/customer/discuss 別名)——~10 行
+  - **P5.4 Ring 0 字母表明列**(README 一節列全部 ~15 原語 + Ring 1 opt-in 說明 + Ring 2 旗標對照)——文件
+- [2026-07-02] **AI prompt 範例（三環的 payoff）**:一份 prompt 涵蓋所有情境——
+  ```
+  可用詞彙：Ring 0(結構原語,恆定) + Ring 1(本專案語義 token,查 list)
+  規則：不寫視覺細節(px/hex);不表達事件(onClick);Ring 2 是 CLI 旗標不進 YAML
+  ```
+  AI 無論產 wireframe / mockup / codegen 都用同一組詞彙寫。
+- [2026-07-02] **細節見** `TOOL-SUGGESTIONS.md` P5 節。
 - [2026-07-02] **定位**:這是「單一語義源 × 漸進保真」從口號變可執行輸出模式,也是 token 系統的**前置地基**——**先於**任何進一步 token 擴充(有它才安全地讓 token 變豐富而不失焦)。
