@@ -255,3 +255,17 @@
 - [2026-07-02] **關鍵決策:此精神由「單元類型」表達,不再造 `template` 字**。單元類型名(layout/component/widget)已講清角色,內容區再叫 template 是同義重複,違反「別設計過多詞彙」。→ **widget 內容維持 `body`,不加 template**(零改動,現況即是)。
 - [2026-07-02] **最小詞彙集**:內容區=`body`(page/layout/component/widget 通用)、洞/填洞=`slot:`/`slots:`、複用引用=`extends:`(骨架繼承)/`include:`(片段嵌入)、參數=`with:`、身份/能力=`is`/`can`(widget 特有)。
 - [2026-07-02] **解「body 語意不明確」**:body 曾感覺不清,是因 widget 被當特例;歸位成「與 page/layout 同類的結構單元」後,`body`=「任何單元的內容區」即一致清楚。「它是示意」由 widget 類型 + `◫ 示意` 標記 + `is` 扛,不靠 key 名重講。
+
+### 浮層 / z 層:以正交原語為地基,具名角色僅為糖（2026-07-02，設計定案，待實作）
+
+討論從 dialog(overlay 背景)→ 右下角機器人 → 抽屜 → z 層,收斂出浮層系統的地基原則。
+
+- [2026-07-02] **決定性原則:組合原語,不列舉角色**。建立在具名角色(dialog/drawer/toast/alert…)上的系統**無法長久**——每出一種新樣式就要加一個字。改用少數**正交、封閉、可組合**的原語(同 row/col/grid 組合出任何排版的哲學),任何浮層(含未來還沒名字的)= 原語的一種組合,**永不需擴充語彙**。
+- [2026-07-02] **三個正交原語**:
+  1. **`pin: <錨點>`**(placement):center / 邊(right/left/top/bottom)/ 角(bottom-right…)。**邊緣值=沿邊撐開** → 左右邊=全高抽屜、上下邊=全寬橫幅/bottom sheet;角=FAB/機器人;center=dialog。一個 `pin` 收整個位置家族。
+  2. **`modal: true`**(blocking):擋不擋後面(scrim + 後面 inert)。**取代先前的 `backdrop`**——`backdrop` 命名的是視覺產物(暗色層)且像為 dialog 而生;`modal` 命名互動意圖(攔截),通用於 dialog/drawer/sheet/lightbox,scrim 是它的視覺呈現(封 renderer)。預設非 modal(機器人/toast/FAB 免旗標)。
+  3. **z 序**(你討論的「層」):**用關係型 ordinal**。z 序是**關係**(誰疊誰上),非絕對視覺量值(不同於 `w-96`)→ 數字只表相對順序,屬語意允許的關係型(同 `grow`/grid 比例)。好處正是**長久**:新層級=一個新數字,**零 vocab 成長**;可加 1–2 語意錨(`overlay`/`top`)當常用別名。多數浮層免寫 z(預設疊在 base 上、依出現序);僅多浮層並存需排序(如 alert 壓 dialog)才明給。
+- [2026-07-02] **錨定對象 & 常駐/暫時 = 樹狀放置決定**(不加屬性):`pin` 錨定其**所在容器**(最近的 box;最外層=畫面);放 layout 根=常駐(機器人)、放 state=暫時(dialog)。`modal` 的 scrim 也只罩其所在層(放 card 內=card 級遮罩)。fixed(釘畫面)vs absolute(釘 box)由放置層級自動決定,封 renderer。
+- [2026-07-02] **具名角色(dialog/drawer/toast)降為「純糖」**:是**展開成原語的捷徑**,且**缺席永不阻塞**——沒對應 preset 就直接組 `pin`+`modal`+z。常見/AI 好懂情境用糖(`drawer: right` = `pin: right`),新樣式組原語。**地基放原語,AI 才真長久可用**(AI 對「錨哪+擋不擋+疊多高」能自由組合出任何樣式,含無專名者;具名角色會讓 AI 遇沒對應詞就卡)。
+- [2026-07-02] **別把新 z 概念叫「layer」**:`Layer 1/2` 已用於**關注軸**(產品 UI vs 示意註記,決定可否剝離),與 **z 深度**是正交兩軸,勿混。z 深度用上述 z 序原語;若引入 key 名避免用 `layer`(撞 L1/L2)。L2 註記可理解為 z 最頂 + 帶「可剝離」屬性,故關注軸與 z 軸組合即可涵蓋,不需併成一個「layer」傘。
+- [2026-07-02] **未實作**:以上為設計定案;`pin`/`modal`/z 原語、`drawer` 等糖、state 開關動線(複用既有 `to:`+routes)待實作。
