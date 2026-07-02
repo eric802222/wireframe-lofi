@@ -21,3 +21,5 @@ examples/
 prototype*.html
 
 # 注意：assets/*.json.gz（圖庫）與 assets/wf.css（封印 CSS）是自帶資產、runtime 必需 → 照常入庫
+# style 素材（border 筆觸圖等）也是 runtime 必需 → 覆寫上面的 *.png/*.svg 排除
+!assets/styles/**

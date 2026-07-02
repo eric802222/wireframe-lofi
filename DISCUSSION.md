@@ -145,3 +145,26 @@
 
 - [2026-07-02] **`with:` 替換範圍實測確認 + 文件補強**（收斂）→ `_subst` 已支援對任何 leaf 字串位置的 `{{}}` 替換（含 dict role value：`text: "{{category}}"`、`tone: "{{tone}}"`、`button: {text: "{{label}}"}`），被 P0 bug 掩蓋才誤判為壞掉。README 應明講「`{{}}` 適用於任何葉子字串位置，不限頂層 scalar」並補 test。
 - [2026-07-02] **`name:` 隱形語意實測確認**（line 20 對齊）→ `name: tab-home` 正確寫入 `data-name="tab-home"` 且不渲染，與設計一致，無需調整。
+
+### 手繪風 / style 系統 / 素材資產（2026-07-02，設計定案，待實作）
+
+- [2026-07-02] **目標：真低保真手繪感** → 使用者要 Balsamiq 那種鉛筆抖動線。評估 `border-image`（MDN）：能做手繪框，但三個限制 —— (a) 吃掉 `border-radius`（角由切片決定）、(b) 長邊 tiling/stretch 有接縫或變形（手繪線不該規律重複）、(c) 只作用 border，hr/input/text 仍乾淨 → 視覺不一致。
+- [2026-07-02] **border 用 `border-image`（使用者拍板）；其他描邊之後再做** → 框線走 border-image；hr/input/按鈕等要一致手繪時，後手用 **SVG 位移濾鏡（feTurbulence + feDisplacementMap）**（前身 `@handwritten` 手法，roughen 全描邊、零 JS、不動現有 CSS、radius 一起抖）—— 分階段，先框線。
+- [2026-07-02] **樣式選擇 = `--style <名稱>` render 旗標，不進 YAML**（守北極星② 語義源純淨）→ 同一份 YAML，換 style 就換皮。這是先前 theme fidelity-dial 的使用者面呈現。`clean`(預設乾淨線/保留圓角) / `sketch`(border-image 手繪框) / 未來 `mockup`。互斥預設，各自乾淨（sketch 的 radius moot 不打架）。
+- [2026-07-02] **bundle 內零-JS 即時切換器** → prototype.html 放 style 切換（checkbox + `:has()` 切 root class），reviewer 當場 clean↔sketch 切著看。
+- [2026-07-02] **素材切進 `assets/` 分層分類（使用者可替換）** → 結構 `assets/styles/<風格>/style.css` + `<分類>/<元素>.<ext>`；起手 `styles/sketch/style.css` + `border/{box,button,input}`（對應 `.wf-box`/`.wf-btn`/`.wf-input,.wf-select`）。未來同層可加 `line/`(hr)、`cursor/`(spotlight click 手勢) 等分類。使用者換筆觸=直接改素材檔、重渲即生效、不碰程式。
+- [2026-07-02] **素材抓「name」不鎖副檔名** → CSS 以無副檔名的名稱引用（如 `url(border/box)`），render 時 glob `border/box.*` 找實際檔（svg/png/jpg/…），依**實際副檔名**判 MIME 內嵌 → 使用者日後可把 `box.svg` 換成 `box.png`/`.jpg`，CSS/程式不動。
+- [2026-07-02] **render 機制：外部素材檔 → 內嵌 data-URI（兼顧可替換 + 輸出自含）** → `--style X` 載入 `styles/X/style.css`，把其中相對 `url(...)` 素材讀進來 base64 內嵌成 data-URI（同 wf.css/icon 的做法）→ 產物仍是自含單檔，不依賴外部檔。
+- [2026-07-02] **style 與 render 解耦（theming API 正式化）** → 渲染器只保證「語義 HTML + `wf-*` class 契約」；視覺全歸 style 包，不硬編在 render base。**邊界**：base(wf.css) = 結構/機制/meta（`.flex`/`.grid`/positioning、`wf-show-all`、scroll overflow、gutter 對齊、Layer2 標註 note/spotlight、debug、bundle nav/`:target`）；style = 外觀（tokens 色盤/radius/間距、字體含 `@font-face` 內嵌 woff2、border 素材或 solid、box/button/input/select/chip/badge/tabs/heading/alert 長相）。
+  - **clean 變成 `styles/clean/style.css`**（現行視覺搬過去），為預設**視覺基底、永遠載入**；其他 style（sketch…）**疊在 clean 上覆寫**（DRY，非每 style 全複製；此為對「每 style 全套」的務實修正）→ 視覺已離開 render base、達成解耦，sketch 維持只寫 border/font override。
+  - style 可自含 `@font-face`（woff2 放 `styles/<name>/fonts/`，data-URI 內嵌）→ sketch 配手寫字體。
+  - **sketch 字體定案**：英文 **Comic**（Comic Sans MS / Comic Neue）、中文 **Yozai 悠哉體**（chinese-fonts/yozai，開源手寫圓體）。CSS `font-family: 'Comic Sans MS','Comic Neue','Yozai',cursive`（逐字 fallback：拉丁走 comic、CJK 走 Yozai）。**CJK 內嵌取捨**：Yozai 全字 woff2 肥（數 MB）→ 預設靠 render 機器已裝字體(PNG 用)，要完全自含再把（子集化）woff2 丟 `styles/sketch/fonts/` 走 data-URI 內嵌。
+  - 載入順序：base 結構 + CSS_EXTRA(meta) + clean 視覺 + (選定 style override) + debug + 尺寸 override。
+
+### sketch 字體改走 CDN（2026-07-02，定案，取代上方「CJK 內嵌取捨」）
+
+- [2026-07-02] **不背字體檔，改 CDN `@import` + 系統回退**（使用者拍板：「不能直接用 cdn 嗎? 沒有頂多 failback 系統字體」）→ Yozai 全字 15MB、子集化又要把字體邏輯塞回 render（違背解耦），CP 值低。改：
+  - 英文 `Comic Neue` → Google Fonts `@import`；中文 `Yozai` → jsdelivr `@chinese-fonts/yozai`（cn-font-split chunked 子集，只載用到的字）。
+  - `--wf-font` stack 末端接系統手寫字 + `cursive`：CDN 失效/離線自動優雅回退，不影響結構呈現。
+- [2026-07-02] **`_hoist_imports()`**：`@import` 規則必須位於樣式表最前否則被瀏覽器忽略；clean/sketch 疊加後 @import 會夾在中間 → 編譯時用 regex（限 `@import url(|"...`，避免誤抓註解字樣）把所有 @import 提到 `<style>` 開頭。
+- [2026-07-02] **PNG/SVG 管線 route-abort 外部請求**（踩坑修正）→ headless 用 `wait_until='load'`，離線 sandbox 下 CDN `@import` 會卡住，chromium 等外部樣式表時把**本地 sketch 規則（含手繪 border-image）一起壓掉** → 整頁退回 clean。修法：`page.route` 把 http(s) 請求全 abort（產物本已全 data-URI 內嵌，不需外部）→ @import 秒失敗、本地規則正常套用、字體回退系統。**分工**：PNG/SVG = 手繪框 + 系統回退字（離線）；HTML 用瀏覽器開 = 手繪框 + CDN Comic Neue/Yozai。

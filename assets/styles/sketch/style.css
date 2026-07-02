@@ -1,0 +1,14 @@
+/* --style sketch：手繪抖動框（border-image；素材見 border/，可換 svg/png/jpg 同名檔）。
+   border-image 忽略 border-radius，手繪本就不要圓角。其他描邊(hr/text)的手繪化之後用位移濾鏡補。 */
+/* 手繪字體：英文 Comic Neue、中文 Yozai，皆走 CDN；編譯器會把匯入語句提到樣式表最前。
+   CDN 失效／離線時自動退回系統手寫感字體與 cursive，不影響結構呈現。 */
+@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/@chinese-fonts/yozai/dist/Yozai-Regular/result.css');
+:root { --wf-font:'Comic Neue','Yozai','Comic Sans MS','Chalkboard SE',ui-rounded,cursive; }
+.wf-root,
+.wf-box    { border-style: solid; border-image: url(border/box) 16 / 9px stretch; }
+.wf-btn    { border-style: solid; border-image: url(border/button) 11 / 1.6px round; }
+.wf-input,
+.wf-select { border-style: solid; border-image: url(border/input) 9 / 1.3px round; }
+/* 手繪風把 tag/badge 也改直角抖框感（暫用 box 素材） */
+.wf-badge  { border-style: solid; border-image: url(border/input) 9 / 1px round; }

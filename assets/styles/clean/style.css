@@ -1,0 +1,58 @@
+/* clean —— 預設視覺 style（永遠作為視覺基底載入；其他 style 疊在其上覆寫）。
+   這裡放「外觀」：tokens / 字體 / 顏色 / border / 各元件長相。結構與 meta 在 base(wf.css)。 */
+:root{
+  /* 圓角 */    --wf-radius:3px; --wf-radius-pill:9999px;
+  /* 間距 scale */ --wf-space-sm:.25rem; --wf-space-md:.5rem; --wf-space-lg:1rem;
+  /* 字體 */    --wf-font:'Sarasa Mono TC','SarasaMono','Courier New',Courier,monospace;
+               --wf-font-size:14px; --wf-h1:1.45em; --wf-h2:1.18em; --wf-h3:1em;
+  /* 頁框 */    --wf-page-border:1px solid #cbd5e1; --wf-page-pad:16px;
+}
+body { background:#ffffff; font-family:var(--wf-font); font-size:var(--wf-font-size); color:#1f2937; }
+.wf-root { border:var(--wf-page-border); border-radius:var(--wf-radius); padding:var(--wf-page-pad); }
+/* 連結上色（href 規則：互動才上色 teal）*/
+a.wf-link { color:#0f766e; }
+a.wf-label.wf-link { text-decoration:underline; text-underline-offset:2px; }
+a.wf-btn.wf-link { border-color:#0d9488; background:#0d9488; color:#fff; font-weight:600; }
+.wf-blocklink.wf-box { border-style:solid; border-color:#0f766e; }
+.wf-blocklink::after { color:#0f766e; }
+.wf-link:hover, .wf-blocklink:hover { outline:2px solid #99f6e4; }
+/* box / 表單控制 外觀 */
+.wf-box { border:1px solid #9ca3af; border-radius:var(--wf-radius); }
+.wf-btn { border:1.5px solid #9ca3af; background:#fff; color:#374151; border-radius:var(--wf-radius); }
+.wf-input { border:1px solid #cbd5e1; background:#fff; color:#94a3b8; border-radius:var(--wf-radius); }
+.wf-select { border:1px solid #9ca3af; background:#fff; color:#374151; border-radius:var(--wf-radius); }
+.wf-radio, .wf-check { color:#6b7280; }
+/* 語意色調 */
+.wf-tone-feature { background:#eef2ff; border-color:#c7d2fe; color:#3730a3; }
+.wf-tone-info    { background:#f0f9ff; border-color:#bae6fd; color:#075985; }
+.wf-tone-warn    { background:#fffbeb; border-color:#fcd34d; color:#92400e; }
+.wf-tone-danger  { background:#fef2f2; border-color:#fecaca; color:#991b1b; }
+.wf-tone-success { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
+.wf-tone-muted   { background:#f9fafb; border-color:#e5e7eb; color:#6b7280; }
+.wf-tone-action  { background:#f0fdfa; border-color:#0d9488; border-width:1.5px; color:#0d9488; }
+.wf-tone-feature > .wf-title { background:#eef2ff; } .wf-tone-info > .wf-title { background:#f0f9ff; }
+.wf-tone-warn > .wf-title { background:#fffbeb; } .wf-tone-danger > .wf-title { background:#fef2f2; }
+.wf-tone-success > .wf-title { background:#f0fdf4; } .wf-tone-muted > .wf-title { background:#f9fafb; }
+.wf-tone-action > .wf-title { background:#f0fdfa; }
+/* 狀態 chip */
+.wf-tag { border-radius:var(--wf-radius-pill); background:#d1d5db; color:#374151; }
+.wf-tag-muted  { background:#f3f4f6; color:#9ca3af; }
+.wf-tag-strong { background:#6b7280; color:#fff; }
+/* 分頁列 */
+.wf-tabs { border-bottom:1px solid #9ca3af; }
+.wf-tab { color:#6b7280; background:#f3f4f6; border:1px solid #cbd5e1; border-radius:var(--wf-radius) var(--wf-radius) 0 0; }
+.wf-tab-active { color:#1f2937; background:#fff; border-color:#9ca3af; border-bottom-color:#fff; }
+.wf-tab.wf-link { color:#0f766e; }
+/* 文字權重 / 標題字級 / 警示 / badge / hr 色 */
+.wf-warn { color:#b91c1c; }
+.wf-new  { color:#b45309; background:#fffbeb; border-radius:var(--wf-radius); }
+.wf-label { color:#1f2937; }
+.wf-b { font-weight:700; }
+.wf-hint { color:#9ca3af; }
+.wf-h { color:#1f2937; }
+.wf-h1 { font-size:var(--wf-h1); } .wf-h2 { font-size:var(--wf-h2); } .wf-h3 { font-size:var(--wf-h3); }
+.wf-weight-light { font-weight:300; } .wf-weight-bold { font-weight:700; }
+.wf-badge { border:1px solid #9ca3af; border-radius:var(--wf-radius); color:#374151; }
+.wf-badge.wf-weight-bold  { background:#374151; border-color:#374151; color:#fff; }
+.wf-badge.wf-weight-light { background:#f3f4f6; border-color:#d1d5db; color:#374151; }
+.wf-hr { border-top-color:#d1d5db; }

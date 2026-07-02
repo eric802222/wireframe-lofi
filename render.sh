@@ -7,10 +7,11 @@
 # Layer2 邊註（note）對齊靠瀏覽器量測後烤進 DOM（零 JS 產物）。
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
-DEBUG=0; BUNDLE=0
+DEBUG=0; BUNDLE=0; STYLE=""
 while :; do case "$1" in
   --debug) DEBUG=1; shift;;   # 出 .debug.html（可點擊註記+匯出）
   --bundle) BUNDLE=1; shift;; # 併成單檔 prototype.html（左 nav + 走動線）；可疊 --debug
+  --style) STYLE="$2"; shift 2;;  # 風格：clean(預設)/sketch(手繪框)…
   *) break;; esac; done
 if [ "$#" -eq 0 ]; then set -- "$DIR"/examples/*.wf.yaml; fi
 
@@ -27,7 +28,7 @@ fi
 
 # bundle / debug：都在瀏覽器跑、不需截圖 → 直接用 compiler 產出後結束
 if [ "$BUNDLE" = 1 ]; then
-  FLAGS="--bundle"; [ "$DEBUG" = 1 ] && FLAGS="$FLAGS --debug"
+  FLAGS="--bundle"; [ "$DEBUG" = 1 ] && FLAGS="$FLAGS --debug"; [ -n "$STYLE" ] && FLAGS="$FLAGS --style $STYLE"
   "$PY" "$DIR/wfyaml.py" $FLAGS "$@"
   if [ "$DEBUG" = 1 ]; then
     echo "  → 開 prototype.debug.html：左 nav 切頁走動線；切「模式:註記」點元素寫建議→「匯出」貼給我"
@@ -37,11 +38,13 @@ if [ "$BUNDLE" = 1 ]; then
   exit 0
 fi
 if [ "$DEBUG" = 1 ]; then
-  "$PY" "$DIR/wfyaml.py" --debug "$@"
+  SF=""; [ -n "$STYLE" ] && SF="--style $STYLE"
+  "$PY" "$DIR/wfyaml.py" --debug $SF "$@"
   echo "  → 用瀏覽器開 .debug.html：點元素寫建議，右上「匯出」複製後貼給我改 YAML"
   exit 0
 fi
 
+export WFYAML_STYLE="$STYLE"
 "$PY" - "$DIR" "$@" <<'PYEOF'
 import sys, os, glob
 SKILL_DIR = sys.argv[1]
@@ -110,13 +113,16 @@ with sync_playwright() as p:
     browser = p.chromium.launch()
     ctx = browser.new_context(java_script_enabled=True, viewport={'width': 1920, 'height': 700})
     page = ctx.new_page()
+    # PNG/SVG 管線離線化：產物已全 data-URI 內嵌，外部請求（CDN 字體 @import）一律 abort，
+    # 避免 wait_until='load' 卡在無法連線的 CDN 而連帶壓住本地樣式；字體自動退回系統字。
+    page.route('**/*', lambda r: r.abort() if r.request.url.startswith(('http://', 'https://')) else r.continue_())
     import re as _re
     for f in files:
         src = open(f).read()
         basedir = os.path.dirname(f) or '.'
         stem = _re.sub(r'\.(wf\.)?ya?ml$', '', f)
         base = os.path.basename(stem)
-        for rid, htmlout in wfyaml.compile_all(src, basedir, base):   # 每路由各一份
+        for rid, htmlout in wfyaml.compile_all(src, basedir, base, style=(os.environ.get('WFYAML_STYLE') or None)):   # 每路由各一份
             s2 = stem + (('.' + rid) if rid else '')
             html_path = s2 + '.html'
             open(html_path, 'w').write(htmlout)
