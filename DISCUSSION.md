@@ -241,3 +241,17 @@
 - [2026-07-02] **命名 `kind→name→label→is` 的收斂**：使用者逐一否決 kind(k8s 術語)、name(撞既有隱形 metadata 保留字)、label(不直覺)。根因：一直用**名詞式術語**命名「這是什麼」。改成 **`is`(是什麼) + `can`(能做什麼)** 一對 copula+modal → 讀成句子、短小白話、無術語、無撞車，與使用者偏好的 `can` 同語感。`caps→can` 同理（能力天生是動詞）。
 - [2026-07-02] **最終形**：純量簡寫 `widget: 工單表格` = `{is: 工單表格}`；完整 `widget: {is, can, body}`。`is`=標籤(顯示)、`can`=能力 chips、`body`=選填內部示意(複用容器/leaf/`to:`)。`name/tone/to` 仍為節點層 metadata 掛 widget 同層、正交。
 - [2026-07-02] **命名教訓**：`caps`/`kind` 當初是把「實作者的概念詞(capabilities/kind)」順手當 key，非從作者閱讀出發——與工具「語義由作者意圖命名」原則相違。作者面新 key 應先唸唸看「像不像人話」。
+
+### 統一模型:page / layout / component / widget = 「結構單元」,內容一律 body（2026-07-02，定案）
+
+起於「widget 內容該叫 body 還是 template?」,拉高到四者的語意統整,結論是**不加新字**。
+
+- [2026-07-02] **四者本質相同(一塊低保真結構),只差角色**:
+  - **page** = 會被輸出的畫面(有路由/URL、`canvas` meta);直接 render。
+  - **layout** = 可複用的**頁面骨架**;`extends:`(頁面「成為」它);挖 `slot:` 洞。
+  - **component** = 可複用的**內容片段**;`include:`(嵌入);`with:` 參數、可挖 `slot:`、`as:` 變體。
+  - **widget** = 代表元件庫擁有的**複雜元件的示意替身**;直接放進內容;`is`/`can`、自帶 `◫ 示意`。
+- [2026-07-02] **貫穿哲學:layout/component/widget 都是「低保真骨架,之後被實現」**——layout 被 slots 填實、component 被 include 具現、widget 被真元件庫實作。這是「統一」的真義,也是先前想用 `template` 標記的精神。
+- [2026-07-02] **關鍵決策:此精神由「單元類型」表達,不再造 `template` 字**。單元類型名(layout/component/widget)已講清角色,內容區再叫 template 是同義重複,違反「別設計過多詞彙」。→ **widget 內容維持 `body`,不加 template**(零改動,現況即是)。
+- [2026-07-02] **最小詞彙集**:內容區=`body`(page/layout/component/widget 通用)、洞/填洞=`slot:`/`slots:`、複用引用=`extends:`(骨架繼承)/`include:`(片段嵌入)、參數=`with:`、身份/能力=`is`/`can`(widget 特有)。
+- [2026-07-02] **解「body 語意不明確」**:body 曾感覺不清,是因 widget 被當特例;歸位成「與 page/layout 同類的結構單元」後,`body`=「任何單元的內容區」即一致清楚。「它是示意」由 widget 類型 + `◫ 示意` 標記 + `is` 扛,不靠 key 名重講。
