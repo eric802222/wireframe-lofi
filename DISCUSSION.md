@@ -322,3 +322,9 @@
 - [2026-07-02] **引用型解析**:`_tokens_css()` 把 `gap: {section: lg}` 編成 `:root{--wf-gap-section:var(--wf-space-lg)}`(放 clean 之後→可引用 primitive);`_gap(name)`:內建刻度直用 / 專案 token→`var(--wf-gap-<名>)` / 未知→退回 `md`+stderr warn(可攜地板 + 優雅退回 + lint)。`render_container` 的 gap/padding 改走 `_gap`。
 - [2026-07-02] **實測**:有 token→`gap: section/list` 生效(section 寬、list 緊);移掉 token 檔同份 YAML 仍渲染(退回 md + warn);全 examples 回歸無誤(頂層無 token 檔、primitive 照舊)。三條護欄驗證通過。
 - [2026-07-02] **待續**:Phase 2 組合型(overlay 角色 dialog/toast 由 token 定義、render_item 展開);tone/scroll 納入引用型;`--tokens` 顯式旗標;DTCG 匯入;lint 併入 P0.7。
+
+### semantic token Phase 2 實作:組合型 overlay 角色（2026-07-02，已實作）
+- [2026-07-02] **內建 overlay 角色(可攜地板)**:`_OVERLAY_DEFAULTS` = dialog/drawer/sheet/toast/loading，各為 pin/modal/layer 的組合;`_overlay_tokens()` = 內建 ∪ 專案 `wf.tokens.yaml` 的 `overlay:`。
+- [2026-07-02] **展開**:`render_item` 開頭偵測 node 是否帶 overlay 角色 key → 取出內容當 col、把角色的 pin/modal/layer 以 `setdefault` 注入(**node 顯式屬性可覆寫 token 預設**),再走既有容器 + pin/modal/layer 渲染。
+- [2026-07-02] **實測**:無 token 檔即可用 `loading:`/`toast:`/`drawer:`(內建地板);專案可覆寫(drawer→左)、自定新角色(banner)、node 顯式覆寫(dialog+layer:notify);全回歸無誤。
+- [2026-07-02] **成果**:之前一直當「糖」推遲的具名角色,正式成為**組合型 semantic token**——作者寫意圖(dialog)、地基是原語(pin/modal/layer)、專案可自定,三者兼得。待續:tone/scroll 引用型納管、`--tokens` 旗標、DTCG 匯入、lint。

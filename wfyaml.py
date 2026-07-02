@@ -641,6 +641,20 @@ def is_container(d):
 # --------------------------------------------------------------------------
 _LAYER_Z = {'base': 1, 'overlay': 10, 'notify': 20, 'top': 30}   # 封閉語意 z-scale（帶→z-index，封 renderer）
 
+# 組合型 semantic token：意圖名 → 組合 pin/modal/layer 原語。內建預設 = 可攜地板；
+# 專案可在 wf.tokens.yaml 的 `overlay:` 覆寫/加名。node 上顯式 pin/modal/layer 可覆寫 token 預設。
+_OVERLAY_DEFAULTS = {
+    'dialog':  {'pin': 'center', 'modal': True, 'layer': 'overlay'},
+    'drawer':  {'pin': 'right', 'modal': True, 'layer': 'overlay'},   # 側邊預設右；要左用 `pin: left` 覆寫
+    'sheet':   {'pin': 'bottom', 'modal': True, 'layer': 'overlay'},
+    'toast':   {'pin': 'bottom-right', 'layer': 'notify'},
+    'loading': {'pin': 'center', 'modal': True, 'layer': 'top'},
+}
+
+
+def _overlay_tokens():
+    return {**_OVERLAY_DEFAULTS, **(_TOKENS.get('overlay') or {})}
+
 
 def render_item(it, src=None, path=None):
     global _NCOUNT
@@ -655,6 +669,18 @@ def render_item(it, src=None, path=None):
     esrc = d.pop('__src', None) or src        # dict 自帶來源路徑優先（跨 component/slot），否則用父算的
     epath = d.pop('__path', None)
     epath = epath if epath is not None else path
+
+    _ov = _overlay_tokens()                   # 組合型 semantic token 展開：dialog/drawer/toast… → pin+modal+layer
+    _role = next((k for k in _ckeys(d) if k in _ov), None)
+    if _role:
+        content = d.pop(_role)
+        for k, v in _ov[_role].items():
+            d.setdefault(k, v)                # token 給預設；node 顯式 pin/modal/layer 可覆寫
+        d.setdefault('box', True)
+        if isinstance(content, list):
+            d.setdefault('col', content)
+        elif content not in (None, True):
+            d.setdefault('col', [content])
     name = d.pop('name', None)
     tone = d.pop('tone', None) or d.pop('severity', None)
     is_widget = 'widget' in d

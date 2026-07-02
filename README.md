@@ -284,7 +284,15 @@ gap: { section: lg, list: sm }     # 用途名 → 引用內建刻度
 
 - **錨定對象與常駐/暫時由「放在樹的哪裡」決定**：放頁面根=錨畫面/每頁常駐(機器人)；放某 `box` 內=錨那張卡；放某 `state` 的 `overlay` slot=按動線開關的暫時浮層。
 - **開關動線**：dialog 開啟 = 某個 state；`to: '#confirm'` 進入、`to: '#'` 關閉，複用既有 `to:`/routes。
-- 具名糖(如 `drawer: right`)可之後加，展開成上面原語；地基是原語，永不因新樣式擴充語彙。
+**具名語義 token（已內建，可攜地板）**：`dialog` / `drawer` / `sheet` / `toast` / `loading` —— 直接寫角色、免拼原語：
+
+```yaml
+- loading: [ row: [ icon: reload, text: 載入中… ] ]     # = pin:center + modal + layer:top
+- toast:   [ row: [ icon: check,  text: 已儲存 ] ]       # = pin:bottom-right + layer:notify
+- drawer:  [ text.heading: 篩選, row: [ spacer, { button: 套用 } ] ]   # = pin:right + modal
+```
+- 每個角色 = **組合 pin/modal/layer 的 semantic token**；node 上顯式 `pin`/`layer` 可覆寫其預設（如 `drawer` + `pin: left`）。
+- **專案可覆寫/加角色**：`wf.tokens.yaml` 的 `overlay:` 段（把 `drawer` 改左、或自定 `banner`）。沒定義 → 用內建；地基永遠是 `pin`/`modal`/`layer` 原語，不因新樣式擴充工具語彙。
 
 ### 6. 語義色（產品面，UI 產品狀態）
 
