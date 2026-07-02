@@ -333,3 +333,52 @@
 - [2026-07-02] **問題(使用者提)**:組合型 token 展開成 primitive 後,`drawer` 變成純 `box + pin`,「它是 drawer」在產物裡消失 → 無法區分/針對 styling(drawer 貼邊無圓角 vs box 有框)、也丟語義(LLM/debug 讀不出)。
 - [2026-07-02] **修法**:展開時**保留角色名當指紋**——node 加 class `wf-role-<角色>` + 屬性 `data-wf-role="<角色>"`。primitive 驅動機制、角色名留可讀/可 target 的指紋。同 `tone: danger`→`wf-tone-danger`、widget 留 `is` 的原則:semantic token 不該展開後蒸發。
 - [2026-07-02] **成果**:`.wf-role-drawer` 可獨立 styling(已加「貼邊無圓角」示範);`data-wf-role` 讓產物語義可讀;drawer/toast/loading 各留指紋、與一般 box 可區分。
+
+---
+
+## 【彙整】語義 token 系統總覽（2026-07-02，散條目索引 + 現況圖）
+
+> 以下為前述分散條目的統整;細節見各原始條目。
+
+### A. 三層模型
+- **primitive(tier-1)**:原始刻度/值——space `sm/md/lg`、色盤、z-scale、border、font。工具內建。
+- **semantic token(tier-2)**:意圖命名、引用/組合 primitive、**專案可定義**。兩型態:
+  - 引用型(單值):`gap: section`→space.lg、`tone: danger`→色、`frame: strong`→border。
+  - 組合型(一包屬性):`box.section`={gap:sm,frame:strong,padding:sm}、`overlay.drawer`={pin,modal,layer} → **tier 鏈**(容器 token→屬性 token→primitive)。
+- **grammar**:結構文法,不 token 化。
+
+### B. 全語彙五分類(+標註)
+| 類 | 判準 | 成員 | token 面 |
+|---|---|---|---|
+| ① 參數 | 配置頁/輸出 | page, canvas, routes | grammar |
+| ② 函式 | 引用/組合/控制 | extends, include, with, slot(s), as, when | grammar |
+| ③ 容器 | 有 children(key 位)| row, col, grid, box/box.*, widget, overlay.* | 家族點式 |
+| ④ 元件 | 終端葉子(key 位)| text.*, input, button, status.*, badge, icon… | 家族點式 |
+| ⑤ 屬性 | 掛節點的修飾(value 位)| name, gap, tone, frame, pin, modal, layer, to | 裸值,值可 token 化 |
+| 標註 | Layer2 meta | note, spotlight | meta,不 token |
+
+### C. 命名規則
+- 容器③+元件④(key 位)→ `family.variant` 點式(有變體);單一裸。
+- 屬性⑤(value 位)→ 裸值(`gap: section`);類別由 key 決定。
+- ①②+標註 = grammar/meta,不 token。
+
+### D. 浮層 / box / frame
+- 浮層三原語:`pin`(錨)+ `modal`(擋)+ `layer`(z 帶 base<overlay<notify<top)。
+- box 容器化:`box`/`box.header/section/footer`(語義容器家族,專案定義屬性預設包);**框線降為 `frame` 屬性**(可 token 化 DTCG border 複合);box 預設框由角色 style 給、`frame` 可覆寫。
+- 組合 token 展開留 `wf-role` 指紋(drawer ≠ 一般 box、可 target styling、語義可讀)。
+- ⏳ 待決:z 帶名 `overlay` 撞容器家族 `overlay.*` → 考慮改 `raised`。
+
+### E. 擴充:專案 design token(非 theme)
+- `wf.tokens.yaml`(選配):各專案自帶語義 scale 值;與 `--style`(外觀 flavor)**正交**。
+- 「單一語義源 × 漸進保真」旋鈕:換 token 不動 YAML → 逼近某產品 mockup。
+- 對齊 W3C DTCG(color/dimension/border/typography 有型別;`layer` 無型別需 `$extensions`)。
+- origin(內建 vs 專案):type-namespace + lint/introspection(放棄 `$` sigil)。
+
+### F. 護欄(不破北極星)
+強化②;①靠三條:零設定可用 / semantic token 純選配 / 低保真為預設;+ 內建可攜地板 + 未知優雅退回。
+
+### G. 實作進度
+- ✅ pin/modal/layer 原語;Layer 1/2 → 產品面/標註面。
+- ✅ Phase 1 引用型 token(gap)+ CSS var 別名 + fallback + lint warn。
+- ✅ Phase 2 組合型 overlay.* token + wf-role 指紋。
+- ⏳ 待實作:box 容器家族 + frame 屬性/token、組合型一般化(任意專案家族)、frame/tone/scroll 納引用型、`--tokens` 旗標、DTCG 匯入、lint 併 P0.7、z 帶改名。
