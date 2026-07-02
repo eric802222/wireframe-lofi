@@ -192,14 +192,18 @@ content:
 | `image: 主圖` | 佔位圖（map `{label, w, h, ratio}`；`ratio: 16/9`） |
 | `tabs: {active: 報價, items: [...]}` | 分頁列 |
 
-**行內 markdown**（在任一 text 值內）：`**粗**` / `*斜*` / `~~刪除線~~` / `[字](url)`。
+**行內 markdown**（在任一 text 值內）：`**粗**` / `*斜*` / `~~刪除線~~` / `[字](目標)`。
 
 ### 5. 動線 / 連結
 
+**語義軸：意圖由作者宣告，不靠 compiler 猜 URL 長相。** 目標帶 `to:` = wireframe 動線；否則 = 外部真連結。
+
 | 寫法 | 說明 |
 |------|------|
-| `to: page`（掛元件/區塊上） | **wireframe 動線**：跳到另一頁/路由（`to: "deal#approving.pending"`）；未來走 flowmap |
-| `link: {text, to}` | **產品裡真的超連結**（外部 URL）；不進 flowmap |
+| `to: page`（掛元件/區塊上） | **wireframe 動線**：跳到另一頁/路由（`to: "deal#approving.pending"`）。依輸出（單頁/bundle/debug）自動改寫、進 flowmap |
+| `[字](to:page#stage)`（句中行內） | **句中 inline 動線**：唯一能讓「一句話中的某個詞」可點跳頁的寫法。`to:` 前綴同 block `to:` 同義，依輸出改寫、進 flowmap |
+| `[字](https://…)`（句中行內） | **外部真連結**：無 `to:` 前綴 → 原樣輸出（`mailto:`/`tel:`/`#` 同理，皆字面）；不進 flowmap |
+| `link: {text, to}` | **產品裡真的超連結**（外部 URL）；原樣輸出、不進 flowmap |
 
 ### 6. 語義色（Layer 1，UI 產品狀態）
 

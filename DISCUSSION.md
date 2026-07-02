@@ -168,3 +168,14 @@
   - `--wf-font` stack 末端接系統手寫字 + `cursive`：CDN 失效/離線自動優雅回退，不影響結構呈現。
 - [2026-07-02] **`_hoist_imports()`**：`@import` 規則必須位於樣式表最前否則被瀏覽器忽略；clean/sketch 疊加後 @import 會夾在中間 → 編譯時用 regex（限 `@import url(|"...`，避免誤抓註解字樣）把所有 @import 提到 `<style>` 開頭。
 - [2026-07-02] **PNG/SVG 管線 route-abort 外部請求**（踩坑修正）→ headless 用 `wait_until='load'`，離線 sandbox 下 CDN `@import` 會卡住，chromium 等外部樣式表時把**本地 sketch 規則（含手繪 border-image）一起壓掉** → 整頁退回 clean。修法：`page.route` 把 http(s) 請求全 abort（產物本已全 data-URI 內嵌，不需外部）→ @import 秒失敗、本地規則正常套用、字體回退系統。**分工**：PNG/SVG = 手繪框 + 系統回退字（離線）；HTML 用瀏覽器開 = 手繪框 + CDN Comic Neue/Yozai。
+
+### inline 連結 / 連結語義軸：意圖宣告化，不靠 compiler 嗅探 URL（2026-07-02，定案，已實作）
+
+- [2026-07-02] **起點（helpdesk QPKG 專案回饋）**：想讓「一句話中的某個詞」可點跳頁（如「需先以 QNAP ID 登入」的 QNAP ID），但 inline `[字](url)` 與 `link:` 的 `to` 不走 `_href`，href 原樣輸出 → 作者被迫寫死 bundle 錨點，單頁/debug 就跳不動，違反「一份語義源→三種輸出」。原提案：讓 inline/link 也走 `_href`，並把 `_href` 的 external 判斷放寬到 `://|mailto|tel|#`。
+- [2026-07-02] **使用者否決放寬嗅探方向**：「應該要語意化而不是把意圖跟判斷封裝在 compiler」→ 「這是外部還是動線」是**作者的意圖**，該長在 YAML 語彙，不是 compiler 用字串長相 if-else 去猜。放寬 `_href` 嗅探正是反例（把更多政策塞進 compiler）。
+- [2026-07-02] **定案：語義軸各自擁有行為，compiler 只有一條規則**：
+  - 目標帶 `to:`（block `to:` key / inline `to:` 前綴）= **wireframe 動線** → 走 `_href` 依單頁/bundle/debug 改寫、進 flowmap。
+  - 否則（`link:`、無前綴 inline、`mailto:`/`tel:`/`#`）= **外部/字面** → 原樣輸出、不進 flowmap。
+  - inline 句中連結是「詞可點跳頁」的**唯一**表達（button/to: 是區塊塞不進句中）；用 `to:` 前綴宣告意圖（與 block `to:` 同字彙）。
+- [2026-07-02] **反而是「少一條判斷」**：`_href` 移除 `if '://' in t` 嗅探 → 它變純動線解析器（外部永不流經）；`mailto/tel/#` 自然歸字面、免特例。這正是使用者要的「意圖在語彙、判斷不在 compiler」。
+- [2026-07-02] **實作**：`inline()` 的 `[字](目標)`：`to:` 前綴→`_href(去前綴)`，否則字面（已 esc）。`_href` 去掉 `://` 守衛。`link:` 葉子維持字面 `esc(to)`（外部）。flowmap `walk_to` 加掃 inline `[字](to:目標)`、且跳過 `link:` 子樹（外部不計入動線）。三模式 + flowmap 實測通過。

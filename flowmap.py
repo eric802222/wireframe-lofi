@@ -30,18 +30,27 @@ def _label(obj):
     return ''
 
 
+_INLINE_TO = re.compile(r'\[([^\]]+)\]\(to:([^)]+)\)')  # inline 動線連結 [字](to:目標)
+
+
 def walk_to(obj):
-    """遞迴收集 (target, label)；block 級 to 與 button/link map 內的 to 都吃。"""
+    """遞迴收集 (target, label)；吃 block 級 to、button 的 to、inline [字](to:目標)。
+    link:（外部真連結）不計入動線 → 不遞迴其子樹、不收其 to。"""
     edges = []
     if isinstance(obj, dict):
         t = obj.get('to')
         if isinstance(t, str) and '://' not in t:
             edges.append((t, _label(obj)))
-        for v in obj.values():
+        for k, v in obj.items():
+            if k == 'link':                    # link: = 外部，不計入動線
+                continue
             edges += walk_to(v)
     elif isinstance(obj, list):
         for x in obj:
             edges += walk_to(x)
+    elif isinstance(obj, str):
+        for m in _INLINE_TO.finditer(obj):     # inline 只有帶 to: 前綴者算動線
+            edges.append((m.group(2).strip(), m.group(1)))
     return edges
 
 

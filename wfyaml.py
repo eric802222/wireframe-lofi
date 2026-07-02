@@ -314,10 +314,16 @@ def _track(tok):
 
 
 def inline(s):
-    """text 值內的行內 markdown：**粗** / *斜* / ~~刪除線~~ / [字](url)。扁平、每葉子獨立。"""
+    """text 值內的行內 markdown：**粗** / *斜* / ~~刪除線~~ / [字](目標)。扁平、每葉子獨立。
+    連結目標語義化：帶 `to:` 前綴 = wireframe 動線（依單頁/bundle/debug 輸出改寫）；否則 = 外部真連結原樣輸出。"""
     s = esc(s)
-    s = re.sub(r'\[([^\]]+)\]\(([^)]+)\)',
-               lambda m: f'<a class="wf-hyperlink" href="{m.group(2)}">{m.group(1)}</a>', s)
+
+    def _a(m):
+        txt, tgt = m.group(1), m.group(2)
+        href = _href(tgt[3:]) if tgt.startswith('to:') else tgt   # to:→動線解析；否則外部字面（已於上方 esc）
+        return f'<a class="wf-hyperlink" href="{href}">{txt}</a>'
+
+    s = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _a, s)
     s = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
     s = re.sub(r'~~(.+?)~~', r'<del>\1</del>', s)
     s = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', s)
@@ -343,9 +349,9 @@ def _pgid(page, frag=''):
 
 
 def _href(target):
+    # 純 wireframe 動線解析器：只收「已宣告為動線」的目標（block `to:` / inline `to:` 前綴）。
+    # 外部/真連結由 link: 與無前綴 inline 走字面輸出，永不流經此處 → 不需在這裡嗅探 URL 長相。
     t = str(target)
-    if '://' in t:
-        return esc(t)
     page, _, frag = t.partition('#')
     page = re.sub(r'\.html$', '', page)
     if _BUNDLE:                             # 單檔 bundle：連結 → 頁內錨點
