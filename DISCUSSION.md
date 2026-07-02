@@ -474,4 +474,14 @@
   ```
   AI 無論產 wireframe / mockup / codegen 都用同一組詞彙寫。
 - [2026-07-02] **細節見** `TOOL-SUGGESTIONS.md` P5 節。
+
+### ⏳待討論：Flow-scoped 聚焦輸出（P6，2026-07-02）
+
+- **問題**：巨型專案 POC/評審不該 bundle 整包 500 頁；單頁又無動線；手選一組頁無命名。**flow 是對的粒度**（一次決策對應一條 flow）。
+- **兩個機制構想**（並存互補）：
+  - **A. 自動 walk**：`--bundle --entry X --depth N` 從入口沿 `to:` 動線圖走 N 跳（`flowmap.py` 已有 walk 演算法可 reuse）。適用探索期。
+  - **B. 具名 manifest**：`flows/<name>.yaml` 只寫 `entry` + 選填 `include/exclude`，pages 靠 `to:` 自動 walk。適用固化流程反覆評審。
+- **屬 Ring 2 擴充**：不動 YAML 詞彙、走既有動線、~30 行複用 flowmap；符合 anti-drift。
+- **附加價值**：flow 天然是團隊分工/PR/評審排程單位；`flows/` 目錄=專案 sitemap。
+- **狀態**：**方向紀錄，未承諾實作**。等真的多條 flow 需求拉動再做（YAGNI）。細節見 `TOOL-SUGGESTIONS.md` 優先序表 P6 欄。
 - [2026-07-02] **定位**:這是「單一語義源 × 漸進保真」從口號變可執行輸出模式,也是 token 系統的**前置地基**——**先於**任何進一步 token 擴充(有它才安全地讓 token 變豐富而不失焦)。

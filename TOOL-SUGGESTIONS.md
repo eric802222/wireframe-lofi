@@ -765,6 +765,7 @@ Ring 2  輸出模式（旗標，不進 YAML · 讀者面）
 | **P5.2** | `--emit ast` | codegen 前置；wireframe→AST→code 缺這段 | 中量 |
 | **P5.3** | `--audience` sugar 別名 | 多受眾動態輸出的 CLI 打包 | ~10 行 |
 | **P5.4** | Ring 0 字母表 明列（文件） | AI 一眼看完全部原語 | 文件 |
+| **P6 ⏳待討論** | Flow-scoped 聚焦輸出（`--entry` 自動 walk `to:` 圖 / `flows/<name>.yaml` manifest） | 巨型專案 POC 評審的正確粒度；不動 YAML 詞彙、走 flowmap 現有 walk | 未定 |
 
 ---
 
