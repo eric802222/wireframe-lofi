@@ -199,3 +199,38 @@
 - [2026-07-02] **維護者結論：方向成立、與北極星②一致、無阻斷問題**。實作範圍小（`_track` 一行 + README 三處 + clean.css 預設寬）。
 - [2026-07-02] **已實作**：`_track` 的 `1fr` 組加入 `grow`（正名主詞，`flex-1`/`fill`/`w-full` 為相容別名）；`fit` 本已在 `auto` 組（僅 README 正名）；README 欄寬段改為關係型正道表 + `w-N` 逃生門 framing + 「間距=節奏、寬度=關係」；`styles/clean/style.css` 給 `.wf-input` 加 `max-width:20rem`（`select` 本就依內容，不加以免被撐寬）。
   - **實作中發現**：base wf.css 的 `.wf-field .wf-input{width:100%}` 其實是**死碼**——無任何 emitter 產生 `.wf-field` 容器（只有 `text.label` 的 `wf-fieldlabel`）。輸入框本就是 `inline-block` 內容寬、不填滿寬欄，故 `max-width` 對既有 inline 用法無影響。`.wf-field .wf-input{max-width:none}` 守衛保留為該（現死）慣例的防護，日後真做 field 容器兩條規則即協作。死碼清理另議。
+
+### 低保真契約的完整輪廓：四切面 + design token 對照 + 示意元件容器（2026-07-02，定案，widget 實作中）
+
+起於使用者提問「我訂的這些是不是很像 design token？」與「wireframe 主張排版會不會越權、封死 mockup？」，一路收斂出工具 identity 的完整輪廓。
+
+**A. 語彙 ↔ design token 對照（值軸=token / 關係軸=primitive）**
+- 你定的間距(`none/sm/md/lg`)、tone、radius、字體 = **design token 的語義層(tier-2 alias)**，`:root` CSS 變數就是標準落地格式，`--style`/`:root` 覆寫 = 換值換皮(theming)。北極星②「語義非視覺」= design token 核心原則,等於獨立推導到同一結論。
+- **兩點差異**：① 你把 primitive **封印**了(顏色只有 tone、字級只有 h1/2/3、寬度 `w-96` 是逃生門)——比一般 DT 嚴;② **不是每樣都是 token**——值軸(間距/色/radius/字體)=真 token,**關係軸(寬度 grow/fit、排版、對齊、grow)=layout primitive 不是 token**(不解析成固定值)。這正是「寬度不能套 sm/md/lg」的一句話根因。
+- 未來若 theming 變深：把現在內嵌在 tier-2 的原始值(hex/rem)抽成 tier-1 調色盤讓語義名 reference;跨工具再對齊 W3C DTCG。現不需要。
+
+**B. WHERE vs HOW（主張排版不越權；用關係講、不用像素釘）**
+- wireframe **主張 WHERE**(誰在誰旁邊、被推到兩端、在誰下方)——這是本體(北極星①);**不主張 HOW**(像素幾何、樣子)——那是 mockup 地盤。
+- 「logo 左、setting 右」是純 WHERE,合法。**驗證**:你會寫 `row: between`(講「兩端」的關係),不是絕對座標 → **用關係表達位置 = 不越權**;用像素釘位置才越權。這跟顏色只准 tone、寬度只准 grow/fit 同一把尺。
+- 「封死 mockup」是誤解兩 artifact 關係:wireframe 是**可丟鷹架**或**可升保真的活源**,改一行重渲即可,封不死 mockup;真會封死是「組織把它當綁定規格」的流程問題,而低保真長相 + 改一行就變正是抵消它的機制。設計師分歧因此變成**有意識決定**而非無聲 drift。
+
+**C. 結構保真度（別把慣例元件拆成釘死零件）**
+- low-fi 契約的**第二個維度**:除了「別釘像素」(視覺保真),還有「別把 table 的 filter/search/sort 位置釘死」(結構保真)——那是元件庫擁有的慣例,前端會挑 AntD/MUI,不會照刻,釘死 = 過度指定 + 摩擦。
+- **三個高度**:① 產品結構(wireframe 擁有:頁/大區/table 在這頁) ② 元件能力/意圖(宣告「能 search/filter/sort」不擺 widget) ③ 元件內部組合(元件庫擁有:排哪、sort 記號長怎樣 → 別主張)。
+- **判準**:某個擺放是「刻意 UX 決策」(filter 常駐左欄因用戶整天篩)→ 主張;還是「元件剛好的預設」→ 放手。
+
+**D. 保真度靠「自我聲明」把關,不靠「限制內容」（關鍵轉向）**
+- 前面「宣告能力、別擺內部」收太緊。真正問題不是「畫了內部」,是「內部被當規格」。**自我聲明**解掉它:元件自帶「示意」標記 → 內部一律讀作代表性、非規格。
+- 於是契約從**「限制你能畫什麼」轉為「對你畫的東西誠實」**:你可以畫得很細(內部排版 + `to:` 動線 demo)又完全不越權——因為 (a) 用關係型低保真詞彙(非像素)、(b) 元件聲明了自己是代表性的。**細節 ≠ 規定**,把「封死 mockup」疑慮解得最徹底。這是低保真社交訊號從「靠手繪長相暗示」升級成「語義層明講」。
+
+**第三條原則（前兩條北極星的推論）**
+> ③ 停在對的高度:複雜元件 = **自我聲明示意的容器**,宣告「能力」與/或示意「內部排版與動線(`to:`)」,不規定「實作」;不論多細,自我聲明保真度讓它保持代表性、非規定,實作內部歸元件庫。
+
+至此低保真契約有**四切面**(同一 identity):(A) 寬度只走關係、(B) WHERE 用關係講不用像素釘、(C) 結構保真別拆死慣例元件、(D) 複雜元件宣告能力 + 自我聲明。
+
+**示意元件家族 `widget`（table/chart/rich editor… 的通例；決策:先做通用 widget,具名之後擴充）**
+- `widget: {kind, caps?, body?}`(或 `widget: 類型` 純量)。`kind`=類型標籤;`caps`=能力標籤 chips;`body`=選填內部示意排版(複用 row/col/grid/leaf 與 `to:` 動線)。
+- 渲染 = 低保真框(虛線,區別實心 box) + 上頭(類型 + `◫ 示意` 標記) + caps chips + body + 註腳「實作依設計／元件庫」。**自我聲明內建在型別**,不用每次手寫。
+- **兩種用法**:輕量(只 caps)/ 豐富(內部排版 + `to:` demo 動線)。demo 深度 = **視覺示意 + 可導覽**(零-JS 的 `to:`,非真過濾資料;真互動要 JS 且等於替元件庫做事,不做)。
+- **通用優先於具名**:先一個通用 `widget` 接住所有(含沒見過的 rich editor/map);常用的 table/chart 之後再加具名 kind 做較貼的示意渲染,共用同一「宣告能力 + 自我聲明」基座。
+- 幾乎全複用現成機制:內部走既有容器/leaf 渲染;`to:` 走剛做好的動線(單頁/bundle/debug + flowmap 皆通,walk_to 遞迴自然涵蓋 widget body)。

@@ -554,6 +554,38 @@ def render_container(d, xcls, xattr, src=None, base=''):
     return f'<div class="{" ".join(cls)}"{st}{_attrs(xattr)}>{body}</div>'
 
 
+def render_widget(d, xcls, xattr, src=None, path=None):
+    """示意複雜元件（table/chart/rich editor…的代表物）。自我聲明保真度：
+    宣告能力(caps) 與/或 示意內部排版(body，複用 row/col/grid/leaf 與 to: 動線)，
+    但自帶「示意」標記 → 內部一律讀作代表性、非規格，實作內部歸元件庫。"""
+    w = d['widget']
+    if not isinstance(w, dict):
+        w = {} if w is True else {'kind': w}
+    kind = w.get('kind', '元件')
+    caps = w.get('caps') or []
+    body = w.get('body')
+    bpath = (f'{path}.widget.body' if path else 'widget.body')
+
+    head = (f'<div class="wf-widget-head"><span class="wf-widget-kind">{esc(kind)}</span>'
+            f'<span class="wf-widget-tag">◫ 示意</span></div>')
+    caps_html = ''
+    if caps:
+        chips = ''.join(f'<span class="wf-tag wf-tag-muted">{esc(c)}</span>' for c in caps)
+        caps_html = f'<div class="wf-widget-caps">{chips}</div>'
+    if body is None:
+        body_html = ''
+    elif isinstance(body, dict):
+        body_html = render_container(body, [], {}, src, bpath)
+    elif isinstance(body, list):
+        body_html = ''.join(render_item(it, src, f'{bpath}[{i}]') for i, it in enumerate(body))
+    else:
+        body_html = render_item(body, src, bpath)
+    foot = '<div class="wf-widget-foot">實作依設計／元件庫</div>'
+
+    cls = ['wf-node', 'wf-widget'] + xcls
+    return f'<div class="{" ".join(cls)}"{_attrs(xattr)}>{head}{caps_html}{body_html}{foot}</div>'
+
+
 def _ckeys(it):
     """內容鍵（排除 __src/__path 蓋章）→ 供結構判斷不受蓋章干擾。"""
     return set(it) - {'__src', '__path'}
@@ -585,7 +617,8 @@ def render_item(it, src=None, path=None):
     epath = epath if epath is not None else path
     name = d.pop('name', None)
     tone = d.pop('tone', None) or d.pop('severity', None)
-    block_to = d.pop('to', None) if is_container(d) else None
+    is_widget = 'widget' in d
+    block_to = d.pop('to', None) if (is_container(d) or is_widget) else None
     spot = d.pop('spotlight', None)
     note = d.pop('note', None)
     span = d.pop('span', None)
@@ -599,7 +632,9 @@ def render_item(it, src=None, path=None):
     if isinstance(span, int):
         xattr['style'] = f'grid-column:span {span}'
 
-    if is_container(d):
+    if is_widget:
+        core = render_widget(d, xcls, xattr, esrc, epath)
+    elif is_container(d):
         d.setdefault('span', span) if isinstance(span, int) else None
         core = render_container(d, xcls, xattr, esrc, epath)
     else:

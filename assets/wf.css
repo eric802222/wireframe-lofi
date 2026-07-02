@@ -53,6 +53,10 @@ label.wf-trigger:not(.wf-select):not(.wf-btn) {
 .wf-fa { height:.95em; width:auto; vertical-align:-0.12em; fill:currentColor; }
 .wf-lu { height:1.05em; width:1.05em; vertical-align:-0.18em; }
 .wf-hint { font-style:italic; font-size:.88em; }
+/* 示意複雜元件（widget）：結構——上頭(類型+示意標記) / caps chips / body / 註腳 */
+.wf-widget { display:flex; flex-direction:column; gap:var(--wf-space-sm); }
+.wf-widget-head { display:flex; align-items:center; justify-content:space-between; gap:var(--wf-space-sm); }
+.wf-widget-caps { display:flex; flex-wrap:wrap; gap:var(--wf-space-sm); }
 .wf-h { font-weight:700; }
 .wf-badge { display:inline-block; padding:1px 6px; font-size:.85em; line-height:1.4; white-space:nowrap; }
 /* --- Layer2 gutter 邊註（meta，不隨 style）--- */
