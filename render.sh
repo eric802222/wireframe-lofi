@@ -7,13 +7,28 @@
 # Layer2 邊註（note）對齊靠瀏覽器量測後烤進 DOM（零 JS 產物）。
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
-DEBUG=0; BUNDLE=0; STYLE=""
+DEBUG=0; BUNDLE=0; STYLE=""; MOCKUP=""
 while :; do case "$1" in
   --debug) DEBUG=1; shift;;   # 出 .debug.html（可點擊註記+匯出）
   --bundle) BUNDLE=1; shift;; # 併成單檔 prototype.html（左 nav + 走動線）；可疊 --debug
-  --style) STYLE="$2"; shift 2;;  # 風格：clean(預設)/sketch(手繪框)…
+  --style) STYLE="$2"; shift 2;;  # 風格：clean(預設) / sketch(手繪框)。mockup 樣貌由 --mockup <theme.yaml> 決定，不進 --style。
+  --mockup) MOCKUP="$2"; shift 2;;  # ⏳ Phase 2+ 才會實作 theme binding；先接受旗標留位。
   *) break;; esac; done
 if [ "$#" -eq 0 ]; then set -- "$DIR"/examples/*.wf.yaml; fi
+
+# --style 值域限縮：只認 clean / sketch（mockup 樣貌由 --mockup <theme> 決定）
+if [ -n "$STYLE" ] && [ "$STYLE" != "clean" ] && [ "$STYLE" != "sketch" ]; then
+  echo "  [error] --style 只接受 clean 或 sketch（收到：$STYLE）。mockup 樣貌請用 --mockup <theme.yaml>。" >&2
+  exit 1
+fi
+# --style sketch × --mockup 互斥（語義衝突）
+if [ "$STYLE" = "sketch" ] && [ -n "$MOCKUP" ]; then
+  echo "  [error] --style sketch 與 --mockup 互斥（低保真美學 vs 高保真綁定）。" >&2
+  exit 1
+fi
+if [ -n "$MOCKUP" ]; then
+  echo "  [warn] --mockup 綁定系統尚未實作（Phase 2+），旗標暫時忽略：$MOCKUP" >&2
+fi
 
 PY=""
 for cand in "${WFYAML_PY:-}" python3 /usr/bin/python3 /opt/homebrew/bin/python3 python; do

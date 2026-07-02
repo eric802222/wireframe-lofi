@@ -520,4 +520,22 @@
   - 未知 primitive 引用 → warn 退回預設
 - [2026-07-03] **對三環架構的定位**：四層是**如何組織 Ring 1 資產**（primitive → component → page；theme 側路綁定），三環是**如何暴露給作者/AI/讀者**。兩者正交、不衝突。
 - [2026-07-03] **對現況改動**：`wf.tokens.yaml` 拆成 `tokens/*.yaml`（primitive 分類）；現有 `assets/styles/<name>/style.css` 保留為 web renderer 實作細節；新增 `themes/*.yaml` 資料層；`--fidelity` 移除；P0.7 lint 加消費規則 5 條。細節見 `TOOL-SUGGESTIONS.md` P7 節。
+
+### 全字詞審查 & 分階段執行計畫（2026-07-03，決策定案，Phase 0-2 執行中）
+
+一次性 review 全部 keyword/CLI/scale，收斂**換名 / 合併 / 新增 / 移除**動作，分三階段執行。動作圖例：⚠️ 換名 · 🔀 合併 · 🔵 新增 · ❌ 移除。
+
+- [2026-07-03] **⚠️ `include:` → `embed:`**（Phase 0a）→ Twig `{% embed %}` = include + slot 覆寫，命中 wireframe-lofi include-with-slots 真實語義；`extends` + `embed` 骨架/片段對比更清晰。POC 階段換名成本最低。loader 相容 `include:` 走 deprecated warning，過渡期後移除。
+- [2026-07-03] **❌ `--fidelity` 旗標移除 + `--style mockup` 移除**（Phase 0b）→ `--mockup <theme.yaml>` 一箭雙鵰（見前 P7 定案）：theme 存在即 fidelity 訊號、`--style` 只留 wireframe 側美學 `clean/sketch`。CLI 少兩個旗標。
+- [2026-07-03] **🔵 新增 `progress` leaf**（Phase 0c）→ `progress: {value: 0-1, tone, label?}` 或 scalar `progress: 0.5`。value 用 0-1 語義比例（非像素/%字串）；記帳/預算/募款/專案剛需。
+- [2026-07-03] **🔵 新增 `avatar` leaf**（Phase 0d）→ `avatar: {label, size}`（`size: sm/md/lg`）或 scalar `avatar: EC`。**視覺封印邊界**：禁 `src` / `bg` 等視覺逃生口。收斂 DISCUSSION line 45 待補項。
+- [2026-07-03] **🔀 `items:` 用法合併**（Phase 1a）→ row/col 只認 `row: [ ... ]` list 短寫，禁 `items:` 顯式（跟 P0 sibling form 明拒 dict-form 同步）；grid 保留 items（因 grid 值是 tracks 不是 items）。違者 error + actionable diagnostic。
+- [2026-07-03] **🔀 `badge` → `status.badge` 合併**（Phase 1b）→ badge 併入 status 家族（`status` 圓角 chip、`status.muted`、`status.strong`、`status.badge` 方角）。Ring 0 少一詞、家族一致。相容 `badge:` 走 deprecated warning。
+- [2026-07-03] **🔀 tokens 檔案結構扁平化**（Phase 2a）→ 從單檔 `wf.tokens.yaml` 改成 `tokens/*.yaml` 目錄（`spacing.yaml`/`tones.yaml`/`overlay.yaml`…），loader 合併載入；primitive vs composite 靠檔名/約定，不做 sub-dir（減少目錄深度）。
+- [2026-07-03] **🔵 `wireframe-lofi list` introspection 子命令**（Phase 2b）→ 列 Ring 0 全部原語 + 專案 Ring 1（讀 tokens/）；分 `--ring 0/1` 過濾。給 AI 動筆前一次看懂全詞彙。
+- [2026-07-03] **⏳ 保留待後續議題**：
+  - `as:` 雙重語義（`as: placeholder` 降階 vs `as: {stage}` 變體）—— 是否拆 `stub:` + `variant:`？換名成本高，先文件明講兩用法（Phase 3+）
+  - `--emit ast/react/swiftui` codegen（P5.2）—— 等 P0.7 schema validation 上線再議
+  - `--audience` sugar（P5.3）—— CLI shim，後補
+- [2026-07-03] **執行順序**：Phase 0（換名 + 移旗標 + 兩枚 leaf）→ Phase 1（items/badge 合併）→ Phase 2（tokens 目錄 + `list` 子命令）→ 5 頁記帳 app 回歸驗證。細節動作見 `TOOL-SUGGESTIONS.md` 尾段動作表。
 - [2026-07-02] **定位**:這是「單一語義源 × 漸進保真」從口號變可執行輸出模式,也是 token 系統的**前置地基**——**先於**任何進一步 token 擴充(有它才安全地讓 token 變豐富而不失焦)。

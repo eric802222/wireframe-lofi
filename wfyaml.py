@@ -151,10 +151,37 @@ _TOKENS = {}
 
 
 def _load_tokens(basedir):
-    """探測 basedir/wf.tokens.yaml（選配）。不存在則 _TOKENS 空、全用內建 primitive。"""
+    """探測專案 tokens（選配）。載入優先序：
+    1. basedir/tokens/*.yaml（Phase 2a：多檔扁平化，各檔淺合併；同 key 後蓋前）
+    2. basedir/wf.tokens.yaml（相容單檔）
+    不存在則 _TOKENS 空、全用內建 primitive。
+    """
     global _TOKENS
-    p = os.path.join(basedir or '.', 'wf.tokens.yaml')
-    _TOKENS = (yaml.safe_load(open(p, encoding='utf-8')) or {}) if os.path.exists(p) else {}
+    _TOKENS = {}
+    base = basedir or '.'
+    tdir = os.path.join(base, 'tokens')
+    if os.path.isdir(tdir):
+        for fn in sorted(os.listdir(tdir)):
+            if not (fn.endswith('.yaml') or fn.endswith('.yml')):
+                continue
+            try:
+                data = yaml.safe_load(open(os.path.join(tdir, fn), encoding='utf-8')) or {}
+                for k, v in data.items():
+                    if isinstance(v, dict) and isinstance(_TOKENS.get(k), dict):
+                        _TOKENS[k] = {**_TOKENS[k], **v}   # 淺合併同家族
+                    else:
+                        _TOKENS[k] = v
+            except Exception as e:
+                sys.stderr.write(f"[warn] 讀取 tokens/{fn} 失敗：{e}\n")
+    # 相容單檔（若存在，疊加在目錄之上；同 key 後蓋前）
+    p = os.path.join(base, 'wf.tokens.yaml')
+    if os.path.exists(p):
+        data = yaml.safe_load(open(p, encoding='utf-8')) or {}
+        for k, v in data.items():
+            if isinstance(v, dict) and isinstance(_TOKENS.get(k), dict):
+                _TOKENS[k] = {**_TOKENS[k], **v}
+            else:
+                _TOKENS[k] = v
 
 
 def _tokens_css():
@@ -182,10 +209,11 @@ JUSTIFY = {'between': 'space-between', 'end': 'flex-end', 'start': 'flex-start',
            'center': 'center', 'around': 'space-around'}
 ALIGN = {'center': 'center', 'top': 'flex-start', 'bottom': 'flex-end',
          'baseline': 'baseline', 'stretch': 'stretch'}
-CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'include', 'slot'}
+CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'embed', 'include', 'slot'}
 LEAF_ROLES = ['text.title', 'text.heading', 'text.label', 'text.strong', 'text.hint', 'text',
-              'input', 'select', 'button', 'status.muted', 'status.strong', 'status',
-              'badge', 'alert', 'icon', 'divider', 'tabs', 'image', 'checkbox', 'radio', 'link']
+              'input', 'select', 'button', 'status.badge', 'status.muted', 'status.strong', 'status',
+              'badge', 'alert', 'icon', 'divider', 'tabs', 'image', 'checkbox', 'radio', 'link',
+              'progress', 'avatar']
 TEXT_CLASS = {'text': 'wf-label', 'text.title': 'wf-h wf-h1', 'text.heading': 'wf-h wf-h2',
               'text.label': 'wf-label wf-fieldlabel', 'text.strong': 'wf-b', 'text.hint': 'wf-hint'}
 
@@ -245,6 +273,30 @@ CSS_EXTRA = r"""
 .wf-sb-track { flex:1; position:relative;
   background-image:repeating-linear-gradient(45deg,#9ca3af 0 1px,transparent 1px 3px); }
 .wf-sb-thumb { position:absolute; left:1px; right:1px; top:2px; height:40px; background:#6b7280; border:1px solid #374151; }
+/* progress leaf：語義比例 fill bar；tone 走 Layer 1 顏色 */
+.wf-progress { position:relative; display:block; height:.75rem; background:#e5e7eb;
+  border-radius:var(--wf-radius-pill); overflow:hidden; min-width:4rem; }
+.wf-progress-fill { position:absolute; top:0; left:0; bottom:0; background:#6b7280;
+  border-radius:var(--wf-radius-pill); transition:width .2s ease; }
+.wf-tone-danger  > .wf-progress-fill,
+.wf-progress.wf-tone-danger  .wf-progress-fill { background:#dc2626; }
+.wf-tone-warn    > .wf-progress-fill,
+.wf-progress.wf-tone-warn    .wf-progress-fill { background:#f59e0b; }
+.wf-tone-success > .wf-progress-fill,
+.wf-progress.wf-tone-success .wf-progress-fill { background:#16a34a; }
+.wf-tone-feature > .wf-progress-fill,
+.wf-progress.wf-tone-feature .wf-progress-fill { background:#0d9488; }
+.wf-tone-info    > .wf-progress-fill,
+.wf-progress.wf-tone-info    .wf-progress-fill { background:#2563eb; }
+.wf-progress-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:.7em; color:#111827; font-weight:600; }
+/* avatar leaf：只 label(縮寫) + size(sm/md/lg)；圓形佔位，禁 src/bg（守視覺封印） */
+.wf-avatar { display:inline-flex; align-items:center; justify-content:center;
+  background:#e5e7eb; color:#374151; border:1px solid #9ca3af; border-radius:var(--wf-radius-pill);
+  font-weight:600; text-transform:uppercase; }
+.wf-avatar-sm { width:1.5rem; height:1.5rem; font-size:.65em; }
+.wf-avatar-md { width:2.25rem; height:2.25rem; font-size:.8em; }
+.wf-avatar-lg { width:3rem; height:3rem; font-size:1em; }
 """
 
 
@@ -461,10 +513,15 @@ def render_leaf(d, xcls, xattr):
         if to:
             return f'<a href="{_href(to)}" class="{cls("wf-btn wf-link")}"{A}>{inner}</a>'
         return f'<button class="{cls("wf-btn")}"{A}>{inner}</button>'
-    if role in ('status', 'status.muted', 'status.strong'):
-        lvl = {'status.muted': ' wf-tag-muted', 'status.strong': ' wf-tag-strong'}.get(role, '')
+    if role in ('status', 'status.muted', 'status.strong', 'status.badge'):
+        # status.badge = 舊 badge 合併進 status 家族（方角變體），wf-badge class 保留視覺
+        lvl = {'status.muted': ' wf-tag-muted', 'status.strong': ' wf-tag-strong',
+               'status.badge': ' wf-badge'}.get(role, '')
+        if role == 'status.badge':
+            return f'<label class="{cls("wf-badge")}"{A}>{inline(val)}</label>'
         return f'<span class="{cls("wf-tag" + lvl)}"{A}>{inline(val)}</span>'
     if role == 'badge':
+        sys.stderr.write("[warn] badge: 已合併進 status 家族改名 status.badge:（deprecated，過渡期支援）\n")
         return f'<label class="{cls("wf-badge")}"{A}>{inline(val)}</label>'
     if role == 'alert':
         return f'<span class="{cls("wf-warn")}"{A}><span class="wf-icon">⚠</span> {inline(val)}</span>'
@@ -506,6 +563,39 @@ def render_leaf(d, xcls, xattr):
             is_a = (t == active) or (active is None and i == 0)
             out += f'<div class="wf-tab{" wf-tab-active" if is_a else ""}">{inline(t)}</div>'
         return f'<div class="{cls("wf-tabs flex flex-row")}"{A}>{out}</div>'
+    if role == 'progress':
+        # value 0-1 語義比例；label 走 inline markdown
+        # 注意：tone/name 應寫在節點層（跟 progress key 同層 sibling），而非 value 內。
+        if isinstance(val, dict):
+            v = val.get('value', 0)
+            label = val.get('label', '')
+            # 相容 & 提醒：若 tone/name 誤寫在 value 內，警告並忽略（走節點層是 canonical）
+            if 'tone' in val or 'name' in val:
+                sys.stderr.write(f"[warn] progress: tone/name 應寫在節點層（跟 progress key 同層），非 value 內。當前值忽略。\n")
+        else:
+            v = val
+            label = ''
+        try:
+            pct = max(0.0, min(1.0, float(v))) * 100
+        except (TypeError, ValueError):
+            sys.stderr.write(f"[warn] progress.value 需為 0-1 數字（收到 {v!r}）→ 退回 0\n")
+            pct = 0
+        lbl_html = f'<span class="wf-progress-label">{inline(label)}</span>' if label else ''
+        return f'<div class="{cls("wf-progress")}"{A}><div class="wf-progress-fill" style="width:{pct:.1f}%"></div>{lbl_html}</div>'
+    if role == 'avatar':
+        # 只接 label(字母縮寫) + size(sm/md/lg)；禁 src/bg（守北極星② 視覺封印）
+        if isinstance(val, dict):
+            if 'src' in val or 'bg' in val:
+                sys.stderr.write(f"[warn] avatar 禁 src/bg（違反視覺封印）→ 忽略\n")
+            label = val.get('label', '')
+            size = val.get('size', 'md')
+        else:
+            label = str(val or '')
+            size = 'md'
+        if size not in ('sm', 'md', 'lg'):
+            sys.stderr.write(f"[warn] avatar.size 只接 sm/md/lg（收到 {size!r}）→ 退回 md\n")
+            size = 'md'
+        return f'<div class="{cls(f"wf-avatar wf-avatar-{size}")}"{A}>{esc(label)}</div>'
     return f'<span class="wf-label">{esc(d)}</span>'
 
 
@@ -513,12 +603,34 @@ def render_leaf(d, xcls, xattr):
 # 容器渲染（row / col / grid + box + 對齊 + 間距）
 # --------------------------------------------------------------------------
 def _items_of(d, direction):
-    """回傳 (itemkey, items)：itemkey 供組出子節點的來源路徑（col[i] vs items[i]）。"""
-    if direction == 'grid':                 # grid 的值是欄寬 track，items 一律來自 items:
+    """回傳 (itemkey, items)：itemkey 供組出子節點的來源路徑（col[i] vs items[i]）。
+
+    canonical form（DISCUSSION 2026-07-03 Phase 1a）：
+    - grid：值是欄寬 tracks，items 走 `items:` 是允許的（不衝突）
+    - row/col 直接接 list：`row: [ ... ]` items 短寫；同時給 `items:` = 雙重宣告 → error
+    - row/col 接 str（justify 短寫，如 `row: between`）：items 走 `items:` 是允許的
+    - row/col 值為 dict：dict-form 明拒（P0） → error
+    - 無方向 key（box 隱式 col）：`items:` 是允許的
+    """
+    if direction == 'grid':
         return 'items', (d.get('items', []) or [])
-    v = d.get(direction)                    # row/col：值為 list 即為 items 簡寫
+    v = d.get(direction)
     if isinstance(v, list):
+        if 'items' in d:
+            raise ValueError(
+                f"{direction}: [ ... ] 與 items: 同時存在（雙重宣告衝突）。\n"
+                f"list 短寫已承載 items；請移除多餘的 items: key。"
+            )
         return direction, v
+    if isinstance(v, dict):
+        raise ValueError(
+            f"{direction}: 不接受 dict 形式（收到 keys={list(v)}）。\n"
+            f"container 屬性一律 sibling — 方向 key `{direction}:` 只承載 items 短寫或 justify 短寫。\n"
+            f"請改寫成：\n"
+            f"  {direction}: [ item1, item2, ... ]     # items 短寫\n"
+            f"  gap: sm                                 # 屬性放 sibling\n"
+            f"  align: center"
+        )
     return 'items', (d.get('items', []) or [])
 
 
@@ -808,8 +920,12 @@ def expand(items, basedir, ctx, stack=()):
             if not _match(it['when'], ctx):
                 continue
             it = {k: v for k, v in it.items() if k != 'when'}
-        if isinstance(it, dict) and 'include' in it:
-            name = it['include']
+        if isinstance(it, dict) and ('embed' in it or 'include' in it):
+            if 'include' in it and 'embed' not in it:
+                import sys as _sys
+                print(f'  warn: include: 已改名為 embed:（deprecated，過渡期支援）—— {it["include"]!r}', file=_sys.stderr)
+                it = {**it, 'embed': it['include']}
+            name = it['embed']
             params = it.get('with', {}) or {}
             as_ = it.get('as')
             path = _resolve(name, basedir)
@@ -1036,12 +1152,68 @@ def _argval(flag):
 def main():
     debug = '--debug' in sys.argv
     do_bundle = '--bundle' in sys.argv
+    # 檢查 list 子命令前，先定義（inline，短小）
+    def _list_vocab(basedir, ring=None):
+        """列 Ring 0（結構原語）+ Ring 1（專案 semantic token）。給 AI/作者一眼看完詞彙。"""
+        want_r0 = ring in (None, '0')
+        want_r1 = ring in (None, '1')
+        if want_r0:
+            print("═══ Ring 0：結構原語（恆定，AI 必背）═══")
+            print("\n[Grammar 關鍵字]")
+            print("  canvas / body / extends / embed / with / slot / slots / as / routes / default / when / items")
+            print("\n[結構單元類型]")
+            print("  page / layout / component / widget")
+            print("\n[Container]")
+            print("  row / col / grid / box / widget")
+            print("  Overlay 家族 sugar: dialog / drawer / sheet / toast / loading")
+            print("\n[Leaf 元件]")
+            print("  文字：text / text.title / text.heading / text.label / text.strong / text.hint")
+            print("  表單：input / select / button / checkbox / radio")
+            print("  狀態：status / status.muted / status.strong / status.badge / alert")
+            print("  其他：icon / divider / image / tabs / link / progress / avatar")
+            print("\n[Widget 屬性]")
+            print("  is / can")
+            print("\n[空間屬性]")
+            print("  justify / align / gap / padding / span / grow / scroll / scroll-x / spacer")
+            print("  寬度 token：grow / fit / w-N/M / <N>% / w-N（逃生門）")
+            print("\n[動線/連結]")
+            print("  to / link")
+            print("\n[浮層原語]")
+            print("  pin / modal / layer")
+            print("\n[產品面 tone] (Layer 1)")
+            print("  feature / info / success / warn / danger / muted")
+            print("\n[標註面] (Layer 2)")
+            print("  note / spotlight")
+            print("\n[Meta（隱形）]")
+            print("  name / canvas")
+        if want_r1:
+            _load_tokens(basedir)
+            print("\n═══ Ring 1：專案 semantic token（opt-in，讀 tokens/*.yaml + wf.tokens.yaml）═══")
+            if not _TOKENS:
+                print(f"  （{basedir} 下未找到 tokens/ 目錄或 wf.tokens.yaml）")
+            else:
+                for family, entries in _TOKENS.items():
+                    print(f"\n[{family}]")
+                    if isinstance(entries, dict):
+                        for name, val in entries.items():
+                            print(f"  {family}.{name}  →  {val}")
+                    else:
+                        print(f"  {entries}")
+
+    # ---- list 子命令：introspection（Ring 0 原語 + Ring 1 專案 token）----
+    if len(sys.argv) >= 2 and sys.argv[1] == 'list':
+        list_ring = _argval('--ring')     # None / '0' / '1'
+        basedir = _argval('--basedir') or '.'
+        _list_vocab(basedir, ring=list_ring)
+        return
+
     out_path = _argval('-o')
     style = _argval('--style')
     skip = {'--debug', '--bundle', '-o', out_path, '--style', style}
     args = [a for a in sys.argv[1:] if a not in skip]
     if not args:
         print("usage: wfyaml.py [--debug] [--bundle [-o out.html]] [--style <name>] <file.wf.yaml> [...]", file=sys.stderr)
+        print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection：列 Ring 0 原語 + Ring 1 專案 token", file=sys.stderr)
         sys.exit(1)
     if do_bundle:
         out = out_path or os.path.join(os.path.dirname(args[0]) or '.',
