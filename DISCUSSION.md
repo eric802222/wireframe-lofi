@@ -288,3 +288,17 @@
 - [2026-07-02] **實作**：`render_item` 加 `pin`/`modal`/`layer` 三屬性 → 包一層 `.wf-layer`(絕對定位、錨定最近 box/root、flex 依 pin 對齊、z-index 由 `_LAYER_Z` 帶別決定)；`modal` 加 scrim+擋;結構在 `wf.css`、scrim/陰影在 `clean/style.css`。實測 loading(center+modal+top)/toast(bottom-right+notify)/抽屜(right+modal) 皆正確。
 - [2026-07-02] **README**：新增 §5.6 浮層(pin/modal/layer + 放置決定錨定/常駐);**「Layer 1/2」關注軸更名為「產品面/標註面」**(把 layer 讓給 z 層),README 全面替換。
 - [2026-07-02] **已知限制**：多個 modal 同時並存時的相互壓暗次序在極端堆疊下不完美(實務一次一浮層,無此問題)。
+
+### 擴充性定位:專案級 design token（非 theme）× `--style` 外觀 = 兩軸（2026-07-02，方向定案，待細談/未實作）
+
+從「使用者能否自定義 layer 語境」收斂到更根本的概念:那不是 layer 專屬機制,是**語義 token 主題化**;而且**不是 theme,是各專案自己的 design token**。
+
+- [2026-07-02] **兩個正交軸,勿混**:
+  - **`--style`(flavor/外觀)** = 手繪/乾淨/mockup 的**長相**(筆觸、字體、border 素材)。**工具內建**。
+  - **專案 design token** = 這個專案的語義 scale **值**(間距階、z 層 `layer`、tone→色、radius…)。**各專案自帶**。
+- [2026-07-02] **design token 本質 project-scoped**(一產品一套設計決策)→「各專案自己的 design token」是本義,不是工具全域 theme。工具只出**預設 token(可攜地板)**,專案可帶覆寫。
+- [2026-07-02] **這是 wireframe→該產品 mockup 的真正橋**(保真度旋鈕實際機制):同一份 YAML + 工具預設 token = 通用低保真;+ 專案 design token = 講那產品的設計語言、逼近其 mockup。**YAML(語義源)完全不動**,只換一組 token → 守北極星②。
+- [2026-07-02] **`layer` 的擴充性歸位**:它只是專案 design token 檔裡的**一個 scale**(該專案的 elevation tokens),與 spacing/tone/radius/scroll 平起平坐,**非 layer 專屬機制**。無 token 檔→用內建、YAML 照樣可攜;有→套專案語義。
+- [2026-07-02] **可攜性地板**:內建 token 名/帶恆效,專案 config 只能覆寫值 / 加帶,不能廢內建 → 任何 YAML 到哪都讀得懂。
+- [2026-07-02] **格式**:可對齊 **W3C DTCG**(design token 標準),讓專案既有 token 直接餵入。
+- [2026-07-02] **狀態**:方向定案,細節(檔案格式、載入機制、哪些 scale 開放、layer 有序帶列形狀、lint 對齊)待後續細談;未實作。
