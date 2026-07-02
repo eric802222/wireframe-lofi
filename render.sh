@@ -26,8 +26,9 @@ if [ "$STYLE" = "sketch" ] && [ -n "$MOCKUP" ]; then
   echo "  [error] --style sketch 與 --mockup 互斥（低保真美學 vs 高保真綁定）。" >&2
   exit 1
 fi
+MOCKUP_ARG=""
 if [ -n "$MOCKUP" ]; then
-  echo "  [warn] --mockup 綁定系統尚未實作（Phase 2+），旗標暫時忽略：$MOCKUP" >&2
+  MOCKUP_ARG="--mockup $MOCKUP"
 fi
 
 PY=""
@@ -44,6 +45,7 @@ fi
 # bundle / debug：都在瀏覽器跑、不需截圖 → 直接用 compiler 產出後結束
 if [ "$BUNDLE" = 1 ]; then
   FLAGS="--bundle"; [ "$DEBUG" = 1 ] && FLAGS="$FLAGS --debug"; [ -n "$STYLE" ] && FLAGS="$FLAGS --style $STYLE"
+  FLAGS="$FLAGS $MOCKUP_ARG"
   "$PY" "$DIR/wfyaml.py" $FLAGS "$@"
   if [ "$DEBUG" = 1 ]; then
     echo "  → 開 prototype.debug.html：左 nav 切頁走動線；切「模式:註記」點元素寫建議→「匯出」貼給我"
@@ -54,17 +56,22 @@ if [ "$BUNDLE" = 1 ]; then
 fi
 if [ "$DEBUG" = 1 ]; then
   SF=""; [ -n "$STYLE" ] && SF="--style $STYLE"
-  "$PY" "$DIR/wfyaml.py" --debug $SF "$@"
+  "$PY" "$DIR/wfyaml.py" --debug $SF $MOCKUP_ARG "$@"
   echo "  → 用瀏覽器開 .debug.html：點元素寫建議，右上「匯出」複製後貼給我改 YAML"
   exit 0
 fi
 
 export WFYAML_STYLE="$STYLE"
+export WFYAML_MOCKUP="$MOCKUP"
 "$PY" - "$DIR" "$@" <<'PYEOF'
 import sys, os, glob
 SKILL_DIR = sys.argv[1]
 sys.path.insert(0, SKILL_DIR)
 import wfyaml
+# 若 CLI 帶了 --mockup，於截圖管線也載入 theme（wfyaml module-level _THEME 生效）
+_mock = os.environ.get('WFYAML_MOCKUP')
+if _mock:
+    wfyaml._load_theme(_mock)
 from playwright.sync_api import sync_playwright
 
 PAD = 24

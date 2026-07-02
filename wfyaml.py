@@ -199,6 +199,94 @@ def _tokens_css():
     return (':root{' + ''.join(lines) + '}') if lines else ''
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# P7 Theme-as-binding-YAML（DISCUSSION 2026-07-03）
+# ─────────────────────────────────────────────────────────────────────────
+# 四層架構的 Theme 層：綁物理到 component role 名（用 Primitive 值）。
+# 只在 `--mockup <theme.yaml>` 時載入；wireframe 模式忽略（fidelity mode = 結構性防漂移）。
+
+# 綁定屬性 → CSS 屬性映射（MVP 支援集）；unknown key = error（禁靜默）
+_THEME_BINDABLE = {
+    'padding':       ('padding',       lambda v: _gap(v)),
+    'margin':        ('margin',        lambda v: _gap(v)),
+    'gap':           ('gap',           lambda v: _gap(v)),
+    'radius':        ('border-radius', _theme_radius := (lambda v: {
+                          'none': '0', 'sm': '3px', 'md': '6px', 'lg': '12px',
+                          'pill': '9999px', 'full': '9999px',
+                      }.get(str(v)) or (_ for _ in ()).throw(
+                          ValueError(f"theme.radius: 未知值 {v!r}（合法：none/sm/md/lg/pill/full）")))),
+    'shadow':        ('box-shadow',    lambda v: {
+                          'none': 'none',
+                          'sm':   '0 1px 2px rgba(0,0,0,.06)',
+                          'md':   '0 2px 6px rgba(0,0,0,.10)',
+                          'lg':   '0 6px 20px rgba(0,0,0,.14)',
+                      }.get(str(v)) or (_ for _ in ()).throw(
+                          ValueError(f"theme.shadow: 未知值 {v!r}（合法：none/sm/md/lg）"))),
+    'border':        ('border',        lambda v: {
+                          'none':    'none',
+                          'subtle':  '1px solid rgba(0,0,0,.08)',
+                          'default': '1px solid #d1d5db',
+                          'strong':  '2px solid #6b7280',
+                      }.get(str(v)) or (_ for _ in ()).throw(
+                          ValueError(f"theme.border: 未知值 {v!r}（合法：none/subtle/default/strong）"))),
+    'background':    ('background',    lambda v: {
+                          'surface':      '#ffffff',
+                          'surface-alt':  '#f9fafb',
+                          'surface-sunk': '#f3f4f6',
+                          'ink':          '#111827',
+                      }.get(str(v)) or (_ for _ in ()).throw(
+                          ValueError(f"theme.background: 未知值 {v!r}（合法：surface/surface-alt/surface-sunk/ink）"))),
+}
+
+_THEME = {}    # 當前載入的 theme（binding 表）；空 dict = wireframe 模式
+
+
+def _load_theme(path):
+    """載入 theme YAML；驗證 bindings 結構 + 消費規則 lint（P7）。回傳 bindings dict。"""
+    global _THEME
+    if not path:
+        _THEME = {}
+        return {}
+    if not os.path.exists(path):
+        raise ValueError(f"--mockup 找不到 theme 檔：{path}")
+    data = yaml.safe_load(open(path, encoding='utf-8')) or {}
+    # 消費規則：theme 檔只能有 `bindings:` 頂層 key（禁 embed / body / components 反查）
+    unknown = set(data.keys()) - {'bindings'}
+    if unknown:
+        raise ValueError(f"theme 檔頂層 key 只允許 `bindings:`（收到多餘 keys: {sorted(unknown)}）")
+    bindings = data.get('bindings') or {}
+    if not isinstance(bindings, dict):
+        raise ValueError(f"theme.bindings 必須是 dict（收到 {type(bindings).__name__}）")
+    # 驗證每組 role 綁定的 key 都在 _THEME_BINDABLE 內
+    for role, rules in bindings.items():
+        if not isinstance(rules, dict):
+            raise ValueError(f"theme.bindings.{role} 必須是 dict（收到 {type(rules).__name__}）")
+        for k in rules:
+            if k not in _THEME_BINDABLE:
+                sugg = _suggest_key(k, set(_THEME_BINDABLE))
+                hint = f"（是不是「{sugg}」？）" if sugg else ""
+                raise ValueError(
+                    f"theme.bindings.{role}.{k}: 未知綁定屬性 {hint}\n"
+                    f"合法：{sorted(_THEME_BINDABLE)}"
+                )
+    _THEME = bindings
+    return bindings
+
+
+def _theme_css():
+    """把當前 _THEME 編成 CSS 規則：`.wf-role-<name> { <resolved css> }`。空 theme → 空字串。"""
+    if not _THEME:
+        return ''
+    lines = []
+    for role, rules in _THEME.items():
+        decls = []
+        for k, v in rules.items():
+            css_prop, resolver = _THEME_BINDABLE[k]
+            decls.append(f'{css_prop}:{resolver(v)}')
+        lines.append(f'.wf-role-{esc_attr(role)}{{{";".join(decls)}}}')
+    return '\n'.join(lines)
+
+
 def _gap(name):
     """gap/padding 值解析：內建 primitive 直用；專案 token → var 別名；未知 → error（fail-fast）。"""
     n = str(name)
@@ -757,8 +845,8 @@ def render_widget(d, xcls, xattr, src=None, path=None):
 
 
 def _ckeys(it):
-    """內容鍵（排除 __src/__path 蓋章）→ 供結構判斷不受蓋章干擾。"""
-    return set(it) - {'__src', '__path'}
+    """內容鍵（排除內部 metadata 蓋章）→ 供結構判斷不受干擾。"""
+    return set(it) - {'__src', '__path', '__embed_role'}
 
 
 def _is_spacer(it):
@@ -802,6 +890,7 @@ def render_item(it, src=None, path=None):
     esrc = d.pop('__src', None) or src        # dict 自帶來源路徑優先（跨 component/slot），否則用父算的
     epath = d.pop('__path', None)
     epath = epath if epath is not None else path
+    embed_role = d.pop('__embed_role', None)  # P7 theme 綁定：embed 展開時蓋 component 名為 wf-role
 
     _ov = _overlay_tokens()                   # 組合型 semantic token 展開：dialog/drawer/toast… → pin+modal+layer
     _role = next((k for k in _ckeys(d) if k in _ov), None)
@@ -829,6 +918,9 @@ def render_item(it, src=None, path=None):
     if _role:                          # 語義 token 展開後保留角色指紋：可區分/針對 styling、產物語義可讀（drawer ≠ 一般 box）
         xcls.append('wf-role-' + esc_attr(_role))
         xattr['data-wf-role'] = _role
+    if embed_role:                     # P7 embed 指紋：component 名 → wf-role class（theme 可綁）
+        xcls.append('wf-role-' + esc_attr(embed_role))
+        xattr.setdefault('data-wf-role', embed_role)
     if tone:
         xcls.append('wf-tone-' + str(tone))
     if name:
@@ -961,11 +1053,16 @@ def expand(items, basedir, ctx, stack=()):
             content = _subst(content, params)
             content = expand(content, cdir, child_ctx, stack + (path,))
             ann = {k: it[k] for k in ('note', 'spotlight', 'name', 'tone', 'to') if k in it}
-            if ann:                      # embed 帶標註 → 包一層 col 承載（否則標註會被丟掉）
+            # P7 theme 綁定：embed 的 component 名帶為 wf-role 指紋（讓 theme 可 target）
+            # basename 從 `components/tx-item` 或 `layouts/mobile` 取 `tx-item` / `mobile`
+            embed_role = os.path.basename(str(name))
+            if ann or _THEME:
                 for pk in ('__src', '__path'):
                     if pk in it:
                         ann[pk] = it[pk]
-                out.append({**ann, 'col': content})
+                # 用 `col: content` 的 transparent 容器承載；`__embed_role` 讓 render_item 加 wf-role class
+                out.append({**ann, '__embed_role': embed_role,
+                            'col': content, 'gap': 'none', 'padding': 'none'})
             else:
                 out.extend(content)
         elif isinstance(it, dict):
@@ -1078,8 +1175,10 @@ def _width_css(sel, w, h, has_notes):
 
 def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=None, debug=False):
     content, w, h, notes = _render_page(doc, provider, basedir, ctx, cur_label, all_labels)
+    # theme CSS 疊最後 → 覆蓋 base/clean/tokens；只在 --mockup 載了 theme 才有內容
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + (DEBUG_CSS if debug else '')
-                         + _style_css() + _tokens_css() + _width_css('.wf-root', w, h, notes))
+                         + _style_css() + _tokens_css() + _theme_css()
+                         + _width_css('.wf-root', w, h, notes))
     page_attr = f' data-wf-page="{esc(_PAGE_BASE)}"' if debug else ''
     head = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><style>{css}</style>'
             f'</head><body><div class="wf-root"{page_attr}>')
@@ -1137,7 +1236,7 @@ def bundle(files, debug=False, title='prototype', style=None):
         sel += f',body:not(:has(.wf-pg:target)) #nav-{pids[0]}'
         overrides.append(sel + '{background:#0f766e;color:#fff;font-weight:600;}')
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + BUNDLE_CSS + (DEBUG_CSS if debug else '')
-                         + _style_css() + _tokens_css() + ''.join(overrides))
+                         + _style_css() + _tokens_css() + _theme_css() + ''.join(overrides))
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
     return (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><title>{esc(title)}</title>'
             f'<style>{css}</style></head><body class="wf-bundle">'
@@ -1444,13 +1543,22 @@ def main():
 
     out_path = _argval('-o')
     style = _argval('--style')
-    skip = {'--debug', '--bundle', '-o', out_path, '--style', style}
+    mockup_theme = _argval('--mockup')
+    skip = {'--debug', '--bundle', '--no-lint', '-o', out_path,
+            '--style', style, '--mockup', mockup_theme}
     args = [a for a in sys.argv[1:] if a not in skip]
     if not args:
-        print("usage: wfyaml.py [--debug] [--bundle [-o out.html]] [--style <name>] <file.wf.yaml> [...]", file=sys.stderr)
-        print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection：列 Ring 0 原語 + Ring 1 專案 token", file=sys.stderr)
-        print("       wfyaml.py lint <file.wf.yaml> [...]              # P0.7 schema validation + fail-fast", file=sys.stderr)
+        print("usage: wfyaml.py [--debug] [--bundle [-o out.html]] [--style <name>] [--mockup <theme.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
+        print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection", file=sys.stderr)
+        print("       wfyaml.py lint <file.wf.yaml> [...]              # P0.7 schema validation", file=sys.stderr)
         sys.exit(1)
+    # --style sketch × --mockup 互斥（低保真美學 vs 高保真綁定，語義衝突）
+    if style == 'sketch' and mockup_theme:
+        print("[error] --style sketch 與 --mockup 互斥（低保真美學 vs 高保真綁定）", file=sys.stderr)
+        sys.exit(1)
+    # 有 --mockup <theme> → 載入 theme（fail-fast：檔案不存在或 schema 錯直接拋）
+    if mockup_theme:
+        _load_theme(mockup_theme)
     # ---- render 前 lint gate（--no-lint 可略過；errors 早失敗、warnings 印但續）----
     skip_lint = '--no-lint' in sys.argv
     if not skip_lint:

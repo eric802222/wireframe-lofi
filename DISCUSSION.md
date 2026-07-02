@@ -564,4 +564,23 @@
 - [2026-07-03] **順手完成 P0.5 scroll 純語義化**（前案定案未實作）：`scroll: true` × `grow: true` = 「填滿剩餘 + 可捲」（`overflow-y:auto`，無 max-height）；`scroll: sm/md/lg/xl` = 語義級距（`8/16/32/48rem`），舊 Tailwind `h-*` token 走 deprecated warn 但仍支援。`scroll-x` 對稱。examples/expense-app 的 layout `scroll: h-160` 改回 canonical `scroll: true`。
 - [2026-07-03] **Grammar keys 擴充**：`content` / `placeholder`（component 檔頂層）加進 `_GRAMMAR_KEYS`。
 - [2026-07-03] **驗證**：examples/expense-app 8 個 YAML 檔 lint 全 clean（0 error / 0 warning）；記帳 app 5 頁 + bundle 回歸零視覺變化。
+
+### P7 Theme-as-binding-YAML MVP land（2026-07-03，已實作）
+
+- [2026-07-03] **Theme loader `_load_theme(path)`**：讀 themes/*.yaml；schema 驗證頂層只允許 `bindings:` key（禁 `components:` 等反查）；每 role 的 rules 只能是已知綁定屬性；未知綁定屬性 → error + Levenshtein hint（fail-fast，禁靜默）。
+- [2026-07-03] **7 個 MVP 綁定屬性**（`_THEME_BINDABLE`）：
+  - `padding` / `margin` / `gap` → 走 `_gap` 解析（primitive scale + Ring 1 token）
+  - `radius` → none/sm/md/lg/pill/full → CSS border-radius
+  - `shadow` → none/sm/md/lg → CSS box-shadow
+  - `border` → none/subtle/default/strong → CSS border
+  - `background` → surface / surface-alt / surface-sunk / ink → CSS background
+  - 所有值都是**語義 primitive**（none/sm/md/lg/xl 或 named tone），**禁像素/hex**（fail-fast）
+- [2026-07-03] **CSS 編譯 `_theme_css()`**：把 `bindings.<role>` 編成 `.wf-role-<role> { ... }` 規則，注入到 base + clean + tokens 之後（覆蓋前面）。空 theme（wireframe 模式）→ 空字串（fidelity mode 硬夾）。
+- [2026-07-03] **`embed` 加 wf-role 指紋**：expand 展開 embed 時，若有 `_THEME` 或標註，包一層 transparent 容器（`gap: none`, `padding: none`）並蓋 `__embed_role: <basename>`（`components/tx-item` → `tx-item`）；render_item pop 後加 `.wf-role-tx-item` class + `data-wf-role="tx-item"` 屬性。**這是 theme 綁定 component 名的關鍵機制**。
+- [2026-07-03] **CLI 掛進管線**：
+  - `wfyaml.py --mockup <theme.yaml> <files>` → 載 theme + inject CSS
+  - `render.sh --mockup <theme.yaml> ...` → 透過 `WFYAML_MOCKUP` env + `MOCKUP_ARG` 傳給 wfyaml 及 inline python 截圖管線
+  - `--style sketch` × `--mockup` 互斥（語義衝突 → error）
+- [2026-07-03] **驗證**：`examples/expense-app/themes/mockup.yaml` 綁 5 個 role（mobile/tx-item/tab-bar/dialog/drawer/toast）；5 頁 + bundle 帶 `--mockup` 全渲成功；tab-bar 有 shadow、tx-item 變成獨立圓角卡片、視覺明顯升級到 mockup。無 `--mockup` 的 wireframe 模式**零回歸**（結構性防漂移驗證通過）。
+- [2026-07-03] **P7 未涵蓋（後續）**：Component YAML 內禁物理視覺 key 的 lint（P0.7 消費規則）；theme YAML 進 lint 子命令支援；`themes/*.yaml` 目錄支援（多 theme 檔合併）；tone/color primitive 從 theme 抽出到 tokens/ 統一管。
 - [2026-07-02] **定位**:這是「單一語義源 × 漸進保真」從口號變可執行輸出模式,也是 token 系統的**前置地基**——**先於**任何進一步 token 擴充(有它才安全地讓 token 變豐富而不失焦)。
