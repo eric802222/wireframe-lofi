@@ -65,3 +65,6 @@ a.wf-btn.wf-link { border-color:#0d9488; background:#0d9488; color:#fff; font-we
 .wf-widget-tag { font-size:.72em; color:#64748b; background:#f1f5f9; border:1px solid #e2e8f0;
                  border-radius:var(--wf-radius-pill); padding:1px 8px; letter-spacing:.03em; white-space:nowrap; }
 .wf-widget-foot { font-size:.72em; font-style:italic; color:#94a3b8; }
+/* 浮層外觀：modal scrim 壓暗、浮層盒子白底+陰影浮起 */
+.wf-modal { background:rgba(31,41,55,.4); }
+.wf-layer > .wf-box, .wf-layer > .wf-node { background:#fff; box-shadow:0 6px 20px rgba(31,41,55,.25); }

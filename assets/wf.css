@@ -57,6 +57,21 @@ label.wf-trigger:not(.wf-select):not(.wf-btn) {
 .wf-widget { display:flex; flex-direction:column; gap:var(--wf-space-sm); }
 .wf-widget-head { display:flex; align-items:center; justify-content:space-between; gap:var(--wf-space-sm); }
 .wf-widget-caps { display:flex; flex-wrap:wrap; gap:var(--wf-space-sm); }
+/* 浮層（pin/modal/layer）：錨定最近的 box/root；wrapper 覆蓋該容器、以 flex 對齊定位盒子 */
+.wf-root, .wf-box { position:relative; }
+.wf-layer { position:absolute; inset:0; display:flex; padding:var(--wf-space-md); pointer-events:none; }
+.wf-layer > * { pointer-events:auto; }                       /* 盒子可點；wrapper 本身不擋（非 modal）*/
+.wf-modal { pointer-events:auto; padding:0; }                /* modal：擋後面（scrim 由 style 上色）*/
+.wf-modal > * { margin:var(--wf-space-md); }
+.wf-pin-center       { align-items:center;     justify-content:center; }
+.wf-pin-top          { align-items:flex-start;  justify-content:center; }
+.wf-pin-bottom       { align-items:flex-end;    justify-content:center; }
+.wf-pin-left         { align-items:stretch;     justify-content:flex-start; }   /* 邊→沿邊撐開（抽屜）*/
+.wf-pin-right        { align-items:stretch;     justify-content:flex-end; }
+.wf-pin-top-left     { align-items:flex-start;  justify-content:flex-start; }
+.wf-pin-top-right    { align-items:flex-start;  justify-content:flex-end; }
+.wf-pin-bottom-left  { align-items:flex-end;    justify-content:flex-start; }
+.wf-pin-bottom-right { align-items:flex-end;    justify-content:flex-end; }
 .wf-h { font-weight:700; }
 .wf-badge { display:inline-block; padding:1px 6px; font-size:.85em; line-height:1.4; white-space:nowrap; }
 /* --- Layer2 gutter 邊註（meta，不隨 style）--- */

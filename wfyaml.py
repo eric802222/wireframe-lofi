@@ -604,6 +604,9 @@ def is_container(d):
 # --------------------------------------------------------------------------
 # item 分派 + 共用包裝（name / tone / severity / to / spotlight / note / span）
 # --------------------------------------------------------------------------
+_LAYER_Z = {'base': 1, 'overlay': 10, 'notify': 20, 'top': 30}   # 封閉語意 z-scale（帶→z-index，封 renderer）
+
+
 def render_item(it, src=None, path=None):
     global _NCOUNT
     if _is_spacer(it):
@@ -624,6 +627,9 @@ def render_item(it, src=None, path=None):
     spot = d.pop('spotlight', None)
     note = d.pop('note', None)
     span = d.pop('span', None)
+    pin = d.pop('pin', None)          # 浮層：錨點(center/邊/角)
+    modal = d.pop('modal', None)      # 浮層：擋後面(scrim + inert)
+    layer = d.pop('layer', None)      # 浮層：z 帶(base/overlay/notify/top)
 
     xcls, xattr = [], {}
     if tone:
@@ -644,6 +650,11 @@ def render_item(it, src=None, path=None):
 
     if block_to:
         core = f'<a href="{_href(block_to)}" class="wf-blocklink-a wf-link">{core}</a>'
+    if pin or modal:                  # 浮層：抽離流排、錨定所在容器、依 z 帶疊放
+        pos = re.sub(r'[^a-z-]', '', str(pin).lower()) if pin else 'center'
+        z = _LAYER_Z.get(str(layer), _LAYER_Z['overlay'])
+        lcls = 'wf-layer wf-pin-' + pos + (' wf-modal' if modal else '')
+        core = f'<div class="{lcls}" style="z-index:{z}">{core}</div>'
     core = _wrap({'spotlight': spot, 'note': note}, core)
     return core
 

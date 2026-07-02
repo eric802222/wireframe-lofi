@@ -283,3 +283,8 @@
 - [2026-07-02] **z 序的表達**:`layer` 帶別內建在浮層元件裡(dialog=overlay、toast=notify、alert=top);**共存**時(同一 overlay slot)照帶疊、全域一致;**不共存**(不同 state)無所謂。
 - [2026-07-02] **具名角色仍為糖**:`dialog`/`drawer: right` 等可選,展開成 `pin`+`modal`+`layer`,缺席不阻塞。
 - [2026-07-02] **未實作**:待實作 `pin`/`modal`/`layer` 原語 + overlay slot 慣例 + README 更名。
+
+### 浮層 pin/modal/layer + Layer 更名（2026-07-02，已實作）
+- [2026-07-02] **實作**：`render_item` 加 `pin`/`modal`/`layer` 三屬性 → 包一層 `.wf-layer`(絕對定位、錨定最近 box/root、flex 依 pin 對齊、z-index 由 `_LAYER_Z` 帶別決定)；`modal` 加 scrim+擋;結構在 `wf.css`、scrim/陰影在 `clean/style.css`。實測 loading(center+modal+top)/toast(bottom-right+notify)/抽屜(right+modal) 皆正確。
+- [2026-07-02] **README**：新增 §5.6 浮層(pin/modal/layer + 放置決定錨定/常駐);**「Layer 1/2」關注軸更名為「產品面/標註面」**(把 layer 讓給 z 層),README 全面替換。
+- [2026-07-02] **已知限制**：多個 modal 同時並存時的相互壓暗次序在極端堆疊下不完美(實務一次一浮層,無此問題)。

@@ -32,9 +32,9 @@
 ```bash
 ./render.sh examples/deal-detail.wf.yaml
 # → deal-detail.html（自帶 CSS、零 <script>）
-#   deal-detail.png（截圖 = 標註版，含 Layer2）
+#   deal-detail.png（截圖 = 標註版，含 標註面）
 #   deal-detail.svg（向量版，foreignObject 包 XHTML；瀏覽器渲染完美，librsvg/GitHub 等不支援 foreignObject 的 viewer 會空白）
-#   deal-detail.clean.png（剝離 Layer2 的乾淨 UI 版）
+#   deal-detail.clean.png（剝離 標註面 的乾淨 UI 版）
 
 python3 wfyaml.py examples/deal-detail.wf.yaml    # 只出 .html（不截圖）
 
@@ -63,7 +63,7 @@ CJK 對齊靠系統 `Sarasa Mono TC`，無則 fallback monospace（不影響 lay
 - **id = 來源檔 + YAML 路徑**：匯出按**檔**分組，每條 `[路徑] role "內容快照" → 建議`，例：
   `[routes[1].slots.actions[0]] wf-tag "待核准" → 移除`。路徑用索引精準鎖定（跨 component/layout/slot 皆帶正確來源檔），LLM 不需猜。
 - **`--bundle --debug`**：整組畫面一份 prototype、**共用一份 localStorage** → 走動線邊標註、**一次匯出全部頁**（最貼「評審整條流程」）。
-- 註記**不渲染、不進 YAML**（有別於 Layer 2 作者標註），純評審回饋。debug/bundle 注入 JS →
+- 註記**不渲染、不進 YAML**（有別於 標註面 作者標註），純評審回饋。debug/bundle 注入 JS →
   **僅這些模式非零 JS，一般輸出（`.html`/`.png`）維持零 `<script>`**。
 
 ---
@@ -243,7 +243,43 @@ content:
 - 你可以畫得細、又不越權：內部走關係型低保真詞彙，且元件自我聲明是代表性的。**細節 ≠ 規定**。
 - 通用 `widget` 接住所有（含沒見過的元件）；常用的 `table:`/`chart:` 具名版之後擴充，共用同一「宣告能力 + 自我聲明」基座。
 
-### 6. 語義色（Layer 1，UI 產品狀態）
+### 5.6 浮層（dialog / drawer / toast / loading…）
+
+浮層不用一種樣式一個關鍵字，而是**三個正交原語組合**——任何浮層(含未來沒名字的)都是它們的一種組合，**不需擴充語彙**：
+
+| 原語 | 問 | 值 |
+|------|------|------|
+| `pin: <錨點>` | 錨在哪 | `center` / 邊 `top`·`bottom`·`left`·`right`（**邊=沿邊撐開**：左右=全高抽屜、上下=橫幅）/ 角 `top-right`·`bottom-right`… |
+| `modal: true` | 擋不擋後面 | 加=遮罩壓暗+後面 inert；省=浮著不擋（toast/FAB）|
+| `layer: <帶>` | 在哪一 z 層 | 封閉語意 scale `base < overlay < notify < top`；多數浮層免寫（預設 overlay）|
+
+```yaml
+# 載入中：置中 + 遮罩 + 最上層
+- box: true
+  pin: center
+  modal: true
+  layer: top
+  row: [ icon: reload, text: 資料讀取中，請稍候… ]
+
+# 右側抽屜(pin 邊緣值=沿邊撐滿) + 遮罩
+- box: true
+  pin: right
+  modal: true
+  col: [ text.heading: 篩選, "[ ] 進行中", "[ ] 已完成", row: [ spacer, { button: 套用 } ] ]
+
+# toast：右下角、非 modal(不擋)、疊在 dialog 之上
+- box: true
+  pin: bottom-right
+  layer: notify
+  tone: success
+  row: [ icon: check, text: 已儲存 ]
+```
+
+- **錨定對象與常駐/暫時由「放在樹的哪裡」決定**：放頁面根=錨畫面/每頁常駐(機器人)；放某 `box` 內=錨那張卡；放某 `state` 的 `overlay` slot=按動線開關的暫時浮層。
+- **開關動線**：dialog 開啟 = 某個 state；`to: '#confirm'` 進入、`to: '#'` 關閉，複用既有 `to:`/routes。
+- 具名糖(如 `drawer: right`)可之後加，展開成上面原語；地基是原語，永不因新樣式擴充語彙。
+
+### 6. 語義色（產品面，UI 產品狀態）
 
 `tone:`（或 `severity:`）掛在 block/leaf 上。**唯一被授權的顏色**，語義非視覺，其餘一律中性灰。
 色票對映集中一處 → 可 theme。（集合與命名仍在收斂，見 `DISCUSSION.md`。）
@@ -253,10 +289,10 @@ content:
   tone: danger              # feature / info / warn / danger / success / muted …
 ```
 
-### 7. Layer 2：Demo 標註（可剝離，明顯是註記非 UI）
+### 7. 標註面：Demo 標註（可剝離，明顯是註記非 UI）
 
-與 Layer 1（產品語義）**分層**：Layer 2 是疊在 UI 上「給觀眾看」的指引，
-`render.sh` 會另出一份 `.clean.png`（剝離所有 Layer 2）。
+與 產品面（產品語義）**分層**：標註面 是疊在 UI 上「給觀眾看」的指引，
+`render.sh` 會另出一份 `.clean.png`（剝離所有 標註面）。
 
 **`note:`** — 右側 gutter 便利貼 + 物件小標。`ref` **作者自編**（靜態、外部可穩定參照）：
 
@@ -285,7 +321,7 @@ content:
 
 ```
 wireframe-yaml/
-  wfyaml.py        compiler：YAML → HTML；routes 多輸出、狀態感元件、Layer2、bundle、debug
+  wfyaml.py        compiler：YAML → HTML；routes 多輸出、狀態感元件、標註面、bundle、debug
   flowmap.py       掃 to: 連結 → 畫面動線圖（graphviz；render.sh 自動呼叫）
   render.sh        .wf.yaml → .html + .png + .svg + .clean.png + flowmap；--bundle / --debug
   watch.sh         監看 .wf.yaml 變動自動重渲（含 include/layout 依賴）
@@ -297,10 +333,10 @@ wireframe-yaml/
 
 ## 現況（prototype v0.1）與待補
 
-**已實作**：獨立頁 / extends+slots / include+with / **狀態感元件（`when:` 過濾 + `as: placeholder|{stage,state}` + 繼承當前路由）** / **routes 多輸出（各路由可定址 .html + stagebar + single-URL 連結）** / row-col-grid（+box/對齊/spacer/span/gap/padding/Tailwind 欄寬）/ 葉子全表 / 行內 markdown / checkbox-radio / to-link / tone / name / Layer2 note+spotlight / 乾淨版剝離 / flowmap / **`--bundle` 單檔原型（走動線）** / **`--debug` 評審回饋（模式切換 + 檔名+路徑定位 + 跨頁匯出）** / 零 JS（一般輸出）。
+**已實作**：獨立頁 / extends+slots / include+with / **狀態感元件（`when:` 過濾 + `as: placeholder|{stage,state}` + 繼承當前路由）** / **routes 多輸出（各路由可定址 .html + stagebar + single-URL 連結）** / row-col-grid（+box/對齊/spacer/span/gap/padding/Tailwind 欄寬）/ 葉子全表 / 行內 markdown / checkbox-radio / to-link / tone / name / 標註面 note+spotlight / 乾淨版剝離 / flowmap / **`--bundle` 單檔原型（走動線）** / **`--debug` 評審回饋（模式切換 + 檔名+路徑定位 + 跨頁匯出）** / 零 JS（一般輸出）。
 
 **待補**（見 `DISCUSSION.md`）：
-- **Layer 1 色彩**：`tone` vs `severity` 命名、success/muted 歸屬未定。
+- **產品面 色彩**：`tone` vs `severity` 命名、success/muted 歸屬未定。
 - **葉子兩種寫法擇一**（`"role: 值"` 字串 vs `{role: 值}` dict）+ README 明講（消歧義）。
 - flow PDF；`avatar` / `table` / `textarea` 等葉子。
 
