@@ -269,3 +269,17 @@
 - [2026-07-02] **具名角色(dialog/drawer/toast)降為「純糖」**:是**展開成原語的捷徑**,且**缺席永不阻塞**——沒對應 preset 就直接組 `pin`+`modal`+z。常見/AI 好懂情境用糖(`drawer: right` = `pin: right`),新樣式組原語。**地基放原語,AI 才真長久可用**(AI 對「錨哪+擋不擋+疊多高」能自由組合出任何樣式,含無專名者;具名角色會讓 AI 遇沒對應詞就卡)。
 - [2026-07-02] **別把新 z 概念叫「layer」**:`Layer 1/2` 已用於**關注軸**(產品 UI vs 示意註記,決定可否剝離),與 **z 深度**是正交兩軸,勿混。z 深度用上述 z 序原語;若引入 key 名避免用 `layer`(撞 L1/L2)。L2 註記可理解為 z 最頂 + 帶「可剝離」屬性,故關注軸與 z 軸組合即可涵蓋,不需併成一個「layer」傘。
 - [2026-07-02] **未實作**:以上為設計定案;`pin`/`modal`/z 原語、`drawer` 等糖、state 開關動線(複用既有 `to:`+routes)待實作。
+
+### 浮層語彙定案：`pin` + `modal` + `layer`；「Layer 1/2」關注軸更名（2026-07-02，取代上方 z-ordinal/「別叫 layer」）
+
+- [2026-07-02] **最終三原語（值域皆封閉/語意）**:
+  - **`pin: <錨點>`** — 錨哪(center / 邊 / 角)。邊緣值=沿邊撐開(抽屜/sheet/橫幅)。
+  - **`modal: true`** — 擋不擋後面(scrim + 後面 inert)。**使用者拍板保留 `modal`**(捨 `blocking`)：它是精準且 AI 最穩的 UI 標準詞;dim 是它的視覺呈現,封 renderer。預設非 modal。
+  - **`layer: <級>`** — 在哪一 z 層。**封閉語意 scale `base < overlay < notify < top`**(取代先前「關係型 ordinal / `raise`」構想)。理由:① 使用者要「有語境」——讀 `layer: notify` 立刻知道層級,勝過裸數字或宣告順序;② 這與 `gap: none/sm/md/lg` 同款「小而封閉的語意 scale」,封 renderer(帶→z-index)、可 theme;③ 不隨浮層型別膨脹(新型別挑一帶,不加帶),只有刻意插 z 級才動 scale(同加一階 spacing)。捨 `raise`(動詞+往上暗示,與 `base` 打架)、`elevation`(術語)。
+- [2026-07-02] **`layer` 讓給 z 層 → 原「Layer 1/2」關注軸更名**(避免撞名):
+  - **Layer 1(產品 UI 語義,tone/status)→「產品面」(product plane)**
+  - **Layer 2(Demo 標註,note/spotlight,可剝離)→「標註面」(annotation plane)**
+  - 用「面/plane」替「層/layer」;程式/CSS 無字面 `layer`(class 為 `wf-tone`/`wf-mnote`/`wf-spot`),故純文件更名(README + 本檔加對照)。歷史 log 不逐條改寫。
+- [2026-07-02] **z 序的表達**:`layer` 帶別內建在浮層元件裡(dialog=overlay、toast=notify、alert=top);**共存**時(同一 overlay slot)照帶疊、全域一致;**不共存**(不同 state)無所謂。
+- [2026-07-02] **具名角色仍為糖**:`dialog`/`drawer: right` 等可選,展開成 `pin`+`modal`+`layer`,缺席不阻塞。
+- [2026-07-02] **未實作**:待實作 `pin`/`modal`/`layer` 原語 + overlay slot 慣例 + README 更名。
