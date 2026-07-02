@@ -693,6 +693,9 @@ def render_item(it, src=None, path=None):
     layer = d.pop('layer', None)      # 浮層：z 帶(base/overlay/notify/top)
 
     xcls, xattr = [], {}
+    if _role:                          # 語義 token 展開後保留角色指紋：可區分/針對 styling、產物語義可讀（drawer ≠ 一般 box）
+        xcls.append('wf-role-' + esc_attr(_role))
+        xattr['data-wf-role'] = _role
     if tone:
         xcls.append('wf-tone-' + str(tone))
     if name:

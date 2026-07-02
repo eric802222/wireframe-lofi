@@ -328,3 +328,8 @@
 - [2026-07-02] **展開**:`render_item` 開頭偵測 node 是否帶 overlay 角色 key → 取出內容當 col、把角色的 pin/modal/layer 以 `setdefault` 注入(**node 顯式屬性可覆寫 token 預設**),再走既有容器 + pin/modal/layer 渲染。
 - [2026-07-02] **實測**:無 token 檔即可用 `loading:`/`toast:`/`drawer:`(內建地板);專案可覆寫(drawer→左)、自定新角色(banner)、node 顯式覆寫(dialog+layer:notify);全回歸無誤。
 - [2026-07-02] **成果**:之前一直當「糖」推遲的具名角色,正式成為**組合型 semantic token**——作者寫意圖(dialog)、地基是原語(pin/modal/layer)、專案可自定,三者兼得。待續:tone/scroll 引用型納管、`--tokens` 旗標、DTCG 匯入、lint。
+
+### semantic token 保留角色指紋(drawer ≠ box)（2026-07-02，已實作,修 Phase 2 缺口）
+- [2026-07-02] **問題(使用者提)**:組合型 token 展開成 primitive 後,`drawer` 變成純 `box + pin`,「它是 drawer」在產物裡消失 → 無法區分/針對 styling(drawer 貼邊無圓角 vs box 有框)、也丟語義(LLM/debug 讀不出)。
+- [2026-07-02] **修法**:展開時**保留角色名當指紋**——node 加 class `wf-role-<角色>` + 屬性 `data-wf-role="<角色>"`。primitive 驅動機制、角色名留可讀/可 target 的指紋。同 `tone: danger`→`wf-tone-danger`、widget 留 `is` 的原則:semantic token 不該展開後蒸發。
+- [2026-07-02] **成果**:`.wf-role-drawer` 可獨立 styling(已加「貼邊無圓角」示範);`data-wf-role` 讓產物語義可讀;drawer/toast/loading 各留指紋、與一般 box 可區分。
