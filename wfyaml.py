@@ -287,6 +287,182 @@ def _theme_css():
     return '\n'.join(lines)
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# SAC Story-as-Code（DISCUSSION 2026-07-03，四輪 review 定稿）
+# ─────────────────────────────────────────────────────────────────────────
+# 故事綁定層：底圖單一事實來源，故事以外部 .story.yaml 疊加（標註 + 情境變體）。
+# 三系統分工：routes=產品狀態、story=情境資料+標註、theme=視覺綁定。
+
+_STORY = None    # 當前載入的 story dict；None = 無故事疊加
+
+_STORY_TOP_KEYS = {'story', 'actor', 'intent', 'page', 'bindings', 'flow'}
+_STORY_BINDING_KEYS = {'target', 'spotlight', 'note', 'badge', 'set'}   # 標註類頂層白名單
+_STORY_SET_KEYS = {'text', 'to'}                                        # 變體類白名單（防滑坡）
+_STORY_FLOW_KEYS = {'step', 'target', 'to', 'desc'}
+
+
+def _load_story(path):
+    """載入 + 驗證 story 檔（fail-fast：白名單 / 必填 / step 規則）。回傳 story dict。"""
+    if not os.path.exists(path):
+        raise ValueError(f"--story 找不到故事檔：{path}")
+    data = yaml.safe_load(open(path, encoding='utf-8')) or {}
+    unknown = set(data) - _STORY_TOP_KEYS
+    if unknown:
+        raise ValueError(f"story 檔頂層 key 白名單：{sorted(_STORY_TOP_KEYS)}（收到多餘 keys: {sorted(unknown)}）")
+    for req in ('story', 'page'):
+        if req not in data:
+            raise ValueError(f"story 檔缺必填欄位 `{req}:`")
+    for i, b in enumerate(data.get('bindings') or []):
+        unk = set(b) - _STORY_BINDING_KEYS
+        if unk:
+            sugg = _suggest_key(sorted(unk)[0], _STORY_BINDING_KEYS)
+            hint = f"（是不是「{sugg}」？）" if sugg else ""
+            raise ValueError(f"bindings[{i}]: 未知 key {sorted(unk)} {hint}白名單：{sorted(_STORY_BINDING_KEYS)}")
+        if 'target' not in b:
+            raise ValueError(f"bindings[{i}] 缺必填 `target:`")
+        s = b.get('set') or {}
+        unk2 = set(s) - _STORY_SET_KEYS
+        if unk2:
+            raise ValueError(f"bindings[{i}].set: 未知 key {sorted(unk2)}（白名單只有 {sorted(_STORY_SET_KEYS)}；"
+                             f"tone/狀態變體歸 routes/when 系統）")
+    # flow 驗證 + step 編號（選填：未寫 = 上一整數步 +1；字串 step 後未編號 → error；重複 → error）
+    last_int, seen = 0, set()
+    for i, f in enumerate(data.get('flow') or []):
+        if not isinstance(f, dict):
+            raise ValueError(f"flow[{i}] 必須是 dict（收到 {type(f).__name__}）")
+        unk = set(f) - _STORY_FLOW_KEYS
+        if unk:
+            raise ValueError(f"flow[{i}]: 未知 key {sorted(unk)}（白名單：{sorted(_STORY_FLOW_KEYS)}）")
+        if 'desc' not in f:
+            raise ValueError(f"flow[{i}] 缺必填 `desc:`（敘事主體）")
+        st = f.get('step')
+        if st is None:
+            if last_int is None:
+                raise ValueError(f"flow[{i}]: 字串 step 之後的項目必須明寫 step")
+            st = last_int + 1
+        last_int = st if isinstance(st, int) else None
+        if str(st) in seen:
+            raise ValueError(f"flow[{i}]: step 重複（{st}）")
+        seen.add(str(st))
+        f['_step'] = st
+    return data
+
+
+def _resolve_story_page(pageref, story_dir):
+    """解析 story 的 page 引用 → (檔案路徑, fragment ctx)。搜尋：story 同目錄 → 父目錄 → pages/。
+    無 fragment → 綁 default 路由（回傳 ctx None）。"""
+    frag = None
+    if '#' in str(pageref):
+        pageref, _, frag = str(pageref).partition('#')
+    parent = os.path.dirname(story_dir) or '.'
+    dirs = [story_dir, parent, os.path.join(parent, 'pages')]
+    for d in dirs:
+        for ext in ('.wf.yaml', '.yaml', '.yml'):
+            c = os.path.join(d, pageref + ext)
+            if os.path.exists(c):
+                return c, frag
+    raise ValueError(f"story.page 找不到底圖：{pageref}（找過 {dirs}）")
+
+
+def _story_target_match(node, target):
+    """target 消歧：含 `[` = YAML 路徑（比對 __path 蓋章）；否則 = name 錨點。"""
+    if '[' in target:
+        return node.get('__path') == target
+    return node.get('name') == target
+
+
+def _apply_story(items, story):
+    """把 story 的 bindings（標註+變體）與 flow 序號注入 expand 後的樹。
+    fail-fast：任一 target 0 命中 → error。命中多個 = 全疊（統一規則）。"""
+    bindings = story.get('bindings') or []
+    flow = story.get('flow') or []
+    hits = {b['target']: 0 for b in bindings}
+    fhits = {f['target']: 0 for f in flow if f.get('target')}
+
+    def inject_binding(node, b):
+        if 'spotlight' in b:
+            node['spotlight'] = b['spotlight']
+        if 'note' in b:
+            node['note'] = b['note']
+        if 'badge' in b:
+            node['__story_badge'] = b['badge']
+        s = b.get('set') or {}
+        if 'text' in s:
+            role = next((r for r in LEAF_ROLES if r in node), None)
+            if not role:
+                raise ValueError(
+                    f"set.text 只對 leaf 有效（target `{b['target']}` 命中 container：keys={sorted(_ckeys(node))}）")
+            val = node[role]
+            if isinstance(val, dict):
+                for k in ('text', 'placeholder', 'label'):
+                    if k in val:
+                        val[k] = s['text']
+                        break
+                else:
+                    val['text'] = s['text']
+            else:
+                node[role] = s['text']
+        if 'to' in s:
+            role = next((r for r in LEAF_ROLES if r in node), None)
+            if role and role not in ('button', 'link'):
+                raise ValueError(
+                    f"set.to 只支援 container / widget / button / link（target `{b['target']}` 是 {role}）")
+            if role in ('button', 'link') and isinstance(node[role], dict):
+                node[role]['to'] = s['to']
+            elif role in ('button', 'link'):
+                node[role] = {'text': node[role], 'to': s['to']}
+            else:
+                node['to'] = s['to']
+
+    def visit(node):
+        if isinstance(node, list):
+            for x in node:
+                visit(x)
+            return
+        if not isinstance(node, dict):
+            return
+        for b in bindings:
+            if _story_target_match(node, b['target']):
+                hits[b['target']] += 1
+                inject_binding(node, b)
+        for f in flow:
+            t = f.get('target')
+            if t and _story_target_match(node, t):
+                fhits[t] += 1
+                node.setdefault('__story_steps', []).append({'label': str(f['_step']), 'to': f.get('to')})
+        for k, v in list(node.items()):
+            if isinstance(k, str) and k.startswith('__'):
+                continue
+            visit(v)
+
+    visit(items)
+    miss = sorted([t for t, c in hits.items() if c == 0] + [t for t, c in fhits.items() if c == 0])
+    if miss:
+        raise ValueError(f"story target 解析不到節點：{miss}\n"
+                         f"（name 錨點需底圖節點掛 `name: <target>`；路徑需含 `[` 且與 debug 蓋章一致）")
+    return items
+
+
+def _story_header_html():
+    """story banner（📖 id｜actor｜intent）+ flow desc 清單。無 story → 空字串。"""
+    if not _STORY:
+        return ''
+    s = _STORY
+    parts = [esc(str(s['story']))]
+    if s.get('actor'):
+        parts.append(esc(str(s['actor'])))
+    if s.get('intent'):
+        parts.append(esc(str(s['intent'])))
+    out = f'<div class="wf-story-banner">📖 {" ｜ ".join(parts)}</div>'
+    if s.get('flow'):
+        lis = ''.join(
+            f'<div class="wf-story-flowitem"><span class="wf-story-step">{esc(str(f["_step"]))}</span>'
+            f'<span>{inline(f["desc"])}</span></div>'
+            for f in s['flow'])
+        out += f'<div class="wf-story-flowlist">{lis}</div>'
+    return out
+
+
 def _gap(name):
     """gap/padding 值解析：內建 primitive 直用；專案 token → var 別名；未知 → error（fail-fast）。"""
     n = str(name)
@@ -393,6 +569,22 @@ CSS_EXTRA = r"""
 .wf-avatar-sm { width:1.5rem; height:1.5rem; font-size:.65em; }
 .wf-avatar-md { width:2.25rem; height:2.25rem; font-size:.8em; }
 .wf-avatar-lg { width:3rem; height:3rem; font-size:1em; }
+/* ── SAC Story-as-Code overlay（標註面；story 版專屬，紫色系明顯非 UI） ── */
+.wf-story-anchor { position:relative; }
+.wf-story-badge { position:absolute; top:-9px; right:-6px; z-index:6; white-space:nowrap;
+  background:#b45309; color:#fff; font-size:.65em; padding:1px 7px;
+  border-radius:var(--wf-radius-pill); box-shadow:0 1px 2px rgba(0,0,0,.25); }
+.wf-story-step { display:inline-flex; align-items:center; justify-content:center;
+  min-width:18px; height:18px; padding:0 4px; font-size:.7em; font-weight:700;
+  color:#fff; background:#7c3aed; border-radius:var(--wf-radius-pill); text-decoration:none; }
+a.wf-story-step:hover { background:#5b21b6; }
+.wf-story-step-pin { position:absolute; top:-9px; left:-9px; z-index:6; }
+.wf-story-step-pin + .wf-story-step-pin { left:12px; }   /* 同 anchor 多序號排開 */
+.wf-story-banner { background:#f5f3ff; border:1px solid #ddd6fe; color:#5b21b6;
+  padding:6px 10px; border-radius:var(--wf-radius); font-size:.85em; font-weight:600; margin-bottom:4px; }
+.wf-story-flowlist { border:1px dashed #c4b5fd; border-radius:var(--wf-radius);
+  padding:8px 10px; margin-bottom:8px; display:flex; flex-direction:column; gap:5px; }
+.wf-story-flowitem { font-size:.8em; color:#4c1d95; display:flex; gap:8px; align-items:center; }
 """
 
 
@@ -845,8 +1037,8 @@ def render_widget(d, xcls, xattr, src=None, path=None):
 
 
 def _ckeys(it):
-    """內容鍵（排除內部 metadata 蓋章）→ 供結構判斷不受干擾。"""
-    return set(it) - {'__src', '__path', '__embed_role'}
+    """內容鍵（排除 __ 開頭的內部 metadata 蓋章）→ 供結構判斷不受干擾。"""
+    return {k for k in it if not (isinstance(k, str) and k.startswith('__'))}
 
 
 def _is_spacer(it):
@@ -891,6 +1083,8 @@ def render_item(it, src=None, path=None):
     epath = d.pop('__path', None)
     epath = epath if epath is not None else path
     embed_role = d.pop('__embed_role', None)  # P7 theme 綁定：embed 展開時蓋 component 名為 wf-role
+    story_badge = d.pop('__story_badge', None)   # SAC：故事貼紙 / flow 序號徽章
+    story_steps = d.pop('__story_steps', None)
 
     _ov = _overlay_tokens()                   # 組合型 semantic token 展開：dialog/drawer/toast… → pin+modal+layer
     _role = next((k for k in _ckeys(d) if k in _ov), None)
@@ -939,6 +1133,18 @@ def render_item(it, src=None, path=None):
 
     if block_to:
         core = f'<a href="{_href(block_to)}" class="wf-blocklink-a wf-link">{core}</a>'
+    if story_badge or story_steps:    # SAC：貼紙 + flow 序號徽章（絕對定位疊在元素角落；story 的 to 掛徽章上）
+        extra = ''
+        if story_badge:
+            extra += f'<span class="wf-story-badge">{inline(str(story_badge))}</span>'
+        for st in (story_steps or []):
+            lbl = esc(st['label'])
+            if st.get('to'):
+                extra += f'<a class="wf-story-step wf-story-step-pin" href="{_href(st["to"])}">{lbl}</a>'
+            else:
+                extra += f'<span class="wf-story-step wf-story-step-pin">{lbl}</span>'
+        disp = 'block' if (is_widget or is_container(d)) else 'inline-block'
+        core = f'<span class="wf-story-anchor" style="display:{disp}">{core}{extra}</span>'
     if pin or modal:                  # 浮層：抽離流排、錨定所在容器、依 z 帶疊放
         pos = re.sub(r'[^a-z-]', '', str(pin).lower()) if pin else 'center'
         z = _LAYER_Z.get(str(layer), _LAYER_Z['overlay'])
@@ -1111,6 +1317,8 @@ def resolve_body(doc, provider, basedir, ctx):
     else:
         body = provider.get('body', [])
     body = expand(body, basedir, ctx)
+    if _STORY:                          # SAC：story 注入在 expand 之後（name 錨點需 embed 展開後才存在）
+        body = _apply_story(body, _STORY)
     return body, viewport
 
 
@@ -1156,7 +1364,7 @@ def _render_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=No
     w, h = _viewport_wh(viewport)
     inner = render_container({'col': body}, [], {}, _PAGE_BASE, '')   # 頂層 flex-col（避免 inline span 並排）
     bar = _stagebar(all_labels, cur_label) if all_labels else ''
-    return bar + inner + build_gutter(), w, h, bool(_NOTES)
+    return _story_header_html() + bar + inner + build_gutter(), w, h, bool(_NOTES)
 
 
 def _width_css(sel, w, h, has_notes):
@@ -1201,10 +1409,10 @@ body:not(:has(.wf-pg:target)) .wf-pg:first-of-type{display:block;}  /* 無 targe
 """
 
 
-def bundle(files, debug=False, title='prototype', style=None):
+def bundle(files, debug=False, title='prototype', style=None, story=None):
     """把多個 .wf.yaml 併成單一可點擊 prototype.html（左 nav + :target 切頁 + 頁內 to: 錨點）。
-    debug=True → 疊評審回饋層（模式切換 + 跨頁匯出，單檔共用一份 localStorage）。"""
-    global _PAGE_BASE, _DEBUG, _BUNDLE, _STYLE
+    debug=True → 疊評審回饋層；story=<path> → 附加故事疊加版 section（📖 nav 分組）。"""
+    global _PAGE_BASE, _DEBUG, _BUNDLE, _STYLE, _STORY
     _DEBUG, _BUNDLE, _STYLE = debug, True, style
     _load_tokens(os.path.dirname(files[0]) if files else '.')   # 專案 semantic token（探首檔所在夾）
     secs, navs, overrides, pids = [], [], [], []
@@ -1230,6 +1438,33 @@ def bundle(files, debug=False, title='prototype', style=None):
             overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
             navitems.append(f'<a href="#{pid}" id="nav-{pid}">{esc(label if routes else base)}</a>')
         navs.append(f'<div class="wf-navgrp"><b>{esc(base)}</b>{"".join(navitems)}</div>')
+    if story:
+        # SAC (b)：story nav 分組 = 綁定頁疊加版一頁；flow 跳轉連 bundle 內 clean 頁（錨點改寫沿用）
+        sdata = _load_story(story)
+        spath, sfrag = _resolve_story_page(sdata['page'], os.path.dirname(story) or '.')
+        sbase = re.sub(r'\.(wf\.)?ya?ml$', '', os.path.basename(spath))
+        sdoc = yaml.safe_load(open(spath).read()) or {}
+        _stamp(sdoc, sbase)                       # story 路徑 target 比對需要蓋章
+        _PAGE_BASE = sbase
+        sid = _slug(sdata['story'])
+        sroutes = sdoc.get('routes')
+        sprov, sctx = sdoc, None
+        if sroutes:
+            sentries = [_route_entry(r) for r in sroutes]
+            want = sfrag or ''
+            hit = next((e for e in sentries if (e[0] == want) or (not want and e[3] is None)), sentries[0])
+            _, sprov, _, sctx = hit
+        _STORY = sdata
+        try:
+            content, w, h, notes = _render_page(sdoc, sprov, os.path.dirname(spath) or '.', sctx)
+        finally:
+            _STORY = None
+        pid = f'wf-pg-story-{sid}'
+        pids.append(pid)
+        secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root">{content}</div></section>')
+        overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
+        navs.append(f'<div class="wf-navgrp"><b>📖 {esc(str(sdata["story"]))}</b>'
+                    f'<a href="#{pid}" id="nav-{pid}">{esc(sbase)}（故事版）</a></div>')
     # nav 當前頁高亮（零 JS：:has(section:target) → 對應 nav 連結；無 target 則第一頁）
     if pids:
         sel = ','.join(f'body:has(#{p}:target) #nav-{p}' for p in pids)
@@ -1250,8 +1485,8 @@ def compile_all(src, basedir='.', base='', debug=False, style=None):
     _PAGE_BASE, _DEBUG, _STYLE = base, debug, style
     _load_tokens(basedir)              # 探測選配的 wf.tokens.yaml（專案 semantic token）
     doc = yaml.safe_load(src) or {}
-    if debug:
-        _stamp(doc, base)          # 頁面節點蓋來源(base)+路徑，供 debug 定位
+    if debug or _STORY:
+        _stamp(doc, base)          # 蓋來源+路徑：debug 定位 / story 路徑 target 比對
     routes = doc.get('routes')
     if not routes:
         return [('', _compile_page(doc, doc, basedir, debug=debug))]
@@ -1436,13 +1671,23 @@ def _walk_lint(node, path, diag):
 
 
 def _lint_file(path):
-    """對單一檔案跑 lint。回傳 (error_count, warning_count)。"""
+    """對單一檔案跑 lint。回傳 (error_count, warning_count)。story 檔走 story schema 驗證。"""
     try:
         doc = yaml.safe_load(open(path, encoding='utf-8')) or {}
     except Exception as e:
         print(f'\033[1;31merror\033[0m: {path}', file=sys.stderr)
         print(f'  → YAML 解析失敗：{e}', file=sys.stderr)
         return 1, 0
+    if isinstance(doc, dict) and 'story' in doc:
+        # SAC story 檔：schema + page 存在性（target 命中驗證在 render 時 fail-fast）
+        try:
+            sdata = _load_story(path)
+            _resolve_story_page(sdata['page'], os.path.dirname(path) or '.')
+            return 0, 0
+        except ValueError as e:
+            print(f'\033[1;31merror\033[0m: {path}', file=sys.stderr)
+            print(f'  → {e}', file=sys.stderr)
+            return 1, 0
     diag = _Diag()
     # 頂層 keys：允許 grammar keys；未知頂層 → warn
     top_keys = set(doc.keys()) if isinstance(doc, dict) else set()
@@ -1544,11 +1789,13 @@ def main():
     out_path = _argval('-o')
     style = _argval('--style')
     mockup_theme = _argval('--mockup')
+    story_path = _argval('--story')
     skip = {'--debug', '--bundle', '--no-lint', '-o', out_path,
-            '--style', style, '--mockup', mockup_theme}
+            '--style', style, '--mockup', mockup_theme, '--story', story_path}
     args = [a for a in sys.argv[1:] if a not in skip]
-    if not args:
-        print("usage: wfyaml.py [--debug] [--bundle [-o out.html]] [--style <name>] [--mockup <theme.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
+    if not args and not story_path:
+        print("usage: wfyaml.py [--debug] [--bundle [-o out.html]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
+        print("       wfyaml.py --story <x.story.yaml>                 # SAC 單獨生成：底圖+故事疊加 → <id>.story.html", file=sys.stderr)
         print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection", file=sys.stderr)
         print("       wfyaml.py lint <file.wf.yaml> [...]              # P0.7 schema validation", file=sys.stderr)
         sys.exit(1)
@@ -1559,6 +1806,36 @@ def main():
     # 有 --mockup <theme> → 載入 theme（fail-fast：檔案不存在或 schema 錯直接拋）
     if mockup_theme:
         _load_theme(mockup_theme)
+
+    # ---- SAC (a) 單獨生成模式：--story 無 --bundle ----
+    if story_path and not do_bundle:
+        if args:
+            print("[error] --story 單獨生成模式不需頁面參數（story 檔已宣告 page:）；"
+                  "要渲進 bundle 請加 --bundle", file=sys.stderr)
+            sys.exit(1)
+        global _STORY
+        sdata = _load_story(story_path)
+        sdir = os.path.dirname(story_path) or '.'
+        spath, sfrag = _resolve_story_page(sdata['page'], sdir)
+        if '--no-lint' not in sys.argv:
+            e, _w = _lint_file(spath)          # 底圖照樣過 lint gate
+            if e:
+                print(f"\n═══ lint 阻斷 story render：底圖 {spath} 共 {e} error ═══", file=sys.stderr)
+                sys.exit(2)
+        src = open(spath).read()
+        sbase = re.sub(r'\.(wf\.)?ya?ml$', '', os.path.basename(spath))
+        _STORY = sdata
+        try:
+            results = compile_all(src, os.path.dirname(spath) or '.', sbase, debug=debug, style=style)
+        finally:
+            _STORY = None
+        # 有 routes 時取 fragment 指定的路由；無 fragment 取第一份（default）
+        want = (sfrag or '')
+        html_out = next((h for rid, h in results if rid == want), results[0][1])
+        out = os.path.join(sdir, f'{_slug(sdata["story"])}.story.html')
+        open(out, 'w').write(html_out)
+        print(f"  story: {out}（底圖 {os.path.basename(spath)} + 故事疊加）")
+        return
     # ---- render 前 lint gate（--no-lint 可略過；errors 早失敗、warnings 印但續）----
     skip_lint = '--no-lint' in sys.argv
     if not skip_lint:
@@ -1572,8 +1849,9 @@ def main():
     if do_bundle:
         out = out_path or os.path.join(os.path.dirname(args[0]) or '.',
                                        'prototype' + ('.debug' if debug else '') + '.html')
-        open(out, 'w').write(bundle(args, debug=debug, style=style))
-        print(f"  bundled: {out} ({len(args)} 檔){' [style:' + style + ']' if style else ''}")
+        open(out, 'w').write(bundle(args, debug=debug, style=style, story=story_path))
+        extra = (' [style:' + style + ']' if style else '') + (f' [story:{os.path.basename(story_path)}]' if story_path else '')
+        print(f"  bundled: {out} ({len(args)} 檔){extra}")
         return
     for path in args:
         src = open(path).read()

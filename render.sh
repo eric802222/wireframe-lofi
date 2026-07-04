@@ -7,12 +7,13 @@
 # Layer2 邊註（note）對齊靠瀏覽器量測後烤進 DOM（零 JS 產物）。
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
-DEBUG=0; BUNDLE=0; STYLE=""; MOCKUP=""
+DEBUG=0; BUNDLE=0; STYLE=""; MOCKUP=""; STORY=""
 while :; do case "$1" in
   --debug) DEBUG=1; shift;;   # 出 .debug.html（可點擊註記+匯出）
   --bundle) BUNDLE=1; shift;; # 併成單檔 prototype.html（左 nav + 走動線）；可疊 --debug
   --style) STYLE="$2"; shift 2;;  # 風格：clean(預設) / sketch(手繪框)。mockup 樣貌由 --mockup <theme.yaml> 決定，不進 --style。
-  --mockup) MOCKUP="$2"; shift 2;;  # ⏳ Phase 2+ 才會實作 theme binding；先接受旗標留位。
+  --mockup) MOCKUP="$2"; shift 2;;  # P7 theme binding：進 mockup 模式 + 該 theme 綁定
+  --story) STORY="$2"; shift 2;;    # SAC：單獨生成故事版（無 --bundle）或渲進 bundle（有 --bundle）
   *) break;; esac; done
 if [ "$#" -eq 0 ]; then set -- "$DIR"/examples/*.wf.yaml; fi
 
@@ -30,6 +31,10 @@ MOCKUP_ARG=""
 if [ -n "$MOCKUP" ]; then
   MOCKUP_ARG="--mockup $MOCKUP"
 fi
+STORY_ARG=""
+if [ -n "$STORY" ]; then
+  STORY_ARG="--story $STORY"
+fi
 
 PY=""
 for cand in "${WFYAML_PY:-}" python3 /usr/bin/python3 /opt/homebrew/bin/python3 python; do
@@ -43,9 +48,14 @@ if [ -z "$PY" ]; then
 fi
 
 # bundle / debug：都在瀏覽器跑、不需截圖 → 直接用 compiler 產出後結束
+# SAC 單獨生成模式：--story 無 --bundle → 直接交給 compiler（產 <id>.story.html）
+if [ -n "$STORY" ] && [ "$BUNDLE" != 1 ]; then
+  "$PY" "$DIR/wfyaml.py" $STORY_ARG $MOCKUP_ARG
+  exit $?
+fi
 if [ "$BUNDLE" = 1 ]; then
   FLAGS="--bundle"; [ "$DEBUG" = 1 ] && FLAGS="$FLAGS --debug"; [ -n "$STYLE" ] && FLAGS="$FLAGS --style $STYLE"
-  FLAGS="$FLAGS $MOCKUP_ARG"
+  FLAGS="$FLAGS $MOCKUP_ARG $STORY_ARG"
   "$PY" "$DIR/wfyaml.py" $FLAGS "$@"
   if [ "$DEBUG" = 1 ]; then
     echo "  → 開 prototype.debug.html：左 nav 切頁走動線；切「模式:註記」點元素寫建議→「匯出」貼給我"
