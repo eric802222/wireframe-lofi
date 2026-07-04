@@ -583,4 +583,39 @@
   - `--style sketch` × `--mockup` 互斥（語義衝突 → error）
 - [2026-07-03] **驗證**：`examples/expense-app/themes/mockup.yaml` 綁 5 個 role（mobile/tx-item/tab-bar/dialog/drawer/toast）；5 頁 + bundle 帶 `--mockup` 全渲成功；tab-bar 有 shadow、tx-item 變成獨立圓角卡片、視覺明顯升級到 mockup。無 `--mockup` 的 wireframe 模式**零回歸**（結構性防漂移驗證通過）。
 - [2026-07-03] **P7 未涵蓋（後續）**：Component YAML 內禁物理視覺 key 的 lint（P0.7 消費規則）；theme YAML 進 lint 子命令支援；`themes/*.yaml` 目錄支援（多 theme 檔合併）；tone/color primitive 從 theme 抽出到 tokens/ 統一管。
+
+### ⏳待討論：Story-as-Code（SAC）— 故事綁定層（2026-07-03，可行性評估完成，語法待定案）
+
+外部提案（SAC 規格書 v1.0.0）核心：把「使用者故事的標註 + 動線」從 page YAML 抽成外部 `.story.yaml` overlay，底圖單一事實來源，故事按需疊加。**概念強烈建議採納，語法必須用本 repo 詞彙重寫**。
+
+- **痛點真實**：現在 Layer 2（note/spotlight）寫在 page 內 → 一頁多故事就要改底圖或複製多份，正是維護地獄。SAC = Layer 2 的正確終局（externalize）。
+- **現有地基已鋪一半**：spotlight（focus/new/change/click + step ①②③）、note、to/flowmap、`.clean.png` 剝離、**debug 的「檔名+YAML路徑」定址**（現成 selector 機制）—— 實作是「把 Layer 2 注入點從 page 內移到外部檔」，MVP 約 100–150 行；SVG 動線箭頭最貴、可後補。
+- **與已定案的衝突（不能照抄原規格）**：
+  - `kind:` 已否決（2026-07-02 kind→is）；原規格 page 文法（`children:`/`layout: vertical`/`cols:`）不是本 repo 文法，等於另一套 DSL
+  - 強制全節點唯一 `id` 違反北極星①（高 ceremony）→ 改用**選配 `name:` 錨點 + 自動 YAML 路徑** 雙軌
+  - `highlight: fire/alert/info` 新 enum 撞 spotlight/tone → **bindings 只允許既有 Layer 2 詞彙，Ring 0 零成長**
+  - 「高亮顏色放 theme」越權：已定案 Layer 2 標註不受 theme 影響（meta 非產品）
+- **落地版語法草案**：
+  ```yaml
+  # stories/god-30s-check.story.yaml
+  story: god-30s-check
+  actor: 神様
+  intent: 打開 app 30 秒內知道昨晚世界發生了什麼
+  page: world                      # 綁 world.wf.yaml
+  bindings:
+    - target: area-asia            # name: 錨點；fallback YAML 路徑
+      spotlight: focus
+      note: { ref: 1, text: 一眼看出哪個領地最熱 }
+    - target: gate-bell
+      spotlight: { kind: click, step: 2, text: 點擊直達 }
+      to: gate-audit               # 沿用 to:，進 flowmap
+  ```
+- **三種輸出模式（Ring 2）**：
+  - (a) **單獨生成**：`--story stories/x.story.yaml` → 出 `x.story.html/.png`（底圖+疊加；檔名跟 story 走，不覆蓋底圖產物）
+  - (b) **渲進 bundle 整體查看**：`--bundle --story x.story.yaml pages/*.wf.yaml` → prototype 左 nav 多一組「📖 story」；**story 版 = 底圖的另一個渲染實例**（同一份 YAML 樹疊加後再渲一次，非複製）；乾淨頁與故事版並存可對照
+  - (c) **多故事並存**：`--story stories/*.story.yaml` → 每 story 一個 nav 分組；同一底圖被 N 故事引用仍只維護一份
+  - `flow.goto` 跨頁在 bundle 模式自動改寫成頁內錨點（沿用 `to:` 現有機制）→ 點著走完整故事動線
+- **lint（P0.7 延伸）**：target 解析不到 name/路徑 → error；story 檔 bindings 用了白名單（spotlight/note/to/tone）以外的 key → error；story 頂層 key 白名單（story/actor/intent/page/bindings/flow）。
+- **與 P6 flow-scoped 輸出同題兩面**：P6 =「輸出哪些頁」、SAC =「疊什麼故事」；一個 story 天然定義一條 flow → `--story` 可直接驅動「只 bundle 該動線的頁」。實作時兩者可共用 walk 機制。
+- **狀態**：概念採納、輸出模式定案（a/b/c）；語法草案待使用者確認後實作 MVP。
 - [2026-07-02] **定位**:這是「單一語義源 × 漸進保真」從口號變可執行輸出模式,也是 token 系統的**前置地基**——**先於**任何進一步 token 擴充(有它才安全地讓 token 變豐富而不失焦)。
