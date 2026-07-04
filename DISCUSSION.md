@@ -617,5 +617,42 @@
   - `flow.goto` 跨頁在 bundle 模式自動改寫成頁內錨點（沿用 `to:` 現有機制）→ 點著走完整故事動線
 - **lint（P0.7 延伸）**：target 解析不到 name/路徑 → error；story 檔 bindings 用了白名單（spotlight/note/to/tone）以外的 key → error；story 頂層 key 白名單（story/actor/intent/page/bindings/flow）。
 - **與 P6 flow-scoped 輸出同題兩面**：P6 =「輸出哪些頁」、SAC =「疊什麼故事」；一個 story 天然定義一條 flow → `--story` 可直接驅動「只 bundle 該動線的頁」。實作時兩者可共用 walk 機制。
-- **狀態**：概念採納、輸出模式定案（a/b/c）；語法草案待使用者確認後實作 MVP。
+
+### SAC 規格定稿（2026-07-03，兩輪 review 後 lock，待實作 MVP）
+
+**最終語法**（`stories/<id>.story.yaml`）：
+```yaml
+story: god-30s-check               # 一詞兩用：類型宣告 + id（同 widget scalar 簡寫精神）
+actor: 神様
+intent: 打開 app 30 秒內知道昨晚世界發生了什麼
+page: world                        # 或 world#stage.state（複用 RouteRef 文法）
+
+bindings:                          # 白名單：spotlight / note / badge（tone 越權產品面，禁）
+  - target: area-asia              # name 錨點；命中多個=全疊；0 個=lint error
+    spotlight: focus
+    badge: 昨晚發生暴動            # 新增 Layer 2 詞彙：元素角落小貼紙（可剝離）
+    note: { ref: s1, text: 一眼看出哪個領地最熱 }   # ref 慣例字母前綴避免與底圖撞號
+
+flow:                              # 敘事主體；list 有序 → step 序號自動編（無 step: 欄位）
+  - target: area-asia              # 序號 ① 疊到該節點（獨立 overlay，不合併進 spotlight）
+    desc: 著陸後視線第一時間被東方領地吸引
+  - target: gate-bell
+    to: gate-audit                 # to 掛在序號徽章 ② 上（徽章即 <a>）；底圖元素連結不動
+    desc: 點城門口，直達審查頁
+  - desc: 純敘事步驟（無 target）── 序號只進 desc 清單、不疊圖
+```
+
+**兩輪 review 的定案**：
+- [2026-07-03] **`tone` 從 bindings 白名單移除** → tone 是 Layer 1 產品面，story 是標註面，越權禁止。故事表達「這裡熱」用 `spotlight: focus`。
+- [2026-07-03] **新增 `badge` 進 Layer 2 詞彙**（標註面成長 ≠ Ring 0 成長，邊界判準：Ring 0 管產品詞彙、標註面管評審溝通）→ 元素右上角小貼紙、可剝離、純文字不帶 to。
+- [2026-07-03] **恢復獨立 `flow:` 區塊** → desc 是評審 checklist 敘事主體；渲染 = step 序號疊 target + desc 清單進 gutter/頁首。原 SAC 的 `action: Focus/Click/Input` enum 不採（過度指定，desc 自由文字已足）。
+- [2026-07-03] **`step:` 欄位刪除** → YAML list 天然有序，自動從 1 編號；消滅 step 重複/跳號整類 lint 問題。
+- [2026-07-03] **動線歸 flow、不歸 bindings** → 避免與底圖節點自帶 `to:` 衝突；story 的 to 掛在序號徽章上（徽章即 `<a>`），與產品動線物理分離。
+- [2026-07-03] **flow 序號 = 獨立 overlay** → 不塞進 spotlight step 機制、不與 binding 合併；spotlight 的 `step:` 參數保留給 page 內作者用。
+- [2026-07-03] **actor/intent 渲染** → 頁首 story banner（Layer 2 樣式）：`📖 <id>｜<actor>｜<intent>`；bundle 模式兼任 nav 分組標題。
+- [2026-07-03] **解析規則**：`page:` 從 story 檔同目錄 → 父目錄 → `pages/` 搜（沿用 _resolve 慣例）；注入時機 `resolve_body → expand → story inject → render`（name 錨點需 embed 展開後才存在）；`lint stories/x.story.yaml` 自動拉底圖驗 target。
+- [2026-07-03] **輸出細節**：(a) 模式產物跟 story 檔同目錄；bundle section id 用 `wf-pg-story-<id>` 避撞；story 版不出 `.clean.png`（剝掉標註=底圖，無意義）；story × `--mockup` / `--style sketch` 正交允許。
+- [2026-07-03] **lint 規則**：story 頂層白名單（story/actor/intent/page/bindings/flow）；bindings 白名單（target/spotlight/note/badge）；target 解析 0 命中 → error；同 target 同 key 重複 binding → error；同頁 note ref 撞號 → error。
+- [2026-07-03] **YAGNI 界線**：一 story 一條 flow，分支動線 = 拆兩個 story 檔；badge 不帶動線。
+- **狀態**：規格 lock，待實作 MVP（估 150–200 行：story loader + lint + name 錨點解析 + 三種注入 + banner/badge/序號 CSS + bundle nav 分組）。
 - [2026-07-02] **定位**:這是「單一語義源 × 漸進保真」從口號變可執行輸出模式,也是 token 系統的**前置地基**——**先於**任何進一步 token 擴充(有它才安全地讓 token 變豐富而不失焦)。
