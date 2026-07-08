@@ -132,14 +132,26 @@ def make_svg(html_text, w, h):
 
 
 def shoot(page, png):
-    box = page.locator('.wf-root').bounding_box()
-    need = int(box['y'] + box['height'] + PAD + 8)
-    if need > page.viewport_size['height']:
-        page.set_viewport_size({'width': page.viewport_size['width'], 'height': need})
+    def union_box():
+        # root ∪ gutter（note 便利貼站畫布外側，clip 要一起收進來）
         box = page.locator('.wf-root').bounding_box()
+        r, b = box['x'] + box['width'], box['y'] + box['height']
+        for g in page.locator('.wf-gutter').all():
+            gb = g.bounding_box()
+            if gb:
+                r = max(r, gb['x'] + gb['width'])
+                b = max(b, gb['y'] + gb['height'])
+        return box, r - box['x'], b
+    box, uw, ub = union_box()
+    need_h = int(ub + PAD + 8)
+    need_w = int(box['x'] + uw + PAD + 8)
+    if need_h > page.viewport_size['height'] or need_w > page.viewport_size['width']:
+        page.set_viewport_size({'width': max(need_w, page.viewport_size['width']),
+                                'height': max(need_h, page.viewport_size['height'])})
+        box, uw, ub = union_box()
     page.screenshot(path=png, clip={'x': max(0, box['x'] - PAD), 'y': max(0, box['y'] - PAD),
-                                    'width': box['width'] + PAD * 2, 'height': box['height'] + PAD * 2})
-    return int(box['width']), int(box['height'])
+                                    'width': uw + PAD * 2, 'height': (ub - box['y']) + PAD * 2})
+    return int(uw), int(ub - box['y'])
 
 with sync_playwright() as p:
     browser = p.chromium.launch()

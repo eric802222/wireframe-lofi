@@ -294,8 +294,19 @@ _MOCKUP_BASE_CSS = """
        --wf-brand:#0d9488; --wf-brand-soft:#f0fdfa; }
 body{ background:#eef0f3; }
 .wf-root{ background:#ffffff; border:none; box-shadow:0 4px 24px rgba(0,0,0,.10); }
+/* 元件皮：把線框元件換成產品長相 */
 .wf-box{ border-color:#e5e7eb; }
-.wf-btn{ border-color:#d1d5db; }
+.wf-hr{ border-top-color:#eef0f3; }
+.wf-btn{ border-radius:6px; border-color:#d1d5db; padding:5px 12px; background:#fff; }
+a.wf-btn.wf-link{ background:var(--wf-brand); border-color:var(--wf-brand); }
+.wf-input, .wf-select{ border-radius:6px; border-color:#d1d5db; background:#fff; padding:5px 10px; color:#4b5563; }
+.wf-tag{ background:#eef0f3; color:#374151; }
+.wf-tag-muted{ background:#f6f7f9; color:#9ca3af; }
+.wf-tag-strong{ background:#111827; color:#fff; }
+.wf-badge{ border-radius:5px; border-color:#e5e7eb; background:#f9fafb; }
+/* 動線 ↗ 是線框註記，產品不長這樣 → mockup 隱藏（連結仍可點） */
+.wf-link::after, .wf-blocklink-a::after, .wf-btn.wf-link::after{ content:none; }
+/* 標註面維持 wireframe 字體（meta 非產品，不受 theme） */
 .wf-gutter, .wf-mnote, .wf-spotlabel, .wf-step
   { font-family:'Sarasa Mono TC','SarasaMono','Courier New',monospace; }
 """
@@ -311,7 +322,9 @@ def _theme_css():
         for k, v in rules.items():
             css_prop, resolver = _THEME_BINDABLE[k]
             decls.append(f'{css_prop}:{resolver(v)}')
-        lines.append(f'.wf-role-{esc_attr(role)}{{{";".join(decls)}}}')
+        # 綁定目標 = component role（embed/overlay 指紋）∪ `name:` 節點（一次性語意同屬語義身份）
+        r = esc_attr(role)
+        lines.append(f'.wf-role-{r}, [data-name="{esc_attr(role)}"]{{{";".join(decls)}}}')
     return '\n'.join(lines)
 
 
@@ -1408,9 +1421,12 @@ def _width_css(sel, w, h, has_notes):
     """畫布寬高覆蓋（可指定選擇器 → bundle 各 section 各自套）。"""
     main_w, o = w or 780, ''
     if has_notes:
+        # gutter 站在畫布外側（note 是標註面 meta，不屬 viewport 內容）：root 維持 viewport 寬，
+        # 便利貼掛在 root 右外緣、body 預留空間（截圖 clip 由 render.sh 取 root∪gutter 聯集）
         g, gap = 240, 24
-        o += (f'{sel}{{width:{main_w + g + gap}px;position:relative;}}'
-              f'{sel}>.wf-node{{width:{main_w}px;}}{sel} .wf-gutter{{width:{g}px;}}')
+        o += (f'{sel}{{width:{main_w}px;position:relative;}}'
+              f'{sel} .wf-gutter{{left:calc(100% + {gap}px);right:auto;width:{g}px;}}'
+              f'body{{padding-right:{g + gap}px;}}')
     elif w:
         o += f'{sel}{{width:{w}px;}}'
     if h:   # 有畫布高度：root 成 flex-col、body 撐滿該高 → spacer/justify 能把內容(如 footer)推到底
