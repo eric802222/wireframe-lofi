@@ -299,9 +299,9 @@ _THEME_TOKEN_VARS = {
     'page':   {'pad': '--wf-page-pad'},
 }
 
-# base: 只剩「模式開關」（非值）：chrome 版面架構、link-marker 動線記號顯隱。
+# base: 只剩「模式開關」（非值）：chrome 版面架構、link-marker 動線記號、scrollbar 捲軸示意顯隱。
 # 值類（字體/間距/色/圓角）一律走 tokens: ——避免 preset 表把值寫回工具。
-_THEME_BASE_KEYS = {'chrome', 'link-marker'}
+_THEME_BASE_KEYS = {'chrome', 'link-marker', 'scrollbar'}
 _THEME_CHROME = {
     'flat': '',
     'card': ('body{background:var(--wf-page-bg,#eef0f3);}'
@@ -353,6 +353,13 @@ def _theme_base_css(base):
             raise ValueError(f"theme.base.link-marker 只接 show/hide（收到 {marker!r}）")
         if marker == 'hide':   # 動線 ↗ 是線框註記，產品不長這樣（連結仍可點）
             css.append('.wf-link::after,.wf-blocklink-a::after,.wf-btn.wf-link::after{content:none;}')
+    sb = base.get('scrollbar')
+    if sb is not None:
+        if sb not in ('show', 'hide'):
+            raise ValueError(f"theme.base.scrollbar 只接 show/hide（收到 {sb!r}）")
+        if sb == 'hide':   # DOS 捲軸是線框示意，產品用原生捲動（HTML 真捲不受影響）
+            css.append('.wf-show-all .wf-sb{display:none !important;}'
+                       '.wf-show-all .wf-scroll{padding-right:var(--wf-space-md) !important;}')
     return '\n'.join(css)
 
 
