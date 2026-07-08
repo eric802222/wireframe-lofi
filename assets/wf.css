@@ -45,6 +45,9 @@ label.wf-trigger:not(.wf-select):not(.wf-btn) {
 .wf-hr { border:0; border-top:1px solid; width:100%; margin:6px 0; }   /* 線色由 style 定 */
 /* image 帶明確寬度時在 col 內預設置中（R2-4；無寬度者維持 stretch 滿版） */
 .flex-col > .wf-image[style*="width:"] { align-self:center; }
+/* note ref 錨點 wrapper：sup 絕對定位右上、不佔 flex/grid 格（gutter 量測仍讀 .wf-ref 幾何） */
+.wf-refwrap { position:relative; display:block; min-width:0; }
+.wf-refwrap > sup.wf-ref { position:absolute; top:0; right:0; }
 /* 元件結構（外觀由 style；此處只留 padding/尺寸/排列）*/
 .wf-btn { padding:4px 8px; font:inherit; white-space:nowrap; }
 .wf-input { display:inline-block; min-width:140px; padding:2px 8px; }
@@ -79,6 +82,11 @@ label.wf-trigger:not(.wf-select):not(.wf-btn) {
 .wf-pin-top-right    { align-items:flex-start;  justify-content:flex-end; }
 .wf-pin-bottom-left  { align-items:flex-end;    justify-content:flex-start; }
 .wf-pin-bottom-right { align-items:flex-end;    justify-content:flex-end; }
+/* *-center 錨點（_ENUMS 允許的值必須都有 CSS，否則 flex 預設 stretch 會把元素撐成整條邊帶） */
+.wf-pin-top-center    { align-items:flex-start; justify-content:center; }
+.wf-pin-bottom-center { align-items:flex-end;   justify-content:center; }
+.wf-pin-left-center   { align-items:center;     justify-content:flex-start; }
+.wf-pin-right-center  { align-items:center;     justify-content:flex-end; }
 .wf-h { font-weight:700; }
 .wf-badge { display:inline-block; padding:1px 6px; font-size:.85em; line-height:1.4; white-space:nowrap; }
 /* --- Layer2 gutter 邊註（meta，不隨 style）--- */

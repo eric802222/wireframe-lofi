@@ -1168,7 +1168,10 @@ def _wrap(layer2, core):
         ref = note.get('ref') if isinstance(note, dict) else None
         text = note.get('text') if isinstance(note, dict) else note
         if ref is not None:
-            core += f'<sup class="wf-ref" data-ref="{esc(ref)}">[{esc(ref)}]</sup>'
+            # ref 錨點包 wrapper（同 wf-story-anchor 前例）：sup 絕對定位、不進 flow——
+            # 否則在 grid 容器裡 sup 會自己佔一格，把後面的 cell 全推位
+            core = (f'<span class="wf-refwrap">{core}'
+                    f'<sup class="wf-ref" data-ref="{esc(ref)}">[{esc(ref)}]</sup></span>')
             _NOTES.append({'anchor': 'ref-' + str(ref), 'num': str(ref), 'text': text})
         else:
             global _NCOUNT
