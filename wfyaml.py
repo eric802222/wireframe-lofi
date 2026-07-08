@@ -269,7 +269,7 @@ _THEME_ELEMENT_SELECTORS = {
 
 # theme 的 base: 全域基底 —— 值全部受控（enum / hex），編譯為 CSS；不寫 = 不覆寫（維持線框樣）。
 # brand 是 theme 檔唯一允許的物理值落點（theme = 物理綁定層；產品色住這裡——tone 三歸宿）。
-_THEME_BASE_KEYS = {'font', 'chrome', 'radius', 'brand', 'brand-soft', 'link-marker'}
+_THEME_BASE_KEYS = {'font', 'chrome', 'radius', 'brand', 'brand-soft', 'link-marker', 'density'}
 _THEME_FONT_STACKS = {
     'wireframe': None,   # 不覆寫（維持線框 mono）
     'product': "-apple-system,BlinkMacSystemFont,'PingFang TC','Noto Sans TC','Segoe UI',sans-serif",
@@ -278,6 +278,13 @@ _THEME_CHROME = {
     'flat': '',
     'card': ('body{background:#eef0f3;}'
              '.wf-root{background:#ffffff;border:none;box-shadow:0 4px 24px rgba(0,0,0,.10);}'),
+}
+# density = 間距語義 scale 的值換皮（DISCUSSION「density 總開關」定案處）：
+# 語義名（sm/md/lg/xl）與 YAML 一字不動，只換 :root 刻度值。
+_THEME_DENSITY = {
+    'compact': None,   # 不覆寫（線框預設刻度：.25/.5/1/2rem）
+    'comfortable': (':root{--wf-space-sm:.5rem;--wf-space-md:1rem;'
+                    '--wf-space-lg:1.5rem;--wf-space-xl:2.5rem;--wf-page-pad:24px;}'),
 }
 
 
@@ -308,6 +315,12 @@ def _theme_base_css(base):
         if chrome not in _THEME_CHROME:
             raise ValueError(f"theme.base.chrome 只接 {sorted(_THEME_CHROME)}（收到 {chrome!r}）")
         css.append(_THEME_CHROME[chrome])
+    density = base.get('density')
+    if density is not None:
+        if density not in _THEME_DENSITY:
+            raise ValueError(f"theme.base.density 只接 {sorted(_THEME_DENSITY)}（收到 {density!r}）")
+        if _THEME_DENSITY[density]:
+            css.append(_THEME_DENSITY[density])
     marker = base.get('link-marker')
     if marker is not None:
         if marker not in ('show', 'hide'):
