@@ -149,7 +149,9 @@ def lu_svg(name):
     return _lu_cache[name]
 
 # ---- 語義 scale / 對照表（集中一處 → 可 theme）----
-GAP = {'none': '0', 'sm': 'var(--wf-space-sm)', 'md': 'var(--wf-space-md)', 'lg': 'var(--wf-space-lg)'}  # 語義間距 scale→CSS var(可 theme)；預設 md
+GAP = {'none': '0', 'sm': 'var(--wf-space-sm)', 'md': 'var(--wf-space-md)',
+       'lg': 'var(--wf-space-lg)', 'xl': 'var(--wf-space-xl)'}  # 語義間距 scale→CSS var(可 theme)；預設 md
+
 
 # ---- 專案 semantic token（選配；wf.tokens.yaml）----
 # 引用型 token：意圖名 → primitive 刻度。零設定=不載，全走內建 primitive。可攜地板：內建名恆效，

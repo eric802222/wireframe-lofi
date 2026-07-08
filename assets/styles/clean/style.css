@@ -2,7 +2,7 @@
    這裡放「外觀」：tokens / 字體 / 顏色 / border / 各元件長相。結構與 meta 在 base(wf.css)。 */
 :root{
   /* 圓角 */    --wf-radius:3px; --wf-radius-pill:9999px;
-  /* 間距 scale */ --wf-space-sm:.25rem; --wf-space-md:.5rem; --wf-space-lg:1rem;
+  /* 間距 scale */ --wf-space-sm:.25rem; --wf-space-md:.5rem; --wf-space-lg:1rem; --wf-space-xl:2rem;
   /* 字體 */    --wf-font:'Sarasa Mono TC','SarasaMono','Courier New',Courier,monospace;
                --wf-font-size:14px; --wf-h1:1.45em; --wf-h2:1.18em; --wf-h3:1em;
   /* 頁框 */    --wf-page-border:1px solid #cbd5e1; --wf-page-pad:16px;

@@ -77,7 +77,7 @@ CJK 對齊靠系統 `Sarasa Mono TC`，無則 fallback monospace（不影響 lay
 
 ```yaml
 # (a) 獨立頁：直接寫 body
-canvas: 1100x            # 畫布：1100x / 1200x900 / x800（皆「參考」寬高）
+viewport: 1100x          # 視窗：1100x / 1200x900 / x800（皆「參考」寬高）
 body:
   - ...
 
@@ -93,7 +93,7 @@ layout 檔本身就是一個 `body` + 挖洞（`- slot: 名稱`）：
 
 ```yaml
 # layouts/detail-page.wf.yaml
-canvas: 1100x
+viewport: 1100x
 body:
   - row: between
     box: true
@@ -105,18 +105,18 @@ body:
 
 > 對稱：layout `- slot: name`（單數，挖洞）↔ 頁面 `slots: { name: ... }`（複數，填洞）。
 
-### 2. include（複用區塊 / component）
+### 2. embed（複用區塊 / component）
 
-任何節點位置都能 `include`。`with` 選填（`{{param}}` 只替換葉子字串）、子項/`as` 選填：
+任何節點位置都能 `embed`。`with` 選填（`{{param}}` 只替換葉子字串）、子項/`as` 選填：
 
 ```yaml
-- include: components/quote-lines                      # 靜態引入
-- include: components/option-row
+- embed: components/quote-lines                      # 靜態引入
+- embed: components/option-row
   with: { label: B, price: "¥6,120,000" }              # 帶參數
-- include: components/side-panel
+- embed: components/side-panel
   as: placeholder                                      # 降階為佔位塊（聚焦討論時把非重點收起來）
-- include: components/status-banner                    # 省略 as → 繼承當前頁面路由(stage/state)
-- include: components/status-banner
+- embed: components/status-banner                    # 省略 as → 繼承當前頁面路由(stage/state)
+- embed: components/status-banner
   as: { stage: approved }                              # 明確 pin 某狀態變體
 ```
 
@@ -157,9 +157,9 @@ content:
 | 子項 `span: 2` | grid 跨欄 |
 | `box: true` | 外框（只畫框；要標題請用 `text.title`/`text.heading`，語義化） |
 | `spacer:`（當一個 item） | 不對稱推擠（撐開剩餘） |
-| `grow: true`（掛容器上） | 該容器吃掉父主軸剩餘空間（主體區撐滿→footer 自然置底；比 spacer 更語義）。grid 欄軌用 `grow` 同義 |
+| `grow: true`（掛容器或 leaf） | 吃掉父主軸剩餘空間（主體區撐滿→footer 置底；leaf 等分→等寬按鈕列）。grid 欄軌用 `grow` 同義 |
 | `gap: md` / `padding: lg` | **語義**間距（見下），非 `gap-4` |
-| `scroll: h-48` / `scroll-x: true` | 捲動區：HTML 真捲軸（封頂 + overflow）；PNG 全展開 + 畫捲軸示意（只看圖也看得到全部內容並知道會捲） |
+| `scroll: true`（配 `grow:`）或 `scroll: sm/md/lg/xl`；`scroll-x:` 對稱 | 捲動區：HTML 真捲軸（封頂 + overflow）；PNG 全展開 + 畫捲軸示意（只看圖也看得到全部內容並知道會捲） |
 
 **欄寬是「關係」，不是「量值」**（`grid` 的 track）。正道是關係型 —— 隨容器縮放、合低保真：
 
@@ -175,9 +175,9 @@ content:
 
 `input` 已內建預設寬上限（收窄，`select` 本就依內容）→ 多數情況 `input: 搜尋` 免寫寬度；要特別寬窄才用欄軌 `grow`/比例覆寫。表單欄位（`.wf-field` 內）仍填滿欄寬。
 
-> **置底/固定視窗**：`canvas` 設高度(如 `820x520`)時，body 會撐滿該高 → 用 `spacer:` 或 `col` + `justify:end|between` 可把 footer/動作列釘到底。
+> **置底/固定視窗**：`viewport` 設高度(如 `820x520`)時，body 會撐滿該高 → 用 `spacer:` 或 `col` + `justify:end|between` 可把 footer/動作列釘到底。
 
-**間距用語義 scale**（可 theme，非數字階）：`none` / `sm` / `md`(**預設**) / `lg`。`gap`（子項間距）與 `box` 內距
+**間距用語義 scale**（可 theme，非數字階）：`none` / `sm` / `md`(**預設**) / `lg` / `xl`。`gap`（子項間距）與 `box` 內距
 都預設 `md`，用 `gap:`/`padding:` 覆寫（`box` 內距亦吃 `padding:`）。
 > **間距=節奏（語義刻度）、寬度=關係（填滿/依內容/比例）**——間距是設計系統節奏核心，語義名換 theme 只改一張對照表；寬度只有相對容器才有意義，故走關係型而非另發明一套刻度。
 
@@ -186,7 +186,7 @@ content:
 ```yaml
 gap: { section: lg, list: sm }     # 用途名 → 引用內建刻度
 ```
-→ 即可寫 `gap: section`（意圖自明、一處改全站變、可對齊某產品的設計系統）。**純選配**：沒有此檔就用內建 `none/sm/md/lg`；未知名優雅退回 `md` + 提示。詳見 `DISCUSSION.md`「semantic token」。
+→ 即可寫 `gap: section`（意圖自明、一處改全站變、可對齊某產品的設計系統）。**純選配**：沒有此檔就用內建 `none/sm/md/lg/xl`；未知名 → error（fail-fast）。詳見 `DISCUSSION.md`「semantic token」。
 
 ### 4. 葉子（語義角色，`role: 值`；scalar 或 map）
 
@@ -204,7 +204,7 @@ gap: { section: lg, list: sm }     # 用途名 → 引用內建刻度
 | `[x] 已同意` / `[ ] 未勾` | checkbox（markdown task-list） |
 | `(x) 已選` / `( ) 未選` | radio |
 | `status: 已核准` | 狀態 chip；`status.muted:` / `status.strong:` 分級 |
-| `badge: BETA` | 方角標籤 |
+| `status.badge: BETA` | 方角標籤 |
 | `alert: 已送出待審` | UI 警示訊息 |
 | `icon: check` | 圖示（`{set: fa\|lu, name}`；混用 Font Awesome / Lucide） |
 | `divider:` | 分隔線 |
@@ -314,7 +314,7 @@ wireframe 階段**全灰階**，沒有節點級顏色屬性（`tone:` 已於 202
 **`note:`** — 右側 gutter 便利貼 + 物件小標。`ref` **作者自編**（靜態、外部可穩定參照）：
 
 ```yaml
-- include: components/quote-lines
+- embed: components/quote-lines
   note: { ref: 1, text: 這區這版才新增 }      # 物件旁 [1]，右側對齊列出
 ```
 
@@ -341,7 +341,7 @@ wireframe-yaml/
   wfyaml.py        compiler：YAML → HTML；routes 多輸出、狀態感元件、標註面、bundle、debug
   flowmap.py       掃 to: 連結 → 畫面動線圖（graphviz；render.sh 自動呼叫）
   render.sh        .wf.yaml → .html + .png + .svg + .clean.png + flowmap；--bundle / --debug
-  watch.sh         監看 .wf.yaml 變動自動重渲（含 include/layout 依賴）
+  watch.sh         監看 .wf.yaml 變動自動重渲（含 embed/layout 依賴）
   assets/          自帶封印資產：wf.css + fa-icons/lucide-icons.json.gz（→ 可整包帶走）
   examples/        範例（deal-detail 單頁 / deal-routes 路由 + layouts/ components/）
   DISCUSSION.md    設計討論筆記（決策鏈與待議）
@@ -350,7 +350,7 @@ wireframe-yaml/
 
 ## 現況（prototype v0.1）與待補
 
-**已實作**：獨立頁 / extends+slots / include+with / **狀態感元件（`when:` 過濾 + `as: placeholder|{stage,state}` + 繼承當前路由）** / **routes 多輸出（各路由可定址 .html + stagebar + single-URL 連結）** / row-col-grid（+box/對齊/spacer/span/gap/padding/Tailwind 欄寬）/ 葉子全表 / 行內 markdown / checkbox-radio / to-link / name / 標註面 note+spotlight / 乾淨版剝離 / flowmap / **`--bundle` 單檔原型（走動線）** / **`--debug` 評審回饋（模式切換 + 檔名+路徑定位 + 跨頁匯出）** / 零 JS（一般輸出）。
+**已實作**：獨立頁 / extends+slots / embed+with / **狀態感元件（`when:` 過濾 + `as: placeholder|{stage,state}` + 繼承當前路由）** / **routes 多輸出（各路由可定址 .html + stagebar + single-URL 連結）** / row-col-grid（+box/對齊/spacer/span/gap/padding/Tailwind 欄寬）/ 葉子全表 / 行內 markdown / checkbox-radio / to-link / name / 標註面 note+spotlight / 乾淨版剝離 / flowmap / **`--bundle` 單檔原型（走動線）** / **`--debug` 評審回饋（模式切換 + 檔名+路徑定位 + 跨頁匯出）** / 零 JS（一般輸出）。
 
 **待補**（見 `DISCUSSION.md`）：
 - **葉子兩種寫法擇一**（`"role: 值"` 字串 vs `{role: 值}` dict）+ README 明講（消歧義）。
