@@ -250,22 +250,92 @@ _THEME_BINDABLE = {
                           ValueError(f"theme.text: 未知值 {v!r}（合法：ink/soft/inverse/brand）"))),
 }
 
-_THEME = {}    # 當前載入的 theme（binding 表）；空 dict = wireframe 模式
+_THEME = {}         # 當前載入的 theme（binding 表）；空 dict = wireframe 模式
+_THEME_BASE = {}    # theme 的 base: 全域基底宣告（font/chrome/radius/brand/link-marker）
+
+# theme 綁定也可指向「內建元件 role」（wf-* 契約）——同一套 bindable 詞彙換元件皮，
+# 不用另發明語彙；未列者走 component role / name: 語義身份。
+_THEME_ELEMENT_SELECTORS = {
+    'button':        '.wf-btn',
+    'button-link':   'a.wf-btn.wf-link',    # 帶 to: 的按鈕（主要動作/導航）
+    'input':         '.wf-input',
+    'select':        '.wf-select',
+    'status':        '.wf-tag',
+    'status.muted':  '.wf-tag-muted',
+    'status.strong': '.wf-tag-strong',
+    'status.badge':  '.wf-badge',
+    'box':           '.wf-box',
+}
+
+# theme 的 base: 全域基底 —— 值全部受控（enum / hex），編譯為 CSS；不寫 = 不覆寫（維持線框樣）。
+# brand 是 theme 檔唯一允許的物理值落點（theme = 物理綁定層；產品色住這裡——tone 三歸宿）。
+_THEME_BASE_KEYS = {'font', 'chrome', 'radius', 'brand', 'brand-soft', 'link-marker'}
+_THEME_FONT_STACKS = {
+    'wireframe': None,   # 不覆寫（維持線框 mono）
+    'product': "-apple-system,BlinkMacSystemFont,'PingFang TC','Noto Sans TC','Segoe UI',sans-serif",
+}
+_THEME_CHROME = {
+    'flat': '',
+    'card': ('body{background:#eef0f3;}'
+             '.wf-root{background:#ffffff;border:none;box-shadow:0 4px 24px rgba(0,0,0,.10);}'),
+}
+
+
+def _theme_base_css(base):
+    """把 theme 的 base: 宣告編成 CSS。全部 fail-fast；標註面字體守衛屬機制（meta 不受 theme）。"""
+    if not base:
+        return ''
+    css = []
+    brand = base.get('brand')
+    if brand is not None:
+        if not re.match(r'^#[0-9a-fA-F]{3,8}$', str(brand)):
+            raise ValueError(f"theme.base.brand 需為 hex 色碼（收到 {brand!r}）——theme 是物理綁定層的唯一落點")
+        soft = base.get('brand-soft') or f'color-mix(in srgb, {brand} 10%, white)'
+        css.append(f':root{{--wf-brand:{brand};--wf-brand-soft:{soft};}}')
+    font = base.get('font')
+    if font is not None:
+        if font not in _THEME_FONT_STACKS:
+            raise ValueError(f"theme.base.font 只接 {sorted(_THEME_FONT_STACKS)}（收到 {font!r}）")
+        if _THEME_FONT_STACKS[font]:
+            css.append(f':root{{--wf-font:{_THEME_FONT_STACKS[font]};}}')
+            # 標註面維持 wireframe 字體（meta 非產品，不受 theme）——機制守衛，非樣式
+            css.append(".wf-gutter,.wf-mnote,.wf-spotlabel,.wf-step"
+                       "{font-family:'Sarasa Mono TC','SarasaMono','Courier New',monospace;}")
+    if base.get('radius') is not None:
+        css.append(f':root{{--wf-radius:{_theme_radius(base["radius"])};}}')
+    chrome = base.get('chrome')
+    if chrome is not None:
+        if chrome not in _THEME_CHROME:
+            raise ValueError(f"theme.base.chrome 只接 {sorted(_THEME_CHROME)}（收到 {chrome!r}）")
+        css.append(_THEME_CHROME[chrome])
+    marker = base.get('link-marker')
+    if marker is not None:
+        if marker not in ('show', 'hide'):
+            raise ValueError(f"theme.base.link-marker 只接 show/hide（收到 {marker!r}）")
+        if marker == 'hide':   # 動線 ↗ 是線框註記，產品不長這樣（連結仍可點）
+            css.append('.wf-link::after,.wf-blocklink-a::after,.wf-btn.wf-link::after{content:none;}')
+    return '\n'.join(css)
 
 
 def _load_theme(path):
-    """載入 theme YAML；驗證 bindings 結構 + 消費規則 lint（P7）。回傳 bindings dict。"""
-    global _THEME
+    """載入 theme YAML；驗證 base + bindings 結構 + 消費規則 lint（P7）。"""
+    global _THEME, _THEME_BASE
     if not path:
-        _THEME = {}
+        _THEME, _THEME_BASE = {}, {}
         return {}
     if not os.path.exists(path):
         raise ValueError(f"--mockup 找不到 theme 檔：{path}")
     data = yaml.safe_load(open(path, encoding='utf-8')) or {}
-    # 消費規則：theme 檔只能有 `bindings:` 頂層 key（禁 embed / body / components 反查）
-    unknown = set(data.keys()) - {'bindings'}
+    # 消費規則：theme 檔頂層只有 `base:` + `bindings:`（禁 embed / body / components 反查）
+    unknown = set(data.keys()) - {'base', 'bindings'}
     if unknown:
-        raise ValueError(f"theme 檔頂層 key 只允許 `bindings:`（收到多餘 keys: {sorted(unknown)}）")
+        raise ValueError(f"theme 檔頂層 key 只允許 `base:` / `bindings:`（收到多餘 keys: {sorted(unknown)}）")
+    base = data.get('base') or {}
+    if not isinstance(base, dict):
+        raise ValueError(f"theme.base 必須是 dict（收到 {type(base).__name__}）")
+    unk_base = set(base) - set(_THEME_BASE_KEYS)
+    if unk_base:
+        raise ValueError(f"theme.base 未知 key {sorted(unk_base)}（合法：{sorted(_THEME_BASE_KEYS)}）")
     bindings = data.get('bindings') or {}
     if not isinstance(bindings, dict):
         raise ValueError(f"theme.bindings 必須是 dict（收到 {type(bindings).__name__}）")
@@ -281,50 +351,25 @@ def _load_theme(path):
                     f"theme.bindings.{role}.{k}: 未知綁定屬性 {hint}\n"
                     f"合法：{sorted(_THEME_BINDABLE)}"
                 )
-    _THEME = bindings
+    _THEME, _THEME_BASE = bindings, base
     return bindings
 
 
-# mockup 基底皮：有 theme 就套（保真度旋鈕的「產品感」地板，theme bindings 疊其上）。
-# 視覺槓桿：字體換無襯線（線框的打字機字體一換，產品感立刻出來）、radius 放大、頁面 chrome。
-# 標註面（gutter note / spotlight / story）維持 wireframe 字體與樣式——meta 非產品，不受 theme。
-_MOCKUP_BASE_CSS = """
-:root{ --wf-font:-apple-system,BlinkMacSystemFont,'PingFang TC','Noto Sans TC','Segoe UI',sans-serif;
-       --wf-radius:8px;
-       --wf-brand:#0d9488; --wf-brand-soft:#f0fdfa; }
-body{ background:#eef0f3; }
-.wf-root{ background:#ffffff; border:none; box-shadow:0 4px 24px rgba(0,0,0,.10); }
-/* 元件皮：把線框元件換成產品長相 */
-.wf-box{ border-color:#e5e7eb; }
-.wf-hr{ border-top-color:#eef0f3; }
-.wf-btn{ border-radius:6px; border-color:#d1d5db; padding:5px 12px; background:#fff; }
-a.wf-btn.wf-link{ background:var(--wf-brand); border-color:var(--wf-brand); }
-.wf-input, .wf-select{ border-radius:6px; border-color:#d1d5db; background:#fff; padding:5px 10px; color:#4b5563; }
-.wf-tag{ background:#eef0f3; color:#374151; }
-.wf-tag-muted{ background:#f6f7f9; color:#9ca3af; }
-.wf-tag-strong{ background:#111827; color:#fff; }
-.wf-badge{ border-radius:5px; border-color:#e5e7eb; background:#f9fafb; }
-/* 動線 ↗ 是線框註記，產品不長這樣 → mockup 隱藏（連結仍可點） */
-.wf-link::after, .wf-blocklink-a::after, .wf-btn.wf-link::after{ content:none; }
-/* 標註面維持 wireframe 字體（meta 非產品，不受 theme） */
-.wf-gutter, .wf-mnote, .wf-spotlabel, .wf-step
-  { font-family:'Sarasa Mono TC','SarasaMono','Courier New',monospace; }
-"""
-
-
 def _theme_css():
-    """把當前 _THEME 編成 CSS：mockup 基底皮 + `.wf-role-<name>` 綁定規則。空 theme → 空字串。"""
-    if not _THEME:
+    """把當前 theme（base + bindings）編成 CSS。一切樣式由 theme YAML 宣告驅動——
+    工具不硬編任何 mockup 長相（theme 是資料，可跨平台翻譯；style 解耦原則）。"""
+    if not _THEME and not _THEME_BASE:
         return ''
-    lines = [_MOCKUP_BASE_CSS]
+    lines = [_theme_base_css(_THEME_BASE)]
     for role, rules in _THEME.items():
         decls = []
         for k, v in rules.items():
             css_prop, resolver = _THEME_BINDABLE[k]
             decls.append(f'{css_prop}:{resolver(v)}')
-        # 綁定目標 = component role（embed/overlay 指紋）∪ `name:` 節點（一次性語意同屬語義身份）
-        r = esc_attr(role)
-        lines.append(f'.wf-role-{r}, [data-name="{esc_attr(role)}"]{{{";".join(decls)}}}')
+        # 綁定目標優先序：內建元件 role（wf-* 契約）→ component role / name:（語義身份）
+        sel = _THEME_ELEMENT_SELECTORS.get(role) or \
+            f'.wf-role-{esc_attr(role)}, [data-name="{esc_attr(role)}"]'
+        lines.append(f'{sel}{{{";".join(decls)}}}')
     return '\n'.join(lines)
 
 
