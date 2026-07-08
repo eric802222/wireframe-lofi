@@ -1591,7 +1591,8 @@ def _walk_lint(node, path, diag):
     is_slot_marker = 'slot' in keys and len(keys - {'slot', 'name'}) == 0
     is_spacer = keys == {'spacer'}          # 與 render `_is_spacer` 同判定（恰一個 spacer key）
     is_embed = 'embed' in keys
-    has_overlay_sugar = keys & _OVERLAY_SUGARS
+    # overlay 角色 = 內建 sugar ∪ 專案 token（wf.tokens.yaml overlay: 自定角色，與 render _overlay_tokens 同源）
+    has_overlay_sugar = keys & (_OVERLAY_SUGARS | set(_TOKENS.get('overlay') or {}))
 
     # 3. container 恰一個 direction key
     if len(has_direction) > 1:
