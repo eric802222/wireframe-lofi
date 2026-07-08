@@ -283,7 +283,8 @@ _THEME_ELEMENT_SELECTORS = {
 # 工具只擁有「token 名 → CSS var 名」對照表；**值全部來自 theme 檔**（物理綁定層），
 # 沒定義的 token 用 bindings resolver 的 var() fallback（可攜地板）。改值不改工具。
 _THEME_TOKEN_VARS = {
-    'font':   {'body': '--wf-font', 'size': '--wf-font-size'},
+    'font':   {'body': '--wf-font', 'size': '--wf-font-size',
+               'h1': '--wf-h1', 'h2': '--wf-h2', 'h3': '--wf-h3'},
     'space':  {'sm': '--wf-space-sm', 'md': '--wf-space-md',
                'lg': '--wf-space-lg', 'xl': '--wf-space-xl'},
     'radius': {'default': '--wf-radius', 'sm': '--wf-radius-sm', 'md': '--wf-radius-md',
@@ -409,9 +410,12 @@ def _theme_css():
         for k, v in rules.items():
             css_prop, resolver = _THEME_BINDABLE[k]
             decls.append(f'{css_prop}:{resolver(v)}')
-        # 綁定目標優先序：內建元件 role（wf-* 契約）→ component role / name:（語義身份）
+        # 綁定優先序（specificity 表達）：語義身份（role/name，最具體的意圖）> 元件皮 > 基底。
+        # role/name selector 三疊拉高 specificity，確保「這顆按鈕」贏過「所有按鈕」。
+        r = esc_attr(role)
         sel = _THEME_ELEMENT_SELECTORS.get(role) or \
-            f'.wf-role-{esc_attr(role)}, [data-name="{esc_attr(role)}"]'
+            (f'.wf-role-{r}.wf-role-{r}.wf-role-{r}, '
+             f'[data-name="{r}"][data-name="{r}"][data-name="{r}"]')
         lines.append(f'{sel}{{{";".join(decls)}}}')
     return '\n'.join(lines)
 

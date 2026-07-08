@@ -16,10 +16,10 @@ a.wf-btn.wf-link { border-color:#0d9488; background:#0d9488; color:#fff; font-we
 .wf-blocklink-a::after { color:#0f766e; }
 .wf-link:hover { outline:2px solid #99f6e4; }
 /* box / 表單控制 外觀 */
-.wf-box { border:1px solid #9ca3af; border-radius:var(--wf-radius); }
-.wf-btn { border:1.5px solid #9ca3af; background:#fff; color:#374151; border-radius:var(--wf-radius); }
-.wf-input { border:1px solid #cbd5e1; background:#fff; color:#94a3b8; border-radius:var(--wf-radius); max-width:20rem; }
-.wf-select { border:1px solid #9ca3af; background:#fff; color:#374151; border-radius:var(--wf-radius); }
+.wf-box { border:1px solid var(--wf-line,#9ca3af); border-radius:var(--wf-radius); }
+.wf-btn { border:1.5px solid var(--wf-line,#9ca3af); background:#fff; color:var(--wf-ink,#374151); border-radius:var(--wf-radius); }
+.wf-input { border:1px solid var(--wf-line,#cbd5e1); background:#fff; color:var(--wf-ink-soft,#94a3b8); border-radius:var(--wf-radius); max-width:20rem; }
+.wf-select { border:1px solid var(--wf-line,#9ca3af); background:#fff; color:var(--wf-ink,#374151); border-radius:var(--wf-radius); }
 /* 預設收窄：多數情況 input: 搜尋 免寫寬度；要特別寬用欄軌 grow / 比例覆寫。
    表單欄位（.wf-field 內）仍填滿欄寬，不受此上限限制。 */
 .wf-field .wf-input { max-width:none; }
@@ -39,14 +39,14 @@ a.wf-btn.wf-link { border-color:#0d9488; background:#0d9488; color:#fff; font-we
 .wf-new  { color:#b45309; background:#fffbeb; border-radius:var(--wf-radius); }
 .wf-label { color:#1f2937; }
 .wf-b { font-weight:700; }
-.wf-hint { color:#9ca3af; }
-.wf-h { color:#1f2937; }
+.wf-hint { color:var(--wf-ink-soft,#9ca3af); }
+.wf-h { color:var(--wf-ink,#1f2937); }
 .wf-h1 { font-size:var(--wf-h1); } .wf-h2 { font-size:var(--wf-h2); } .wf-h3 { font-size:var(--wf-h3); }
 .wf-weight-light { font-weight:300; } .wf-weight-bold { font-weight:700; }
-.wf-badge { border:1px solid #9ca3af; border-radius:var(--wf-radius); color:#374151; }
+.wf-badge { border:1px solid var(--wf-line,#9ca3af); border-radius:var(--wf-radius); color:#374151; }
 .wf-badge.wf-weight-bold  { background:#374151; border-color:#374151; color:#fff; }
 .wf-badge.wf-weight-light { background:#f3f4f6; border-color:#d1d5db; color:#374151; }
-.wf-hr { border-top-color:#d1d5db; }
+.wf-hr { border-top-color:var(--wf-line-subtle,#d1d5db); }
 /* 示意複雜元件（widget）：虛線框（區別實心 box=代表性）+ 「示意」標記 + 斜體註腳 = 自我聲明視覺語言 */
 .wf-widget { border:1px dashed #cbd5e1; border-radius:var(--wf-radius); padding:var(--wf-space-md); background:#fcfcfd; }
 .wf-widget-label { font-weight:600; color:#475569; }
