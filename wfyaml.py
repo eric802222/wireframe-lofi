@@ -1089,6 +1089,8 @@ def render_item(it, src=None, path=None):
             d.setdefault('col', content)
         elif content not in (None, True):
             d.setdefault('col', [content])
+    if 'embed' in d:               # fail-fast：embed 應在 expand 階段展開完畢，走到這裡=結構走訪漏了
+        raise ValueError(f"內部錯誤：embed 節點未展開（embed: {d.get('embed')!r}）——此節點藏在 expand 未走訪的結構裡，請回報")
     name = d.pop('name', None)
     if 'tone' in d:                # tone 已移除（2026-07-08）：色彩=保真度的函數
         raise ValueError(
@@ -1269,13 +1271,22 @@ def expand(items, basedir, ctx, stack=()):
                 out.extend(content)
         elif isinstance(it, dict):
             nd = dict(it)
-            for k in ('items', 'row', 'col', 'grid'):
-                if isinstance(nd.get(k), list):
-                    nd[k] = expand(nd[k], basedir, ctx, stack)
+            for k in _child_list_keys(nd):
+                nd[k] = expand(nd[k], basedir, ctx, stack)
+            if isinstance(nd.get('widget'), dict) and isinstance(nd['widget'].get('body'), list):
+                nd['widget'] = {**nd['widget'], 'body': expand(nd['widget']['body'], basedir, ctx, stack)}
             out.append(nd)
         else:
             out.append(it)
     return out
+
+
+def _child_list_keys(nd):
+    """節點的結構子清單 keys：方向 key / items + overlay 角色內容（dialog/toast/專案自定…）。
+    expand / _fill_slots 都要走訪這些，否則藏在 overlay 角色裡的 embed / slot 靜默失效。"""
+    keys = [k for k in ('items', 'row', 'col', 'grid') if isinstance(nd.get(k), list)]
+    keys += [k for k in _overlay_tokens() if isinstance(nd.get(k), list)]
+    return keys
 
 
 def _fill_slots(items, slots):
@@ -1285,9 +1296,10 @@ def _fill_slots(items, slots):
             out.extend(slots.get(it['slot'], []))
         elif isinstance(it, dict):
             nd = dict(it)
-            for k in ('items', 'row', 'col', 'grid'):
-                if isinstance(nd.get(k), list):
-                    nd[k] = _fill_slots(nd[k], slots)
+            for k in _child_list_keys(nd):
+                nd[k] = _fill_slots(nd[k], slots)
+            if isinstance(nd.get('widget'), dict) and isinstance(nd['widget'].get('body'), list):
+                nd['widget'] = {**nd['widget'], 'body': _fill_slots(nd['widget']['body'], slots)}
             out.append(nd)
         else:
             out.append(it)
@@ -1652,13 +1664,13 @@ def _walk_lint(node, path, diag):
             diag.warn(f'{path}.{k}', f"未知 key `{k}`", hint)
 
     # 9. 遞迴子節點：只走結構性 key，跳過 leaf value / meta / 參數
-    # 結構性 key：direction values (list) / items / body / slots values / routes items
+    # 結構性 key：direction values (list) / items / body / overlay 角色內容 / slots values / routes items
     _RECURSE_INTO = _DIRECTION_KEYS | {'items', 'body'}   # 這些 value 是結構樹
     for k, v in node.items():
         if k in ('__src', '__path'):
             continue
         sub_path = f'{path}.{k}' if path else k
-        if k in _RECURSE_INTO:
+        if k in _RECURSE_INTO or k in _overlay_tokens():
             if isinstance(v, list):
                 for i, item in enumerate(v):
                     _walk_lint(item, f'{sub_path}[{i}]', diag)
