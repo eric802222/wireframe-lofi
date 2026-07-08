@@ -229,15 +229,25 @@ _THEME_BINDABLE = {
                           'subtle':  '1px solid rgba(0,0,0,.08)',
                           'default': '1px solid #d1d5db',
                           'strong':  '2px solid #6b7280',
+                          'brand':   '1.5px solid var(--wf-brand)',
                       }.get(str(v)) or (_ for _ in ()).throw(
-                          ValueError(f"theme.border: 未知值 {v!r}（合法：none/subtle/default/strong）"))),
+                          ValueError(f"theme.border: 未知值 {v!r}（合法：none/subtle/default/strong/brand）"))),
     'background':    ('background',    lambda v: {
                           'surface':      '#ffffff',
                           'surface-alt':  '#f9fafb',
                           'surface-sunk': '#f3f4f6',
                           'ink':          '#111827',
+                          'brand':        'var(--wf-brand)',        # 色彩=保真度的函數：產品色只住 theme
+                          'brand-soft':   'var(--wf-brand-soft)',
                       }.get(str(v)) or (_ for _ in ()).throw(
-                          ValueError(f"theme.background: 未知值 {v!r}（合法：surface/surface-alt/surface-sunk/ink）"))),
+                          ValueError(f"theme.background: 未知值 {v!r}（合法：surface/surface-alt/surface-sunk/ink/brand/brand-soft）"))),
+    'text':          ('color',         lambda v: {
+                          'ink':     '#111827',
+                          'soft':    '#6b7280',
+                          'inverse': '#ffffff',
+                          'brand':   'var(--wf-brand)',
+                      }.get(str(v)) or (_ for _ in ()).throw(
+                          ValueError(f"theme.text: 未知值 {v!r}（合法：ink/soft/inverse/brand）"))),
 }
 
 _THEME = {}    # 當前載入的 theme（binding 表）；空 dict = wireframe 模式
@@ -275,11 +285,27 @@ def _load_theme(path):
     return bindings
 
 
+# mockup 基底皮：有 theme 就套（保真度旋鈕的「產品感」地板，theme bindings 疊其上）。
+# 視覺槓桿：字體換無襯線（線框的打字機字體一換，產品感立刻出來）、radius 放大、頁面 chrome。
+# 標註面（gutter note / spotlight / story）維持 wireframe 字體與樣式——meta 非產品，不受 theme。
+_MOCKUP_BASE_CSS = """
+:root{ --wf-font:-apple-system,BlinkMacSystemFont,'PingFang TC','Noto Sans TC','Segoe UI',sans-serif;
+       --wf-radius:8px;
+       --wf-brand:#0d9488; --wf-brand-soft:#f0fdfa; }
+body{ background:#eef0f3; }
+.wf-root{ background:#ffffff; border:none; box-shadow:0 4px 24px rgba(0,0,0,.10); }
+.wf-box{ border-color:#e5e7eb; }
+.wf-btn{ border-color:#d1d5db; }
+.wf-gutter, .wf-mnote, .wf-spotlabel, .wf-step
+  { font-family:'Sarasa Mono TC','SarasaMono','Courier New',monospace; }
+"""
+
+
 def _theme_css():
-    """把當前 _THEME 編成 CSS 規則：`.wf-role-<name> { <resolved css> }`。空 theme → 空字串。"""
+    """把當前 _THEME 編成 CSS：mockup 基底皮 + `.wf-role-<name>` 綁定規則。空 theme → 空字串。"""
     if not _THEME:
         return ''
-    lines = []
+    lines = [_MOCKUP_BASE_CSS]
     for role, rules in _THEME.items():
         decls = []
         for k, v in rules.items():
