@@ -1589,6 +1589,7 @@ def _walk_lint(node, path, diag):
     has_leaf_role = keys & set(LEAF_ROLES)
     is_widget = 'widget' in keys
     is_slot_marker = 'slot' in keys and len(keys - {'slot', 'name'}) == 0
+    is_spacer = keys == {'spacer'}          # 與 render `_is_spacer` 同判定（恰一個 spacer key）
     is_embed = 'embed' in keys
     has_overlay_sugar = keys & _OVERLAY_SUGARS
 
@@ -1636,10 +1637,14 @@ def _walk_lint(node, path, diag):
                        "合法值：focus / new / change / click")
 
     # 8. 未知 key typo 檢查（只對通用 container 節點；leaf / widget / overlay sugar 有各自 shape）
-    if not is_widget and not has_overlay_sugar and not has_leaf_role and not is_slot_marker and not is_embed:
+    if not is_widget and not has_overlay_sugar and not has_leaf_role and not is_slot_marker and not is_embed and not is_spacer:
         known = _CONTAINER_ATTRS | _GRAMMAR_KEYS | set(LEAF_ROLES) | _OVERLAY_SUGARS | {'widget', 'is', 'can'}
         for k in keys:
             if k in known or k in ('placeholder', 'content', 'default'):
+                continue
+            if k == 'spacer':   # spacer 混掛其他 key → render 不會當 spacer（_is_spacer 要求恰一 key）
+                diag.warn(f'{path}.{k}', "spacer 不與其他 key 同節點（會失去 spacer 語義）",
+                          "推擠用獨立 item `- spacer`；區塊自己填滿改用 `grow: true`")
                 continue
             sugg = _suggest_key(k, known)
             hint = f"是不是「{sugg}」？" if sugg else "未在已知詞彙集（見 `wfyaml.py list --ring 0`）"
