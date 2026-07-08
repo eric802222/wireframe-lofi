@@ -936,3 +936,80 @@ wfl render --mockup themes/brand.yaml page.wf.yaml
    `wallet / credit-card / building-columns / calendar / tag / mug-hot / gas-pump`
    `chart-pie / arrows-rotate / cloud / download / gear / bell / magnifying-glass`
    `chevron-left / chevron-right / filter / share-nodes / delete-left / arrow-right-arrow-left`
+
+---
+
+# R2 — 視覺渲染層建議（2026-07-08，記帳 app 5 頁二輪實測）
+
+第一輪（上方 P0–P7）處理的是**語法/架構層**，多數已 land。本輪從**渲染產物的視覺品質**回推工具缺陷——
+判準：同一份語義 YAML，renderer 有沒有把「合理的低保真預設」做對。區分工具責任 vs 寫法責任。
+
+## R2-1 🔴 `to:` 的 ↗ 箭頭氾濫 + 換行掉字（每頁都中，最大視覺噪音）
+
+**現象**
+- Tab bar 每個 tab 的 label 下面孤零零掛一個 `↗` **自己折了一行**，五個 tab 底部各拖一條尾巴、整條 bar 被撐高
+- 按鈕內文全部帶箭頭（「記支出 ↗」「完成 ↗」「取消 ↗」），量大之後是噪音不是資訊
+
+**根因**：`.wf-blocklink-a` 把 ↗ 當 inline glyph 塞在內容之後——內容是 col（icon 上 label 下）時 ↗ 排最後自然折行。
+
+**建議修法**：blocklink 的 ↗ 改成**絕對定位右上角小角標**（不進 inline flow、不折行、不撐高），
+或縮成低調 corner tick。導航語義保留、噪音消失。一刀救 tab bar / 按鈕 / 卡片連結三種場景。
+
+**工程量**：CSS ~10 行（`.wf-blocklink-a{position:relative}` + `::after` 角標）。
+
+## R2-2 🔴 leaf 無法 `grow` → 等寬按鈕列做不出來
+
+**現象**：「記支出/記收入/轉帳」三顆按鈕內容寬 + `justify: between` → 大小不一、留白節奏亂。
+真實 mobile UI 這排一定等寬撐滿。grid 等分也救不了（按鈕在 cell 內仍是內容寬、靠左）。
+
+**根因**：`grow: true` 只對 container 生效（flex:1 掛容器 div），leaf（button/input/select）沒有撐滿機制。
+
+**建議修法**：`grow: true` 開放給 leaf——渲染為 `flex:1 1 0` + 內容物 `width:100%`。
+與已定案「`grow` 統一 track 與節點」同一條語義的自然延伸（track ✅ container ✅ **leaf ❌ → 補齊第三塊**）。
+
+```yaml
+- row:
+    - button: { text: 記支出, to: add }
+      grow: true
+    - button: { text: 記收入, to: add }
+      grow: true
+  gap: sm
+```
+
+**工程量**：render_item/render_leaf ~5 行 + CSS 1 條。
+
+## R2-3 🔴 `tone` 對 chip/badge 無效（被自身底色蓋掉）
+
+**現象**
+- 「超支 900」chip 掛 `tone: danger` 渲出來是**深灰**不是紅（`.wf-tag-strong` 的 `background:#6b7280` 蓋掉 tone）
+- 篩選 chip「全部」`tone: feature` 同樣無效果
+
+**根因**：tone 色盤只做了文字色；chip/badge/box 的 **bg/border/text 三元組**沒做——
+正是 DISCUSSION theme 節「Tier1 語義色盤 tone（各 bg/border/text）尚未做」那條欠帳，被實際畫面抓到。
+
+**建議修法**：`assets/styles/clean/style.css` 給 6 個 tone 各補三元組，
+讓 `.wf-tag.wf-tone-*` / `.wf-badge.wf-tone-*` 吃得到。做完「超支 900」變紅 chip、語義色閉環。
+
+**工程量**：CSS ~30 行（6 tone × chip/badge 選擇器）。
+
+## R2-4 🟡 `image` 佔位固定靠左
+
+**現象**：stats 環形圖 `w: w-48` 在滿寬 box 裡靠左、右側一大塊空。
+
+**判斷**：半是寫法責任（可 `align: center` 解）；但「帶明確寬度的 image 在 col 裡預設置中」更符合直覺。
+低優先，可與 R2-1~3 一起順手做或不做。
+
+## R2-5 🟡 tab bar 類 component 書寫成本高（60 行）
+
+5 個 tab × `when:` 過濾 active 態 = 60 行 YAML。**不新開機制**——等既有待續項
+「組合型 token 一般化（任意專案家族）」落地，即可壓縮成專案家族 token。記錄關聯，不加碼。
+
+## R2 優先序
+
+| # | 項 | 影響 | 工程量 |
+|---|----|------|--------|
+| R2-1 | ↗ 角標化 | 每頁每連結，最大噪音 | CSS ~10 行 |
+| R2-2 | leaf `grow` | 等寬按鈕列（mobile 高頻 pattern） | ~5 行 + CSS |
+| R2-3 | tone 三元組補 chip/badge | 語義色閉環（還 Tier1 欠帳） | CSS ~30 行 |
+| R2-4 | image 預設置中 | 低 | CSS 1 行（可選） |
+| R2-5 | tab bar 壓縮 | 掛既有「組合型 token 一般化」待續項 | — |
