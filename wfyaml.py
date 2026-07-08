@@ -208,50 +208,62 @@ def _tokens_css():
 # 只在 `--mockup <theme.yaml>` 時載入；wireframe 模式忽略（fidelity mode = 結構性防漂移）。
 
 # 綁定屬性 → CSS 屬性映射（MVP 支援集）；unknown key = error（禁靜默）
+# bindings 的語義名一律解析成 var(--wf-*, <內建 fallback>)——工具只認名字，值歸 theme `tokens:`。
+# 內建 fallback = 可攜地板（沒定義 token 也能渲染）；細顆粒調值在 theme tokens，不改工具。
+def _enum_var(prop, table):
+    def resolve(v):
+        if str(v) not in table:
+            raise ValueError(f"theme.{prop}: 未知值 {v!r}（合法：{'/'.join(table)}）")
+        return table[str(v)]
+    return resolve
+
+
+_theme_radius = _enum_var('radius', {
+    'none': '0',
+    'sm':   'var(--wf-radius-sm,3px)',
+    'md':   'var(--wf-radius-md,6px)',
+    'lg':   'var(--wf-radius-lg,12px)',
+    'pill': 'var(--wf-radius-pill,9999px)',
+    'full': 'var(--wf-radius-pill,9999px)',
+})
+
 _THEME_BINDABLE = {
     'padding':       ('padding',       lambda v: _gap(v)),
     'margin':        ('margin',        lambda v: _gap(v)),
     'gap':           ('gap',           lambda v: _gap(v)),
-    'radius':        ('border-radius', _theme_radius := (lambda v: {
-                          'none': '0', 'sm': '3px', 'md': '6px', 'lg': '12px',
-                          'pill': '9999px', 'full': '9999px',
-                      }.get(str(v)) or (_ for _ in ()).throw(
-                          ValueError(f"theme.radius: 未知值 {v!r}（合法：none/sm/md/lg/pill/full）")))),
-    'shadow':        ('box-shadow',    lambda v: {
+    'radius':        ('border-radius', _theme_radius),
+    'shadow':        ('box-shadow',    _enum_var('shadow', {
                           'none': 'none',
-                          'sm':   '0 1px 2px rgba(0,0,0,.06)',
-                          'md':   '0 2px 6px rgba(0,0,0,.10)',
-                          'lg':   '0 6px 20px rgba(0,0,0,.14)',
-                      }.get(str(v)) or (_ for _ in ()).throw(
-                          ValueError(f"theme.shadow: 未知值 {v!r}（合法：none/sm/md/lg）"))),
-    'border':        ('border',        lambda v: {
+                          'sm':   'var(--wf-shadow-sm,0 1px 2px rgba(0,0,0,.06))',
+                          'md':   'var(--wf-shadow-md,0 2px 6px rgba(0,0,0,.10))',
+                          'lg':   'var(--wf-shadow-lg,0 6px 20px rgba(0,0,0,.14))',
+                      })),
+    'border':        ('border',        _enum_var('border', {
                           'none':    'none',
-                          'subtle':  '1px solid rgba(0,0,0,.08)',
-                          'default': '1px solid #d1d5db',
-                          'strong':  '2px solid #6b7280',
-                          'brand':   '1.5px solid var(--wf-brand)',
-                      }.get(str(v)) or (_ for _ in ()).throw(
-                          ValueError(f"theme.border: 未知值 {v!r}（合法：none/subtle/default/strong/brand）"))),
-    'background':    ('background',    lambda v: {
-                          'surface':      '#ffffff',
-                          'surface-alt':  '#f9fafb',
-                          'surface-sunk': '#f3f4f6',
-                          'ink':          '#111827',
-                          'brand':        'var(--wf-brand)',        # 色彩=保真度的函數：產品色只住 theme
-                          'brand-soft':   'var(--wf-brand-soft)',
-                      }.get(str(v)) or (_ for _ in ()).throw(
-                          ValueError(f"theme.background: 未知值 {v!r}（合法：surface/surface-alt/surface-sunk/ink/brand/brand-soft）"))),
-    'text':          ('color',         lambda v: {
-                          'ink':     '#111827',
-                          'soft':    '#6b7280',
-                          'inverse': '#ffffff',
-                          'brand':   'var(--wf-brand)',
-                      }.get(str(v)) or (_ for _ in ()).throw(
-                          ValueError(f"theme.text: 未知值 {v!r}（合法：ink/soft/inverse/brand）"))),
+                          'subtle':  '1px solid var(--wf-line-subtle,rgba(0,0,0,.08))',
+                          'default': '1px solid var(--wf-line,#d1d5db)',
+                          'strong':  '2px solid var(--wf-line-strong,#6b7280)',
+                          'brand':   '1.5px solid var(--wf-brand,#0d9488)',
+                      })),
+    'background':    ('background',    _enum_var('background', {
+                          'surface':      'var(--wf-surface,#ffffff)',
+                          'surface-alt':  'var(--wf-surface-alt,#f9fafb)',
+                          'surface-sunk': 'var(--wf-surface-sunk,#f3f4f6)',
+                          'ink':          'var(--wf-ink,#111827)',
+                          'brand':        'var(--wf-brand,#0d9488)',   # 色彩=保真度的函數：產品色只住 theme
+                          'brand-soft':   'var(--wf-brand-soft,#f0fdfa)',
+                      })),
+    'text':          ('color',         _enum_var('text', {
+                          'ink':     'var(--wf-ink,#111827)',
+                          'soft':    'var(--wf-ink-soft,#6b7280)',
+                          'inverse': 'var(--wf-inverse,#ffffff)',
+                          'brand':   'var(--wf-brand,#0d9488)',
+                      })),
 }
 
-_THEME = {}         # 當前載入的 theme（binding 表）；空 dict = wireframe 模式
-_THEME_BASE = {}    # theme 的 base: 全域基底宣告（font/chrome/radius/brand/link-marker）
+_THEME = {}          # 當前載入的 theme（binding 表）；空 dict = wireframe 模式
+_THEME_BASE = {}     # theme 的 base: 模式開關（chrome/link-marker）
+_THEME_TOKENS = {}   # theme 的 tokens: 值層（Tier-1 design token，FE 可直接接手）
 
 # theme 綁定也可指向「內建元件 role」（wf-* 契約）——同一套 bindable 詞彙換元件皮，
 # 不用另發明語彙；未列者走 component role / name: 語義身份。
@@ -267,60 +279,73 @@ _THEME_ELEMENT_SELECTORS = {
     'box':           '.wf-box',
 }
 
-# theme 的 base: 全域基底 —— 值全部受控（enum / hex），編譯為 CSS；不寫 = 不覆寫（維持線框樣）。
-# brand 是 theme 檔唯一允許的物理值落點（theme = 物理綁定層；產品色住這裡——tone 三歸宿）。
-_THEME_BASE_KEYS = {'font', 'chrome', 'radius', 'brand', 'brand-soft', 'link-marker', 'density'}
-_THEME_FONT_STACKS = {
-    'wireframe': None,   # 不覆寫（維持線框 mono）
-    'product': "-apple-system,BlinkMacSystemFont,'PingFang TC','Noto Sans TC','Segoe UI',sans-serif",
+# theme 的 `tokens:` 值層 —— Tier-1 design token（細顆粒、純資料、可直接交付 FE）。
+# 工具只擁有「token 名 → CSS var 名」對照表；**值全部來自 theme 檔**（物理綁定層），
+# 沒定義的 token 用 bindings resolver 的 var() fallback（可攜地板）。改值不改工具。
+_THEME_TOKEN_VARS = {
+    'font':   {'body': '--wf-font', 'size': '--wf-font-size'},
+    'space':  {'sm': '--wf-space-sm', 'md': '--wf-space-md',
+               'lg': '--wf-space-lg', 'xl': '--wf-space-xl'},
+    'radius': {'default': '--wf-radius', 'sm': '--wf-radius-sm', 'md': '--wf-radius-md',
+               'lg': '--wf-radius-lg', 'pill': '--wf-radius-pill'},
+    'shadow': {'sm': '--wf-shadow-sm', 'md': '--wf-shadow-md', 'lg': '--wf-shadow-lg'},
+    'color':  {'brand': '--wf-brand', 'brand-soft': '--wf-brand-soft',
+               'surface': '--wf-surface', 'surface-alt': '--wf-surface-alt',
+               'surface-sunk': '--wf-surface-sunk',
+               'ink': '--wf-ink', 'ink-soft': '--wf-ink-soft', 'inverse': '--wf-inverse',
+               'line-subtle': '--wf-line-subtle', 'line': '--wf-line',
+               'line-strong': '--wf-line-strong', 'page': '--wf-page-bg'},
+    'page':   {'pad': '--wf-page-pad'},
 }
+
+# base: 只剩「模式開關」（非值）：chrome 版面架構、link-marker 動線記號顯隱。
+# 值類（字體/間距/色/圓角）一律走 tokens: ——避免 preset 表把值寫回工具。
+_THEME_BASE_KEYS = {'chrome', 'link-marker'}
 _THEME_CHROME = {
     'flat': '',
-    'card': ('body{background:#eef0f3;}'
-             '.wf-root{background:#ffffff;border:none;box-shadow:0 4px 24px rgba(0,0,0,.10);}'),
+    'card': ('body{background:var(--wf-page-bg,#eef0f3);}'
+             '.wf-root{background:var(--wf-surface,#ffffff);border:none;'
+             'box-shadow:var(--wf-shadow-lg,0 4px 24px rgba(0,0,0,.10));}'),
 }
-# density = 間距語義 scale 的值換皮（DISCUSSION「density 總開關」定案處）：
-# 語義名（sm/md/lg/xl）與 YAML 一字不動，只換 :root 刻度值。
-_THEME_DENSITY = {
-    'compact': None,   # 不覆寫（線框預設刻度：.25/.5/1/2rem）
-    'comfortable': (':root{--wf-space-sm:.5rem;--wf-space-md:1rem;'
-                    '--wf-space-lg:1.5rem;--wf-space-xl:2.5rem;--wf-page-pad:24px;}'),
-}
+
+
+def _theme_tokens_css(tokens):
+    """theme `tokens:` → `:root{--wf-*:值}`。名字驗證（fail-fast）、值透傳（物理層本就收原始值）。"""
+    if not tokens:
+        return ''
+    decls = []
+    for family, entries in tokens.items():
+        if family not in _THEME_TOKEN_VARS:
+            raise ValueError(f"theme.tokens 未知家族 `{family}`（合法：{sorted(_THEME_TOKEN_VARS)}）")
+        if not isinstance(entries, dict):
+            raise ValueError(f"theme.tokens.{family} 必須是 dict（收到 {type(entries).__name__}）")
+        for name, val in entries.items():
+            var = _THEME_TOKEN_VARS[family].get(str(name))
+            if not var:
+                raise ValueError(f"theme.tokens.{family} 未知 token `{name}`"
+                                 f"（合法：{sorted(_THEME_TOKEN_VARS[family])}）")
+            v = str(val)
+            if re.search(r'[;{}]', v):
+                raise ValueError(f"theme.tokens.{family}.{name} 值含非法字元（收到 {v!r}）")
+            decls.append(f'{var}:{v}')
+    css = [f':root{{{";".join(decls)}}}']
+    if 'font' in tokens and 'body' in tokens['font']:
+        # 標註面維持 wireframe 字體（meta 非產品，不受 theme）——機制守衛，非樣式
+        css.append(".wf-gutter,.wf-mnote,.wf-spotlabel,.wf-step"
+                   "{font-family:'Sarasa Mono TC','SarasaMono','Courier New',monospace;}")
+    return '\n'.join(css)
 
 
 def _theme_base_css(base):
-    """把 theme 的 base: 宣告編成 CSS。全部 fail-fast；標註面字體守衛屬機制（meta 不受 theme）。"""
+    """base: 模式開關 → CSS。值類設定不在這裡（歸 tokens:）。"""
     if not base:
         return ''
     css = []
-    brand = base.get('brand')
-    if brand is not None:
-        if not re.match(r'^#[0-9a-fA-F]{3,8}$', str(brand)):
-            raise ValueError(f"theme.base.brand 需為 hex 色碼（收到 {brand!r}）——theme 是物理綁定層的唯一落點")
-        soft = base.get('brand-soft') or f'color-mix(in srgb, {brand} 10%, white)'
-        css.append(f':root{{--wf-brand:{brand};--wf-brand-soft:{soft};}}')
-    font = base.get('font')
-    if font is not None:
-        if font not in _THEME_FONT_STACKS:
-            raise ValueError(f"theme.base.font 只接 {sorted(_THEME_FONT_STACKS)}（收到 {font!r}）")
-        if _THEME_FONT_STACKS[font]:
-            css.append(f':root{{--wf-font:{_THEME_FONT_STACKS[font]};}}')
-            # 標註面維持 wireframe 字體（meta 非產品，不受 theme）——機制守衛，非樣式
-            css.append(".wf-gutter,.wf-mnote,.wf-spotlabel,.wf-step"
-                       "{font-family:'Sarasa Mono TC','SarasaMono','Courier New',monospace;}")
-    if base.get('radius') is not None:
-        css.append(f':root{{--wf-radius:{_theme_radius(base["radius"])};}}')
     chrome = base.get('chrome')
     if chrome is not None:
         if chrome not in _THEME_CHROME:
             raise ValueError(f"theme.base.chrome 只接 {sorted(_THEME_CHROME)}（收到 {chrome!r}）")
         css.append(_THEME_CHROME[chrome])
-    density = base.get('density')
-    if density is not None:
-        if density not in _THEME_DENSITY:
-            raise ValueError(f"theme.base.density 只接 {sorted(_THEME_DENSITY)}（收到 {density!r}）")
-        if _THEME_DENSITY[density]:
-            css.append(_THEME_DENSITY[density])
     marker = base.get('link-marker')
     if marker is not None:
         if marker not in ('show', 'hide'):
@@ -331,24 +356,28 @@ def _theme_base_css(base):
 
 
 def _load_theme(path):
-    """載入 theme YAML；驗證 base + bindings 結構 + 消費規則 lint（P7）。"""
-    global _THEME, _THEME_BASE
+    """載入 theme YAML；驗證 tokens + base + bindings 結構 + 消費規則 lint（P7）。"""
+    global _THEME, _THEME_BASE, _THEME_TOKENS
     if not path:
-        _THEME, _THEME_BASE = {}, {}
+        _THEME, _THEME_BASE, _THEME_TOKENS = {}, {}, {}
         return {}
     if not os.path.exists(path):
         raise ValueError(f"--mockup 找不到 theme 檔：{path}")
     data = yaml.safe_load(open(path, encoding='utf-8')) or {}
-    # 消費規則：theme 檔頂層只有 `base:` + `bindings:`（禁 embed / body / components 反查）
-    unknown = set(data.keys()) - {'base', 'bindings'}
+    # 消費規則：theme 檔頂層只有 `tokens:` + `base:` + `bindings:`（禁 embed / body / components 反查）
+    unknown = set(data.keys()) - {'tokens', 'base', 'bindings'}
     if unknown:
-        raise ValueError(f"theme 檔頂層 key 只允許 `base:` / `bindings:`（收到多餘 keys: {sorted(unknown)}）")
+        raise ValueError(f"theme 檔頂層 key 只允許 `tokens:` / `base:` / `bindings:`（收到多餘 keys: {sorted(unknown)}）")
+    tokens = data.get('tokens') or {}
+    if not isinstance(tokens, dict):
+        raise ValueError(f"theme.tokens 必須是 dict（收到 {type(tokens).__name__}）")
     base = data.get('base') or {}
     if not isinstance(base, dict):
         raise ValueError(f"theme.base 必須是 dict（收到 {type(base).__name__}）")
     unk_base = set(base) - set(_THEME_BASE_KEYS)
     if unk_base:
-        raise ValueError(f"theme.base 未知 key {sorted(unk_base)}（合法：{sorted(_THEME_BASE_KEYS)}）")
+        raise ValueError(f"theme.base 未知 key {sorted(unk_base)}（合法：{sorted(_THEME_BASE_KEYS)}；"
+                         f"值類設定（字體/間距/色/圓角）歸 tokens:）")
     bindings = data.get('bindings') or {}
     if not isinstance(bindings, dict):
         raise ValueError(f"theme.bindings 必須是 dict（收到 {type(bindings).__name__}）")
@@ -364,16 +393,17 @@ def _load_theme(path):
                     f"theme.bindings.{role}.{k}: 未知綁定屬性 {hint}\n"
                     f"合法：{sorted(_THEME_BINDABLE)}"
                 )
-    _THEME, _THEME_BASE = bindings, base
+    _theme_tokens_css(tokens)   # 先驗證（fail-fast：未知家族/名/非法值在載入時就炸）
+    _THEME, _THEME_BASE, _THEME_TOKENS = bindings, base, tokens
     return bindings
 
 
 def _theme_css():
     """把當前 theme（base + bindings）編成 CSS。一切樣式由 theme YAML 宣告驅動——
     工具不硬編任何 mockup 長相（theme 是資料，可跨平台翻譯；style 解耦原則）。"""
-    if not _THEME and not _THEME_BASE:
+    if not _THEME and not _THEME_BASE and not _THEME_TOKENS:
         return ''
-    lines = [_theme_base_css(_THEME_BASE)]
+    lines = [_theme_tokens_css(_THEME_TOKENS), _theme_base_css(_THEME_BASE)]
     for role, rules in _THEME.items():
         decls = []
         for k, v in rules.items():
