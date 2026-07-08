@@ -1006,10 +1006,10 @@ wfl render --mockup themes/brand.yaml page.wf.yaml
 
 ## R2 優先序
 
-| # | 項 | 影響 | 工程量 |
-|---|----|------|--------|
-| R2-1 | ↗ 角標化 | 每頁每連結，最大噪音 | CSS ~10 行 |
-| R2-2 | leaf `grow` | 等寬按鈕列（mobile 高頻 pattern） | ~5 行 + CSS |
-| R2-3 | tone 三元組補 chip/badge | 語義色閉環（還 Tier1 欠帳） | CSS ~30 行 |
-| R2-4 | image 預設置中 | 低 | CSS 1 行（可選） |
-| R2-5 | tab bar 壓縮 | 掛既有「組合型 token 一般化」待續項 | — |
+| # | 項 | 影響 | 工程量 | 狀態 |
+|---|----|------|--------|------|
+| R2-1 | ↗ 角標化 | 每頁每連結，最大噪音 | CSS ~10 行 | ✅ 2026-07-08 |
+| R2-2 | leaf `grow` | 等寬按鈕列（mobile 高頻 pattern） | ~5 行 + CSS | ✅ 2026-07-08 |
+| R2-3 | tone 三元組補 chip/badge | 語義色閉環（還 Tier1 欠帳） | CSS ~30 行 | ❌ 作廢（tone 移除，2026-07-08） |
+| R2-4 | image 預設置中 | 低 | CSS 1 行（可選） | ✅ 2026-07-08 |
+| R2-5 | tab bar 壓縮 | 掛既有「組合型 token 一般化」待續項 | — | ⏳ 掛待續 |

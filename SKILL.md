@@ -24,7 +24,7 @@ triggers:
 ## 兩條紅線
 
 1. **低保真**：只描述結構+動線+功能，視覺封印。尺寸皆為「參考」非規格（閱讀者認知）。
-2. **語義優先**：YAML key 命名意涵/角色，不寫視覺。顏色只用語義 `tone`（其餘中性灰）。
+2. **語義優先**：YAML key 命名意涵/角色，不寫視覺。wireframe 全灰階（產品色走 `--mockup` theme；強調用 `text.strong`）。
 
 ## 用法
 
@@ -71,7 +71,7 @@ text 值內行內 markdown：`**粗**` `*斜*` `~~刪除線~~` `[字](url)`。
 
 **複用**：`include: components/x` + `with:{...}` + `as: placeholder`（降階佔位）。
 
-**語義色（Layer1）**：`tone: danger`（feature/info/warn/danger/success/muted…）。
+**色彩**：wireframe 全灰階，無節點顏色屬性（`tone` 已移除）。產品色走 `--mockup <theme.yaml>`；評審聚焦走標註面。
 
 **Demo 標註（Layer2，可剝離；render 另出 .clean.png）**：
 `note: {ref: 1, text: ...}`（右側便利貼 + 物件小標，ref 作者自編）；

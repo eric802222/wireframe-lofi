@@ -12,7 +12,7 @@ wireframe-lofi compiler
 核心取捨：
 - 結構解析全交給 yaml.safe_load（免手刻 parser）；本檔只做「YAML 樹 → HTML」的分派
 - 葉子是語義 role（text.title / button / status…），非視覺標記
-- 顏色封印（只 tone 語義色 6 名）；尺寸走 Tailwind token；間距走語義 scale
+- 顏色封印（wireframe 全灰階；色彩=保真度的函數：產品色走 --mockup theme、聚焦走標註面）；尺寸走 Tailwind token；間距走語義 scale
 - Fail-Fast：靜默失敗禁止；未知值/typo 一律 error（POC 階段無 deprecated 相容包袱）
 
 子命令：
@@ -324,7 +324,7 @@ def _load_story(path):
         unk2 = set(s) - _STORY_SET_KEYS
         if unk2:
             raise ValueError(f"bindings[{i}].set: 未知 key {sorted(unk2)}（白名單只有 {sorted(_STORY_SET_KEYS)}；"
-                             f"tone/狀態變體歸 routes/when 系統）")
+                             f"狀態變體歸 routes/when 系統）")
     # flow 驗證 + step 編號（選填：未寫 = 上一整數步 +1；字串 step 後未編號 → error；重複 → error）
     last_int, seen = 0, set()
     for i, f in enumerate(data.get('flow') or []):
@@ -545,21 +545,11 @@ CSS_EXTRA = r"""
 .wf-sb-track { flex:1; position:relative;
   background-image:repeating-linear-gradient(45deg,#9ca3af 0 1px,transparent 1px 3px); }
 .wf-sb-thumb { position:absolute; left:1px; right:1px; top:2px; height:40px; background:#6b7280; border:1px solid #374151; }
-/* progress leaf：語義比例 fill bar；tone 走 Layer 1 顏色 */
+/* progress leaf：語義比例 fill bar（全灰階——色彩=保真度的函數，產品色走 --mockup theme） */
 .wf-progress { position:relative; display:block; height:.75rem; background:#e5e7eb;
   border-radius:var(--wf-radius-pill); overflow:hidden; min-width:4rem; }
 .wf-progress-fill { position:absolute; top:0; left:0; bottom:0; background:#6b7280;
   border-radius:var(--wf-radius-pill); transition:width .2s ease; }
-.wf-tone-danger  > .wf-progress-fill,
-.wf-progress.wf-tone-danger  .wf-progress-fill { background:#dc2626; }
-.wf-tone-warn    > .wf-progress-fill,
-.wf-progress.wf-tone-warn    .wf-progress-fill { background:#f59e0b; }
-.wf-tone-success > .wf-progress-fill,
-.wf-progress.wf-tone-success .wf-progress-fill { background:#16a34a; }
-.wf-tone-feature > .wf-progress-fill,
-.wf-progress.wf-tone-feature .wf-progress-fill { background:#0d9488; }
-.wf-tone-info    > .wf-progress-fill,
-.wf-progress.wf-tone-info    .wf-progress-fill { background:#2563eb; }
 .wf-progress-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   font-size:.7em; color:#111827; font-weight:600; }
 /* avatar leaf：只 label(縮寫) + size(sm/md/lg)；圓形佔位，禁 src/bg（守視覺封印） */
@@ -855,10 +845,10 @@ def render_leaf(d, xcls, xattr):
         return f'<div class="{cls("wf-tabs flex flex-row")}"{A}>{out}</div>'
     if role == 'progress':
         # value 0-1 語義比例；label 走 inline markdown
-        # tone/name 必須寫節點層（跟 progress key 同層 sibling），非 value 內。
+        # name 必須寫節點層（跟 progress key 同層 sibling），非 value 內。
         if isinstance(val, dict):
-            if 'tone' in val or 'name' in val:
-                raise ValueError("progress: tone/name 必須寫在節點層（跟 progress key 同層 sibling），非 value 內")
+            if 'name' in val:
+                raise ValueError("progress: name 必須寫在節點層（跟 progress key 同層 sibling），非 value 內")
             v = val.get('value', 0)
             label = val.get('label', '')
         else:
@@ -1004,7 +994,7 @@ def render_container(d, xcls, xattr, src=None, base=''):
 
 def render_widget(d, xcls, xattr, src=None, path=None):
     """示意複雜元件（table/chart/rich editor…的代表物）。屬 leaf 家族的巢狀 dict-form
-    （同 button/image：屬性掛在 widget 底下，與節點 metadata name/tone 分層）。自我聲明保真度：
+    （同 button/image：屬性掛在 widget 底下，與節點 metadata name 分層）。自我聲明保真度：
     宣告能力(can) 與/或 示意內部排版(body，複用 row/col/grid/leaf 與 to: 動線)，
     但自帶「示意」標記 → 內部一律讀作代表性、非規格，實作內部歸元件庫。
     讀成一句話：`is`（是什麼）+ `can`（能做什麼）。純量簡寫 `widget: 工單表格` = `{is: 工單表格}`。"""
@@ -1050,7 +1040,7 @@ def is_container(d):
 
 
 # --------------------------------------------------------------------------
-# item 分派 + 共用包裝（name / tone / to / spotlight / note / span / pin / modal / layer）
+# item 分派 + 共用包裝（name / to / spotlight / note / span / pin / modal / layer）
 # --------------------------------------------------------------------------
 _LAYER_Z = {'base': 1, 'overlay': 10, 'notify': 20, 'top': 30}   # 封閉語意 z-scale（帶→z-index，封 renderer）
 
@@ -1098,7 +1088,11 @@ def render_item(it, src=None, path=None):
         elif content not in (None, True):
             d.setdefault('col', [content])
     name = d.pop('name', None)
-    tone = d.pop('tone', None)
+    if 'tone' in d:                # tone 已移除（2026-07-08）：色彩=保真度的函數
+        raise ValueError(
+            "tone 已移除：wireframe 全灰階。\n"
+            "產品狀態色 → --mockup theme binding；評審聚焦 → spotlight/badge（標註面）；"
+            "語義強調 → text.strong / status.strong")
     is_widget = 'widget' in d
     block_to = d.pop('to', None) if (is_container(d) or is_widget) else None
     spot = d.pop('spotlight', None)
@@ -1115,8 +1109,6 @@ def render_item(it, src=None, path=None):
     if embed_role:                     # P7 embed 指紋：component 名 → wf-role class（theme 可綁）
         xcls.append('wf-role-' + esc_attr(embed_role))
         xattr.setdefault('data-wf-role', embed_role)
-    if tone:
-        xcls.append('wf-tone-' + str(tone))
     if name:
         xattr['data-name'] = name
     xattr.update(_dbg_attrs(esrc, epath))
@@ -1129,6 +1121,8 @@ def render_item(it, src=None, path=None):
         d.setdefault('span', span) if isinstance(span, int) else None
         core = render_container(d, xcls, xattr, esrc, epath)
     else:
+        if d.pop('grow', None):    # R2-2：leaf 也可 grow（等寬按鈕列等；與 track/container 同一語義）
+            xcls.append('wf-grow')
         core = render_leaf(d, xcls, xattr)
 
     if block_to:
@@ -1258,7 +1252,7 @@ def expand(items, basedir, ctx, stack=()):
                 child_ctx = as_ if isinstance(as_, dict) else ctx
             content = _subst(content, params)
             content = expand(content, cdir, child_ctx, stack + (path,))
-            ann = {k: it[k] for k in ('note', 'spotlight', 'name', 'tone', 'to') if k in it}
+            ann = {k: it[k] for k in ('note', 'spotlight', 'name', 'to') if k in it}
             # P7 theme 綁定：embed 的 component 名帶為 wf-role 指紋（讓 theme 可 target）
             # basename 從 `components/tx-item` 或 `layouts/mobile` 取 `tx-item` / `mobile`
             embed_role = os.path.basename(str(name))
@@ -1508,7 +1502,7 @@ def _argval(flag):
 # --------------------------------------------------------------------------
 # P0.7 Schema Validation & Fail-Fast — lint 子命令實作
 # --------------------------------------------------------------------------
-# 合法值集（DISCUSSION 定案；tone/scroll/gap/padding/align/justify/pin/layer/spotlight.kind）
+# 合法值集（DISCUSSION 定案；scroll/gap/padding/align/justify/pin/layer/spotlight.kind）
 _ENUMS = {
     'gap': {'none', 'sm', 'md', 'lg', 'xl'},
     'padding': {'none', 'sm', 'md', 'lg', 'xl'},
@@ -1516,7 +1510,6 @@ _ENUMS = {
     'justify': {'start', 'end', 'center', 'between', 'around'},
     'scroll':   {True} | set(SCROLL_SCALE),
     'scroll-x': {True} | set(SCROLL_SCALE),
-    'tone': {'feature', 'info', 'success', 'warn', 'danger', 'muted'},
     'pin': {'center', 'left', 'right', 'top', 'bottom',
             'top-left', 'top-right', 'bottom-left', 'bottom-right',
             'top-center', 'bottom-center', 'left-center', 'right-center'},
@@ -1529,7 +1522,7 @@ _GRAMMAR_KEYS = {'viewport', 'body', 'extends', 'with', 'slots', 'routes',
 # 已知 container 屬性 keys（sibling 掛在容器 dict 上）
 _CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'box', 'gap', 'padding',
                     'justify', 'align', 'span', 'grow', 'scroll', 'scroll-x',
-                    'name', 'tone', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
+                    'name', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
                     'embed', 'with', 'slot', 'as', 'when'}
 _DIRECTION_KEYS = {'row', 'col', 'grid'}
 _STRUCTURE_UNITS = {'page', 'layout', 'component', 'widget'}
@@ -1593,7 +1586,7 @@ def _walk_lint(node, path, diag):
     has_direction = keys & _DIRECTION_KEYS
     has_leaf_role = keys & set(LEAF_ROLES)
     is_widget = 'widget' in keys
-    is_slot_marker = 'slot' in keys and len(keys - {'slot', 'name', 'tone'}) == 0
+    is_slot_marker = 'slot' in keys and len(keys - {'slot', 'name'}) == 0
     is_embed = 'embed' in keys
     has_overlay_sugar = keys & _OVERLAY_SUGARS
 
@@ -1625,6 +1618,12 @@ def _walk_lint(node, path, diag):
                 if sugg and sugg != str(v):
                     hint = f"是不是「{sugg}」？\n" + hint
                 diag.error(f'{path}.{key}', f"未知 {key} 值 `{v}`", hint)
+
+    # 6b. tone 已移除（2026-07-08 定案：色彩=保真度的函數）
+    if 'tone' in node:
+        diag.error(f'{path}.tone', "tone 已移除：wireframe 全灰階",
+                   "產品狀態色 → --mockup theme binding；評審聚焦 → spotlight/badge（標註面）；\n"
+                   "語義強調 → text.strong / status.strong")
 
     # 7. spotlight.kind 檢查（scalar 或 dict）
     if 'spotlight' in node:
@@ -1745,8 +1744,6 @@ def main():
             print("  to / link")
             print("\n[浮層原語]")
             print("  pin / modal / layer")
-            print("\n[產品面 tone] (Layer 1)")
-            print("  feature / info / success / warn / danger / muted")
             print("\n[標註面] (Layer 2)")
             print("  note / spotlight")
             print("\n[Meta（隱形）]")

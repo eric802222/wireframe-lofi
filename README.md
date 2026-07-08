@@ -23,7 +23,8 @@
 
 > **尺寸皆為「參考」非「規格」。** YAML 裡的寬度（`w-24` 等 Tailwind token）只表達「大約這麼寬」的
 > 意圖，**不是實作綁定**——實作要用 flex / grid / table 都行。此約定屬**閱讀者認知**，請據此理解產物。
-> 顏色一律封印，只用語義 `tone`/`severity`（見下），不寫 `bg-red-500` 之類視覺 class。
+> 顏色一律封印：**wireframe 全灰階**（色彩=保真度的函數，見下 §6）。不寫 `bg-red-500` 之類視覺 class，
+> 也沒有節點級顏色屬性。
 
 ---
 
@@ -278,7 +279,6 @@ gap: { section: lg, list: sm }     # 用途名 → 引用內建刻度
 - box: true
   pin: bottom-right
   layer: notify
-  tone: success
   row: [ icon: check, text: 已儲存 ]
 ```
 
@@ -294,15 +294,17 @@ gap: { section: lg, list: sm }     # 用途名 → 引用內建刻度
 - 每個角色 = **組合 pin/modal/layer 的 semantic token**；node 上顯式 `pin`/`layer` 可覆寫其預設（如 `drawer` + `pin: left`）。
 - **專案可覆寫/加角色**：`wf.tokens.yaml` 的 `overlay:` 段（把 `drawer` 改左、或自定 `banner`）。沒定義 → 用內建；地基永遠是 `pin`/`modal`/`layer` 原語，不因新樣式擴充工具語彙。
 
-### 6. 語義色（產品面，UI 產品狀態）
+### 6. 色彩 = 保真度的函數（`tone` 已移除）
 
-`tone:`（或 `severity:`）掛在 block/leaf 上。**唯一被授權的顏色**，語義非視覺，其餘一律中性灰。
-色票對映集中一處 → 可 theme。（集合與命名仍在收斂，見 `DISCUSSION.md`。）
+wireframe 階段**全灰階**，沒有節點級顏色屬性（`tone:` 已於 2026-07-08 移除，寫了會 error）。三種需求各歸其層：
 
-```yaml
-- box: 逾期提醒
-  tone: danger              # feature / info / warn / danger / success / muted …
-```
+| 需求 | 歸宿 |
+|------|------|
+| 產品狀態色（危險紅/成功綠） | `--mockup <theme.yaml>` theme binding（mockup 才上色） |
+| 評審「看這裡」 | 標註面 `spotlight` / story `badge`（本來就有色、明顯非 UI） |
+| 語義強調 | `text.strong` / `status.strong`（灰階權重） |
+
+資訊不靠色彩傳達（「+32,000 / -120」符號、「超支 900」文字已足）——靠色才能傳達＝設計壞味道，wireframe 階段逼出此檢查是 feature。
 
 ### 7. 標註面：Demo 標註（可剝離，明顯是註記非 UI）
 
@@ -348,16 +350,15 @@ wireframe-yaml/
 
 ## 現況（prototype v0.1）與待補
 
-**已實作**：獨立頁 / extends+slots / include+with / **狀態感元件（`when:` 過濾 + `as: placeholder|{stage,state}` + 繼承當前路由）** / **routes 多輸出（各路由可定址 .html + stagebar + single-URL 連結）** / row-col-grid（+box/對齊/spacer/span/gap/padding/Tailwind 欄寬）/ 葉子全表 / 行內 markdown / checkbox-radio / to-link / tone / name / 標註面 note+spotlight / 乾淨版剝離 / flowmap / **`--bundle` 單檔原型（走動線）** / **`--debug` 評審回饋（模式切換 + 檔名+路徑定位 + 跨頁匯出）** / 零 JS（一般輸出）。
+**已實作**：獨立頁 / extends+slots / include+with / **狀態感元件（`when:` 過濾 + `as: placeholder|{stage,state}` + 繼承當前路由）** / **routes 多輸出（各路由可定址 .html + stagebar + single-URL 連結）** / row-col-grid（+box/對齊/spacer/span/gap/padding/Tailwind 欄寬）/ 葉子全表 / 行內 markdown / checkbox-radio / to-link / name / 標註面 note+spotlight / 乾淨版剝離 / flowmap / **`--bundle` 單檔原型（走動線）** / **`--debug` 評審回饋（模式切換 + 檔名+路徑定位 + 跨頁匯出）** / 零 JS（一般輸出）。
 
 **待補**（見 `DISCUSSION.md`）：
-- **產品面 色彩**：`tone` vs `severity` 命名、success/muted 歸屬未定。
 - **葉子兩種寫法擇一**（`"role: 值"` 字串 vs `{role: 值}` dict）+ README 明講（消歧義）。
-- flow PDF；`avatar` / `table` / `textarea` 等葉子。
+- flow PDF；`table` / `textarea` 等葉子。
 
 ## 依賴備忘
 
 **自含、可整包帶走**：runtime 只需 `python3 + pyyaml`（截圖另需 `playwright`、動線圖需 `graphviz dot`），
 封印 CSS 與 icon 圖庫都 vendored 在 `assets/`，**無外部依賴**。
-> **Theming hook**：圓角/間距/字體走 `assets/wf.css` `:root` 的 CSS 變數——圓角 `--wf-radius`/`--wf-radius-pill`、間距 `--wf-space-sm/md/lg`、字體 `--wf-font`/`--wf-font-size`/`--wf-h1|h2|h3`、頁框 `--wf-page-border`/`--wf-page-pad`。改一處即全域生效；覆蓋 `:root` 即成一個 theme（色盤/tone 與 `--theme` 注入旗標尚未做）。
+> **Theming hook**：圓角/間距/字體走 `assets/wf.css` `:root` 的 CSS 變數——圓角 `--wf-radius`/`--wf-radius-pill`、間距 `--wf-space-sm/md/lg`、字體 `--wf-font`/`--wf-font-size`/`--wf-h1|h2|h3`、頁框 `--wf-page-border`/`--wf-page-pad`。改一處即全域生效；覆蓋 `:root` 即成一個 theme（產品色走 `--mockup <theme.yaml>` binding）。
 > 要更新視覺改 `assets/wf.css`；要更新圖庫用 Font Awesome / Lucide 來源重新打包後覆蓋 `assets/*.json.gz`。

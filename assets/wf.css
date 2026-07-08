@@ -7,11 +7,14 @@ body { margin:0; padding:24px; line-height:1; }
 /* --- UX 連結行為（互動 = 有 href；色由 style 定）--- */
 a { text-decoration:none; color:inherit; }
 .wf-link::after { content:' ↗'; font-size:.72em; opacity:.7; }
+/* 區塊級連結（tab / 卡片 / 按鈕）：↗ 改右上角小角標——不進 inline flow、不折行、不撐高（R2-1） */
 .wf-blocklink-a { display:block; }
-.wf-blocklink { position:relative; }
-.wf-blocklink::after { content:'↗'; position:absolute; top:6px; right:10px; font-size:.8em; }
-.wf-link, .wf-blocklink { cursor:pointer; }
-.wf-link:hover, .wf-blocklink:hover { outline-offset:2px; }
+.wf-blocklink-a, .wf-btn.wf-link { position:relative; }
+.wf-blocklink-a::after, .wf-btn.wf-link::after {
+  content:'↗'; position:absolute; top:1px; right:3px; font-size:.6em; opacity:.6; line-height:1; }
+.wf-btn.wf-link { display:inline-block; }
+.wf-link { cursor:pointer; }
+.wf-link:hover { outline-offset:2px; }
 /* --- toggle/show/hide 互動（零-JS）--- */
 .wf-gate { position:absolute; opacity:0; pointer-events:none; width:0; height:0; }
 .wf-trigger { cursor:pointer; user-select:none; }
@@ -37,7 +40,11 @@ label.wf-trigger:not(.wf-select):not(.wf-btn) {
 .wf-i { display:flex; align-items:center; }
 .wf-cell { display:flex; align-items:center; }
 .wf-spacer { flex:1 1 auto; }
+/* leaf grow（R2-2）：等分吃掉父主軸剩餘（flex:1 1 0 等寬起算）；等寬按鈕列的正解 */
+.wf-grow { flex:1 1 0; min-width:0; text-align:center; }
 .wf-hr { border:0; border-top:1px solid; width:100%; margin:6px 0; }   /* 線色由 style 定 */
+/* image 帶明確寬度時在 col 內預設置中（R2-4；無寬度者維持 stretch 滿版） */
+.flex-col > .wf-image[style*="width:"] { align-self:center; }
 /* 元件結構（外觀由 style；此處只留 padding/尺寸/排列）*/
 .wf-btn { padding:4px 8px; font:inherit; white-space:nowrap; }
 .wf-input { display:inline-block; min-width:140px; padding:2px 8px; }
