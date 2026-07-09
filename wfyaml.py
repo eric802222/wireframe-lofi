@@ -1445,6 +1445,8 @@ def render_item(it, src=None, path=None):
     modal = d.pop('modal', None)      # 浮層：擋後面(scrim + inert)
     layer = d.pop('layer', None)      # 浮層：z 帶(base/overlay/notify/top)
     ui_state = d.pop('ui-state', None)  # 顯示態（selected/disabled/hover/focus）→ data-ui-state（theme states 綁）
+    if isinstance(ui_state, str) and ('{{' in ui_state or ui_state == ''):
+        ui_state = None                 # 未解析的 {{參數}}/空值 = 未指定（component 參數化顯示態）
     if ui_state is not None and ui_state not in _UI_STATES:
         raise ValueError(f"ui-state 只接 {sorted(_UI_STATES)}（收到 {ui_state!r}）")
 
@@ -1474,7 +1476,9 @@ def render_item(it, src=None, path=None):
         core = render_leaf(d, xcls, xattr)
 
     if block_to:
-        core = f'<a href="{_href(block_to)}" class="wf-blocklink-a wf-link">{core}</a>'
+        # span 要落在 grid 的直接子項＝這個 anchor（否則 to: 區塊在 grid 內 span 失效）
+        sp = f' style="grid-column:span {span}"' if isinstance(span, int) else ''
+        core = f'<a href="{_href(block_to)}" class="wf-blocklink-a wf-link"{sp}>{core}</a>'
     if story_badge or story_steps:    # SAC：貼紙 + flow 序號徽章（絕對定位疊在元素角落；story 的 to 掛徽章上）
         extra = ''
         if story_badge:
