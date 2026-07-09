@@ -286,14 +286,13 @@ _THEME_ELEMENT_SELECTORS = {
     'box':           '.wf-box',
 }
 
-# components: 元件名 → base selector（未列者預設 `.wf-<name>`）。
+# components: 元件名 → base selector。內建元件走既有 wf-* class；
+# 未列者（= 專案 component / embed 名）預設 `.wf-role-<name>`（embed 展開時已蓋此指紋）。
 _THEME_COMPONENT_SELECTORS = {
     **_THEME_ELEMENT_SELECTORS,
-    'card':      '.wf-box',
-    'nav-item':  '.wf-nav-item',
-    'nav-group': '.wf-nav-group',
-    'alert':     '.wf-warn',
-    'tabs':      '.wf-tabs',
+    'card':  '.wf-box',
+    'alert': '.wf-warn',
+    'tabs':  '.wf-tabs',
 }
 
 # 舊版固定 token 家族 → 既有 CSS var 名（保住 wf.css / clean 皮讀得到；向後相容）。
@@ -496,7 +495,7 @@ def _theme_components_css(components):
     for cname, spec in components.items():
         if not isinstance(spec, dict):
             raise ValueError(f"theme.components.{cname} 必須是 dict（收到 {type(spec).__name__}）")
-        sel = _THEME_COMPONENT_SELECTORS.get(cname) or f'.wf-{_slug(cname)}'
+        sel = _THEME_COMPONENT_SELECTORS.get(cname) or f'.wf-role-{_slug(cname)}'
         base = {k: v for k, v in spec.items() if k not in ('variants', 'states')}
         if base:
             props = _expand_props(base, f'components.{cname}')
@@ -798,7 +797,7 @@ CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'embed', 'slot'}
 LEAF_ROLES = ['text.title', 'text.heading', 'text.label', 'text.strong', 'text.hint', 'text',
               'input', 'select', 'button', 'status.badge', 'status.muted', 'status.strong', 'status',
               'alert', 'icon', 'divider', 'tabs', 'image', 'checkbox', 'radio', 'link',
-              'progress', 'avatar', 'nav-item']
+              'progress', 'avatar']
 TEXT_CLASS = {'text': 'wf-label', 'text.title': 'wf-h wf-h1', 'text.heading': 'wf-h wf-h2',
               'text.label': 'wf-label wf-fieldlabel', 'text.strong': 'wf-b', 'text.hint': 'wf-hint'}
 _UI_STATES = {'selected', 'disabled', 'hover', 'focus', 'active'}   # 顯示態（→ data-ui-state；theme states 綁）
@@ -831,18 +830,11 @@ CSS_EXTRA = r"""
                    linear-gradient(-45deg,transparent 47%,#d1d5db 48%,#d1d5db 52%,transparent 53%); }
 .wf-fieldlabel { color:#6b7280; font-size:.9em; }
 .wf-hyperlink { color:#2563eb; text-decoration:underline; text-underline-offset:2px; }
-/* nav-item / nav-group：側欄選單。低保真灰階骨架；顏色/選中/停用態全走 --mockup theme components */
-.wf-nav-item { display:flex; align-items:center; gap:var(--wf-space-sm,.5rem); padding:.35rem .5rem;
-  color:inherit; text-decoration:none; border-radius:var(--wf-radius,3px); white-space:nowrap; cursor:pointer; }
-.wf-nav-item::after { content:none; }   /* 選單非行內連結，不要 ↗ 動線記號 */
-.wf-nav-item-icon { display:inline-flex; flex:none; }
-.wf-nav-item-text { flex:1; }
-.wf-nav-item[data-ui-state="disabled"] { opacity:.5; cursor:default; }
-.wf-nav-group { display:flex; flex-direction:column; }
-.wf-nav-group-arrow { margin-left:auto; transition:transform .2s ease; }
-.wf-nav-group.wf-expanded .wf-nav-group-arrow { transform:rotate(180deg); }
-.wf-nav-group:not(.wf-expanded) .wf-nav-group-children { display:none; }
-.wf-nav-group-children .wf-nav-item { padding-left:1.75rem; }   /* 子項縮排（量走 theme 可覆寫） */
+/* collapsible：通用可收合區塊（原生 details/summary；零 JS 可展開）。視覺細節走 --mockup theme */
+.wf-collapsible > .wf-summary { cursor:pointer; list-style:revert; user-select:none; }
+.wf-collapsible > .wf-node { margin-top:var(--wf-space-sm,.4rem); }
+/* 通用顯示態：disabled 去互動（其餘態長相由 theme components states 決定） */
+[data-ui-state="disabled"] { opacity:.5; cursor:default; pointer-events:none; }
 /* Layer2 spotlight（明顯是註記、非 UI；可剝離：.wf-clean 全部隱藏）*/
 .wf-spot { position:relative; }
 .wf-spot-focus  { background:rgba(253,224,71,.4); box-shadow:0 0 0 3px rgba(253,224,71,.4); border-radius:var(--wf-radius); }
@@ -1124,18 +1116,6 @@ def render_leaf(d, xcls, xattr):
         if to:
             return f'<a href="{_href(to)}" class="{cls("wf-btn wf-link")}"{A}>{inner}</a>'
         return f'<button class="{cls("wf-btn")}"{A}>{inner}</button>'
-    if role == 'nav-item':
-        # 側欄選單列（滿版可點）。視覺全歸 theme components.nav-item；工具只給低保真骨架。
-        # 不加 wf-link（不要 ↗ 記號——選單非行內連結）；有 to 仍是 <a> 可走動線/flowmap。
-        if isinstance(val, dict):
-            txt, to, ic = val.get('text', ''), val.get('to'), val.get('icon')
-        else:
-            txt, to, ic = val, None, None
-        inner = (f'<span class="wf-nav-item-icon">{_icon(ic)}</span>' if ic else '') + \
-                f'<span class="wf-nav-item-text">{inline(txt)}</span>'
-        if to:
-            return f'<a href="{_href(to)}" class="{cls("wf-nav-item")}"{A}>{inner}</a>'
-        return f'<div class="{cls("wf-nav-item")}"{A}>{inner}</div>'
     if role == 'status.badge':
         return f'<label class="{cls("wf-badge")}"{A}>{inline(val)}</label>'
     if role in ('status', 'status.muted', 'status.strong'):
@@ -1327,6 +1307,15 @@ def render_container(d, xcls, xattr, src=None, base=''):
     if isinstance(d.get('span'), int):
         style.append(f'grid-column:span {d["span"]}')
     st = f' style="{";".join(style)}"' if style else ''
+    # collapsible：通用可收合區塊（原生 <details>/<summary>，零 JS 可展開；非 nav 專屬）。
+    # `collapsible: <摘要文字>` 或 `collapsible: true` + `summary:`；`expanded: true` → open。
+    if 'collapsible' in d:
+        cv = d.get('collapsible')
+        summ = d.get('summary') if d.get('summary') is not None else (cv if isinstance(cv, str) else '')
+        openattr = ' open' if d.get('expanded') else ''
+        inner = f'<div class="{" ".join(cls)}"{st}>{body}</div>'
+        return (f'<details class="wf-collapsible"{openattr}{_attrs(xattr)}>'
+                f'<summary class="wf-summary">{inline(summ)}</summary>{inner}</details>')
     return f'<div class="{" ".join(cls)}"{st}{_attrs(xattr)}>{body}</div>'
 
 
@@ -1362,26 +1351,6 @@ def render_widget(d, xcls, xattr, src=None, path=None):
 
     cls = ['wf-node', 'wf-widget'] + xcls
     return f'<div class="{" ".join(cls)}"{_attrs(xattr)}>{head}{can_html}{body_html}{foot}</div>'
-
-
-def render_nav_group(d, xcls, xattr, src=None, path=None):
-    """側欄可展開群組：頭列（icon+text+chevron）+ children（nav-item）。
-    expanded 決定 chevron 朝向 + children 顯隱。視覺全歸 theme components.nav-group / nav-item。"""
-    g = d['nav-group']
-    if not isinstance(g, dict):
-        g = {'text': g}
-    txt, ic = g.get('text', ''), g.get('icon')
-    expanded = bool(g.get('expanded'))
-    children = d.get('children') or []
-    bpath = (f'{path}.children' if path else 'children')
-    head_icon = f'<span class="wf-nav-item-icon">{_icon(ic)}</span>' if ic else ''
-    head = (f'<div class="wf-nav-item wf-nav-group-head">{head_icon}'
-            f'<span class="wf-nav-item-text">{inline(txt)}</span>'
-            f'<span class="wf-nav-group-arrow">▾</span></div>')
-    kids = ''.join(render_item(it, src, f'{bpath}[{i}]') for i, it in enumerate(children))
-    cls = ['wf-node', 'wf-nav-group'] + (['wf-expanded'] if expanded else []) + xcls
-    return (f'<div class="{" ".join(cls)}"{_attrs(xattr)}>{head}'
-            f'<div class="wf-nav-group-children">{kids}</div></div>')
 
 
 def _ckeys(it):
@@ -1454,7 +1423,6 @@ def render_item(it, src=None, path=None):
             "產品狀態色 → --mockup theme binding；評審聚焦 → spotlight/badge（標註面）；"
             "語義強調 → text.strong / status.strong")
     is_widget = 'widget' in d
-    is_navgroup = 'nav-group' in d
     block_to = d.pop('to', None) if (is_container(d) or is_widget) else None
     spot = d.pop('spotlight', None)
     note = d.pop('note', None)
@@ -1481,9 +1449,7 @@ def render_item(it, src=None, path=None):
     if isinstance(span, int):
         xattr['style'] = f'grid-column:span {span}'
 
-    if is_navgroup:
-        core = render_nav_group(d, xcls, xattr, esrc, epath)
-    elif is_widget:
+    if is_widget:
         core = render_widget(d, xcls, xattr, esrc, epath)
     elif is_container(d):
         d.setdefault('span', span) if isinstance(span, int) else None
@@ -1623,7 +1589,7 @@ def expand(items, basedir, ctx, stack=()):
                 child_ctx = as_ if isinstance(as_, dict) else ctx
             content = _subst(content, params)
             content = expand(content, cdir, child_ctx, stack + (path,))
-            ann = {k: it[k] for k in ('note', 'spotlight', 'name', 'to') if k in it}
+            ann = {k: it[k] for k in ('note', 'spotlight', 'name', 'to', 'ui-state') if k in it}
             # P7 theme 綁定：embed 的 component 名帶為 wf-role 指紋（讓 theme 可 target）
             # basename 從 `components/tx-item` 或 `layouts/mobile` 取 `tx-item` / `mobile`
             embed_role = os.path.basename(str(name))
@@ -1651,7 +1617,7 @@ def expand(items, basedir, ctx, stack=()):
 def _child_list_keys(nd):
     """節點的結構子清單 keys：方向 key / items + overlay 角色內容（dialog/toast/專案自定…）。
     expand / _fill_slots 都要走訪這些，否則藏在 overlay 角色裡的 embed / slot 靜默失效。"""
-    keys = [k for k in ('items', 'row', 'col', 'grid', 'children') if isinstance(nd.get(k), list)]
+    keys = [k for k in ('items', 'row', 'col', 'grid') if isinstance(nd.get(k), list)]
     keys += [k for k in _overlay_tokens() if isinstance(nd.get(k), list)]
     return keys
 
@@ -1909,7 +1875,7 @@ _CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'box', 'gap', 'padding',
                     'justify', 'align', 'span', 'grow', 'scroll', 'scroll-x',
                     'name', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
                     'embed', 'with', 'slot', 'as', 'when', 'ui-state',
-                    'nav-group', 'children'}
+                    'collapsible', 'expanded', 'summary'}
 _DIRECTION_KEYS = {'row', 'col', 'grid'}
 _STRUCTURE_UNITS = {'page', 'layout', 'component', 'widget'}
 _OVERLAY_SUGARS = {'dialog', 'drawer', 'sheet', 'toast', 'loading'}
@@ -2037,7 +2003,7 @@ def _walk_lint(node, path, diag):
 
     # 9. 遞迴子節點：只走結構性 key，跳過 leaf value / meta / 參數
     # 結構性 key：direction values (list) / items / body / overlay 角色內容 / slots values / routes items
-    _RECURSE_INTO = _DIRECTION_KEYS | {'items', 'body', 'children'}   # 這些 value 是結構樹
+    _RECURSE_INTO = _DIRECTION_KEYS | {'items', 'body'}   # 這些 value 是結構樹
     for k, v in node.items():
         if k in ('__src', '__path'):
             continue
