@@ -1745,7 +1745,9 @@ def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=N
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + (DEBUG_CSS if debug else '')
                          + _style_css() + _tokens_css() + _theme_css()
                          + _width_css('.wf-root', w, h, notes))
-    page_attr = f' data-wf-page="{esc(_PAGE_BASE)}"' if debug else ''
+    # debug：root 也帶 data-wf-src/path → viewport 本身可被點選標記（畫布級建議：背景/尺寸/整體）
+    page_attr = (f' data-wf-page="{esc(_PAGE_BASE)}" data-wf-src="{esc(_PAGE_BASE)}"'
+                 f' data-wf-path="viewport"') if debug else ''
     head = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><style>{css}</style>'
             f'</head><body><div class="wf-root"{page_attr}>')
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
@@ -1792,7 +1794,8 @@ def bundle(files, debug=False, title='prototype', style=None, story=None):
                                                  (label if routes else None), labels)
             pid = _pgid(base, rid)
             pids.append(pid)
-            secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root">{content}</div></section>')
+            root_attr = f' data-wf-src="{esc(base)}" data-wf-path="viewport"' if debug else ''
+            secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root"{root_attr}>{content}</div></section>')
             overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
             navitems.append(f'<a href="#{pid}" id="nav-{pid}">{esc(label if routes else base)}</a>')
         navs.append(f'<div class="wf-navgrp"><b>{esc(base)}</b>{"".join(navitems)}</div>')
@@ -1819,7 +1822,8 @@ def bundle(files, debug=False, title='prototype', style=None, story=None):
             _STORY = None
         pid = f'wf-pg-story-{sid}'
         pids.append(pid)
-        secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root">{content}</div></section>')
+        root_attr = f' data-wf-src="{esc(sbase)}" data-wf-path="viewport"' if debug else ''
+        secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root"{root_attr}>{content}</div></section>')
         overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
         navs.append(f'<div class="wf-navgrp"><b>📖 {esc(str(sdata["story"]))}</b>'
                     f'<a href="#{pid}" id="nav-{pid}">{esc(sbase)}（故事版）</a></div>')
