@@ -447,6 +447,10 @@ def _theme_tokens_css(tokens):
         for name, entry in entries.items():
             decls.append(f'{_theme_var_name(family, name)}:{_resolve_value(_token_scalar(entry))}')
     css = [f':root{{{";".join(decls)}}}'] if decls else []
+    # 全頁背景：定義了 page 背景 token（--wf-page-bg）就套到 body，與 chrome 模式解耦
+    # （chrome: flat 也能有全頁底；chrome: card 另覆寫 root 為白卡浮於其上）。
+    if any(d.startswith('--wf-page-bg:') for d in decls):
+        css.append('body{background:var(--wf-page-bg);}')
     if 'font' in tokens:
         # 標註面維持 wireframe 字體（meta 非產品，不受 theme）——機制守衛，非樣式
         css.append(".wf-gutter,.wf-mnote,.wf-spotlabel,.wf-step"
