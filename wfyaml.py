@@ -1611,9 +1611,11 @@ def expand(items, basedir, ctx, stack=()):
                 for pk in ('__src', '__path'):
                     if pk in it:
                         ann[pk] = it[pk]
-                # 用 `col: content` 的 transparent 容器承載；`__embed_role` 讓 render_item 加 wf-role class
+                # 用 `col: content` 的 transparent 容器承載；`__embed_role` 讓 render_item 加 wf-role class。
+                # 不寫死 padding（col 預設本就無內距）→ theme components.<role> 的 padding 才能生效
+                # （inline style 會蓋過 class；padding 交給 theme，gap 仍歸零避免多項間距）。
                 out.append({**ann, '__embed_role': embed_role,
-                            'col': content, 'gap': 'none', 'padding': 'none'})
+                            'col': content, 'gap': 'none'})
             else:
                 out.extend(content)
         elif isinstance(it, dict):
