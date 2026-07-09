@@ -515,7 +515,16 @@ def _theme_bindings_css(bindings):
     lines = []
     for role, rules in bindings.items():
         decls = []
-        for k, v in rules.items():
+        merged = {}
+        for pname in (rules.get('apply') or []):          # bindings 也支援 apply preset
+            preset = _THEME_PRESETS.get(pname)
+            if preset is None:
+                sugg = _suggest_key(pname, set(_THEME_PRESETS))
+                hint = f"（是不是「{sugg}」？）" if sugg else ""
+                raise ValueError(f"theme.bindings.{role} apply 未定義 preset `{pname}`{hint}")
+            merged.update(preset)
+        merged.update({k: v for k, v in rules.items() if k != 'apply'})
+        for k, v in merged.items():
             use_enum = k in _THEME_BINDABLE and not (isinstance(v, str) and '{' in v)
             if use_enum:
                 try:
