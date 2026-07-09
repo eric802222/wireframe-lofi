@@ -261,12 +261,19 @@ _THEME_BINDABLE = {
                       })),
 }
 
-_THEME = {}          # 當前載入的 theme（binding 表）；空 dict = wireframe 模式
-_THEME_BASE = {}     # theme 的 base: 模式開關（chrome/link-marker）
+_THEME = {}          # 當前載入的 theme bindings（綁 name/role 的專案微調）；空 dict = wireframe 模式
+_THEME_BASE = {}     # theme 的 base: 模式開關（chrome/link-marker/scrollbar）
 _THEME_TOKENS = {}   # theme 的 tokens: 值層（Tier-1 design token，FE 可直接接手）
+_THEME_PRESETS = {}  # tokens.preset: composite token（一組 property，被 apply: 組合，不渲染）
+_THEME_COMPONENTS = {}  # components: 元件皮（Tier-2，base/variants/states + apply）
+_THEME_FLATVALS = {}    # {"family.name": 已展開純值}（供 {ref} 的 var() fallback）
 
-# theme 綁定也可指向「內建元件 role」（wf-* 契約）——同一套 bindable 詞彙換元件皮，
-# 不用另發明語彙；未列者走 component role / name: 語義身份。
+
+def _theme_active():
+    return bool(_THEME or _THEME_BASE or _THEME_TOKENS or _THEME_COMPONENTS)
+
+
+# bindings 綁「內建元件 role」→ selector（同一套詞彙換元件皮，不另發明語彙）。
 _THEME_ELEMENT_SELECTORS = {
     'button':        '.wf-btn',
     'button-link':   'a.wf-btn.wf-link',    # 帶 to: 的按鈕（主要動作/導航）
@@ -279,9 +286,18 @@ _THEME_ELEMENT_SELECTORS = {
     'box':           '.wf-box',
 }
 
-# theme 的 `tokens:` 值層 —— Tier-1 design token（細顆粒、純資料、可直接交付 FE）。
-# 工具只擁有「token 名 → CSS var 名」對照表；**值全部來自 theme 檔**（物理綁定層），
-# 沒定義的 token 用 bindings resolver 的 var() fallback（可攜地板）。改值不改工具。
+# components: 元件名 → base selector（未列者預設 `.wf-<name>`）。
+_THEME_COMPONENT_SELECTORS = {
+    **_THEME_ELEMENT_SELECTORS,
+    'card':      '.wf-box',
+    'nav-item':  '.wf-nav-item',
+    'nav-group': '.wf-nav-group',
+    'alert':     '.wf-warn',
+    'tabs':      '.wf-tabs',
+}
+
+# 舊版固定 token 家族 → 既有 CSS var 名（保住 wf.css / clean 皮讀得到；向後相容）。
+# 新增家族/名字則自動走 `--wf-<family>-<name>`（開放命名）。
 _THEME_TOKEN_VARS = {
     'font':   {'body': '--wf-font', 'size': '--wf-font-size',
                'h1': '--wf-h1', 'h2': '--wf-h2', 'h3': '--wf-h3'},
@@ -299,8 +315,20 @@ _THEME_TOKEN_VARS = {
     'page':   {'pad': '--wf-page-pad'},
 }
 
-# base: 只剩「模式開關」（非值）：chrome 版面架構、link-marker 動線記號、scrollbar 捲軸示意顯隱。
-# 值類（字體/間距/色/圓角）一律走 tokens: ——避免 preset 表把值寫回工具。
+# CSS property 白名單（components / preset / raw binding 用）——未知 property fail-fast。
+_CSS_PROP_ALLOW = {
+    'background', 'background-color', 'background-image', 'color',
+    'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
+    'border-color', 'border-width', 'border-style', 'border-radius',
+    'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+    'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+    'gap', 'box-shadow', 'opacity', 'font', 'font-family', 'font-size', 'font-weight',
+    'line-height', 'letter-spacing', 'text-transform', 'text-decoration', 'text-align',
+    'height', 'min-height', 'max-height', 'width', 'min-width', 'max-width',
+    'display', 'align-items', 'justify-content', 'transition', 'cursor',
+    'outline', 'outline-offset', 'fill',
+}
+
 _THEME_BASE_KEYS = {'chrome', 'link-marker', 'scrollbar'}
 _THEME_CHROME = {
     'flat': '',
@@ -310,27 +338,117 @@ _THEME_CHROME = {
 }
 
 
+def _slug(s):
+    return re.sub(r'[^a-z0-9-]', '-', str(s).lower())
+
+
+def _theme_var_name(family, name):
+    """token 路徑 → CSS var 名。舊家族/名走既有 var（相容），其餘走 `--wf-<family>-<name>`。"""
+    fam = _THEME_TOKEN_VARS.get(family)
+    if fam and str(name) in fam:
+        return fam[str(name)]
+    return f'--wf-{_slug(family)}-{_slug(name)}'
+
+
+def _token_scalar(entry):
+    """token 值：scalar 直用；dict 需 `$value`（DTCG）；其餘（composite 無 $value）報錯。"""
+    if isinstance(entry, dict):
+        if '$value' in entry:
+            return str(entry['$value'])
+        raise ValueError(f"theme token 值為 dict 但缺 $value（收到 keys={sorted(entry)}）；"
+                         f"一組 property 請放 tokens.preset")
+    return str(entry)
+
+
+def _flatten_tokens(tokens):
+    """建 {"family.name": 純值}；展開巢狀 {ref}（含循環偵測）。preset 家族不進此表。"""
+    raw = {}
+    for family, entries in tokens.items():
+        if family == 'preset':
+            continue
+        if not isinstance(entries, dict):
+            raise ValueError(f"theme.tokens.{family} 必須是 dict（收到 {type(entries).__name__}）")
+        for name, entry in entries.items():
+            raw[f'{family}.{name}'] = _token_scalar(entry)
+    resolved = {}
+
+    def resolve(key, stack):
+        if key in resolved:
+            return resolved[key]
+        if key not in raw:
+            sugg = _suggest_key(key, set(raw))
+            hint = f"（是不是「{sugg}」？）" if sugg else ""
+            raise ValueError(f"theme token 參照 {{{key}}} 未定義{hint}")
+        if key in stack:
+            raise ValueError(f"theme token 參照循環：{' → '.join(list(stack) + [key])}")
+        out = re.sub(r'\{([^}]+)\}', lambda m: resolve(m.group(1).strip(), stack + (key,)), raw[key])
+        resolved[key] = out
+        return out
+
+    for k in raw:
+        resolve(k, ())
+    return resolved
+
+
+def _resolve_value(val):
+    """把值裡的 {family.name} 換成 var(--wf-…, 純值 fallback)；其餘原樣透傳。"""
+    def sub(m):
+        key = m.group(1).strip()
+        fb = _THEME_FLATVALS.get(key)
+        if fb is None:
+            sugg = _suggest_key(key, set(_THEME_FLATVALS))
+            hint = f"（是不是「{sugg}」？）" if sugg else ""
+            raise ValueError(f"theme 參照未定義 token {{{key}}}{hint}")
+        fam, _, nm = key.partition('.')
+        return f'var({_theme_var_name(fam, nm)}, {fb})'
+    out = re.sub(r'\{([^}]+)\}', sub, str(val))
+    if re.search(r'[;{}]', out):
+        raise ValueError(f"theme 值含非法字元或未解析 ref（收到 {val!r}）")
+    return out
+
+
+def _expand_props(rules, where=''):
+    """dict（可含 apply: [preset…]）→ 展開後的 {prop: 解析值}。優先序：preset < 明寫。"""
+    if not isinstance(rules, dict):
+        raise ValueError(f"theme {where} 必須是 dict（收到 {type(rules).__name__}）")
+    merged = {}
+    for pname in (rules.get('apply') or []):
+        preset = _THEME_PRESETS.get(pname)
+        if preset is None:
+            sugg = _suggest_key(pname, set(_THEME_PRESETS))
+            hint = f"（是不是「{sugg}」？）" if sugg else ""
+            raise ValueError(f"theme {where} apply 未定義 preset `{pname}`{hint}")
+        merged.update(preset)
+    for k, v in rules.items():
+        if k == 'apply':
+            continue
+        merged[k] = v
+    final = {}
+    for p, v in merged.items():
+        if p not in _CSS_PROP_ALLOW:
+            sugg = _suggest_key(p, _CSS_PROP_ALLOW)
+            hint = f"（是不是「{sugg}」？）" if sugg else f"合法：{sorted(_CSS_PROP_ALLOW)}"
+            raise ValueError(f"theme {where} 未知 CSS property `{p}` {hint}")
+        final[p] = _resolve_value(v)
+    return final
+
+
+def _props_str(props):
+    return ';'.join(f'{p}:{v}' for p, v in props.items())
+
+
 def _theme_tokens_css(tokens):
-    """theme `tokens:` → `:root{--wf-*:值}`。名字驗證（fail-fast）、值透傳（物理層本就收原始值）。"""
+    """theme `tokens:` → `:root{--wf-*:值}`（preset 不進 :root）。"""
     if not tokens:
         return ''
     decls = []
     for family, entries in tokens.items():
-        if family not in _THEME_TOKEN_VARS:
-            raise ValueError(f"theme.tokens 未知家族 `{family}`（合法：{sorted(_THEME_TOKEN_VARS)}）")
-        if not isinstance(entries, dict):
-            raise ValueError(f"theme.tokens.{family} 必須是 dict（收到 {type(entries).__name__}）")
-        for name, val in entries.items():
-            var = _THEME_TOKEN_VARS[family].get(str(name))
-            if not var:
-                raise ValueError(f"theme.tokens.{family} 未知 token `{name}`"
-                                 f"（合法：{sorted(_THEME_TOKEN_VARS[family])}）")
-            v = str(val)
-            if re.search(r'[;{}]', v):
-                raise ValueError(f"theme.tokens.{family}.{name} 值含非法字元（收到 {v!r}）")
-            decls.append(f'{var}:{v}')
-    css = [f':root{{{";".join(decls)}}}']
-    if 'font' in tokens and 'body' in tokens['font']:
+        if family == 'preset':
+            continue
+        for name, entry in entries.items():
+            decls.append(f'{_theme_var_name(family, name)}:{_resolve_value(_token_scalar(entry))}')
+    css = [f':root{{{";".join(decls)}}}'] if decls else []
+    if 'font' in tokens:
         # 標註面維持 wireframe 字體（meta 非產品，不受 theme）——機制守衛，非樣式
         css.append(".wf-gutter,.wf-mnote,.wf-spotlabel,.wf-step"
                    "{font-family:'Sarasa Mono TC','SarasaMono','Courier New',monospace;}")
@@ -363,19 +481,77 @@ def _theme_base_css(base):
     return '\n'.join(css)
 
 
+def _state_selector(sel, sname):
+    """狀態 selector：hover/focus 走真 pseudo（.html 互動可見）；其餘走 [data-ui-state]。"""
+    if sname == 'hover':
+        return sel + ':hover'
+    if sname == 'focus':
+        return sel + ':focus'
+    return f'{sel}[data-ui-state="{_slug(sname)}"]'
+
+
+def _theme_components_css(components):
+    """components: 元件皮 → CSS（base / variants / states，含 apply preset）。"""
+    lines = []
+    for cname, spec in components.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"theme.components.{cname} 必須是 dict（收到 {type(spec).__name__}）")
+        sel = _THEME_COMPONENT_SELECTORS.get(cname) or f'.wf-{_slug(cname)}'
+        base = {k: v for k, v in spec.items() if k not in ('variants', 'states')}
+        if base:
+            props = _expand_props(base, f'components.{cname}')
+            if props:
+                lines.append(f'{sel}{{{_props_str(props)}}}')
+        for vname, vrules in (spec.get('variants') or {}).items():
+            props = _expand_props(vrules, f'components.{cname}.variants.{vname}')
+            lines.append(f'{sel}[data-variant="{_slug(vname)}"]{{{_props_str(props)}}}')
+        for sname, srules in (spec.get('states') or {}).items():
+            props = _expand_props(srules, f'components.{cname}.states.{sname}')
+            lines.append(f'{_state_selector(sel, sname)}{{{_props_str(props)}}}')
+    return '\n'.join(lines)
+
+
+def _theme_bindings_css(bindings):
+    """bindings: 綁 name:/role 的專案微調。相容舊 enum（surface/subtle/md…），並吃 {ref} / raw property。"""
+    lines = []
+    for role, rules in bindings.items():
+        decls = []
+        for k, v in rules.items():
+            use_enum = k in _THEME_BINDABLE and not (isinstance(v, str) and '{' in v)
+            if use_enum:
+                try:
+                    css_prop, resolver = _THEME_BINDABLE[k]
+                    decls.append(f'{css_prop}:{resolver(v)}')
+                    continue
+                except ValueError:
+                    pass   # 非 enum 值 → 落到 raw property 路徑
+            if k not in _CSS_PROP_ALLOW:
+                sugg = _suggest_key(k, _CSS_PROP_ALLOW | set(_THEME_BINDABLE))
+                hint = f"（是不是「{sugg}」？）" if sugg else ""
+                raise ValueError(f"theme.bindings.{role}.{k}: 未知綁定屬性/CSS property{hint}")
+            decls.append(f'{k}:{_resolve_value(v)}')
+        r = esc_attr(role)
+        # 優先序：語義身份（role/name）selector 三疊拉高 specificity，贏過元件皮。
+        sel = _THEME_ELEMENT_SELECTORS.get(role) or \
+            (f'.wf-role-{r}.wf-role-{r}.wf-role-{r}, '
+             f'[data-name="{r}"][data-name="{r}"][data-name="{r}"]')
+        lines.append(f'{sel}{{{";".join(decls)}}}')
+    return '\n'.join(lines)
+
+
 def _load_theme(path):
-    """載入 theme YAML；驗證 tokens + base + bindings 結構 + 消費規則 lint（P7）。"""
-    global _THEME, _THEME_BASE, _THEME_TOKENS
+    """載入 theme YAML；驗證 tokens / preset / base / components / bindings（fail-fast）。"""
+    global _THEME, _THEME_BASE, _THEME_TOKENS, _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS
     if not path:
         _THEME, _THEME_BASE, _THEME_TOKENS = {}, {}, {}
+        _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS = {}, {}, {}
         return {}
     if not os.path.exists(path):
         raise ValueError(f"--mockup 找不到 theme 檔：{path}")
     data = yaml.safe_load(open(path, encoding='utf-8')) or {}
-    # 消費規則：theme 檔頂層只有 `tokens:` + `base:` + `bindings:`（禁 embed / body / components 反查）
-    unknown = set(data.keys()) - {'tokens', 'base', 'bindings'}
+    unknown = set(data.keys()) - {'tokens', 'base', 'bindings', 'components'}
     if unknown:
-        raise ValueError(f"theme 檔頂層 key 只允許 `tokens:` / `base:` / `bindings:`（收到多餘 keys: {sorted(unknown)}）")
+        raise ValueError(f"theme 檔頂層 key 只允許 tokens/base/bindings/components（收到多餘: {sorted(unknown)}）")
     tokens = data.get('tokens') or {}
     if not isinstance(tokens, dict):
         raise ValueError(f"theme.tokens 必須是 dict（收到 {type(tokens).__name__}）")
@@ -385,46 +561,43 @@ def _load_theme(path):
     unk_base = set(base) - set(_THEME_BASE_KEYS)
     if unk_base:
         raise ValueError(f"theme.base 未知 key {sorted(unk_base)}（合法：{sorted(_THEME_BASE_KEYS)}；"
-                         f"值類設定（字體/間距/色/圓角）歸 tokens:）")
+                         f"值類設定歸 tokens:）")
     bindings = data.get('bindings') or {}
     if not isinstance(bindings, dict):
         raise ValueError(f"theme.bindings 必須是 dict（收到 {type(bindings).__name__}）")
-    # 驗證每組 role 綁定的 key 都在 _THEME_BINDABLE 內
-    for role, rules in bindings.items():
-        if not isinstance(rules, dict):
-            raise ValueError(f"theme.bindings.{role} 必須是 dict（收到 {type(rules).__name__}）")
-        for k in rules:
-            if k not in _THEME_BINDABLE:
-                sugg = _suggest_key(k, set(_THEME_BINDABLE))
-                hint = f"（是不是「{sugg}」？）" if sugg else ""
-                raise ValueError(
-                    f"theme.bindings.{role}.{k}: 未知綁定屬性 {hint}\n"
-                    f"合法：{sorted(_THEME_BINDABLE)}"
-                )
-    _theme_tokens_css(tokens)   # 先驗證（fail-fast：未知家族/名/非法值在載入時就炸）
-    _THEME, _THEME_BASE, _THEME_TOKENS = bindings, base, tokens
+    components = data.get('components') or {}
+    if not isinstance(components, dict):
+        raise ValueError(f"theme.components 必須是 dict（收到 {type(components).__name__}）")
+
+    # 值層先展開（fail-fast：未定義 ref / 循環在此炸）
+    _THEME_FLATVALS = _flatten_tokens(tokens)
+    presets = (tokens.get('preset') or {})
+    if not isinstance(presets, dict):
+        raise ValueError(f"theme.tokens.preset 必須是 dict（收到 {type(presets).__name__}）")
+    # preset 不可 apply 另一個 preset（一層攤平）
+    for pn, pr in presets.items():
+        if isinstance(pr, dict) and 'apply' in pr:
+            raise ValueError(f"theme.tokens.preset.{pn} 不可 apply 另一個 preset（一層攤平；共用值請用 {{token.ref}}）")
+    _THEME_PRESETS = presets
+    for pn, pr in presets.items():        # 驗證 preset 內 property + ref
+        _expand_props(pr, f'tokens.preset.{pn}')
+    _THEME, _THEME_BASE, _THEME_TOKENS, _THEME_COMPONENTS = bindings, base, tokens, components
+    # 全部先編一次觸發驗證（property 白名單 / enum / ref）
+    _theme_tokens_css(tokens)
+    _theme_components_css(components)
+    _theme_bindings_css(bindings)
     return bindings
 
 
 def _theme_css():
-    """把當前 theme（base + bindings）編成 CSS。一切樣式由 theme YAML 宣告驅動——
-    工具不硬編任何 mockup 長相（theme 是資料，可跨平台翻譯；style 解耦原則）。"""
-    if not _THEME and not _THEME_BASE and not _THEME_TOKENS:
+    """把當前 theme（tokens + base + components + bindings）編成 CSS。
+    工具不硬編任何 mockup 長相（theme 是資料，可跨平台翻譯；style 解耦原則）。
+    輸出順序即 specificity：tokens(:root) → base → components → bindings（最後最高）。"""
+    if not _theme_active():
         return ''
-    lines = [_theme_tokens_css(_THEME_TOKENS), _theme_base_css(_THEME_BASE)]
-    for role, rules in _THEME.items():
-        decls = []
-        for k, v in rules.items():
-            css_prop, resolver = _THEME_BINDABLE[k]
-            decls.append(f'{css_prop}:{resolver(v)}')
-        # 綁定優先序（specificity 表達）：語義身份（role/name，最具體的意圖）> 元件皮 > 基底。
-        # role/name selector 三疊拉高 specificity，確保「這顆按鈕」贏過「所有按鈕」。
-        r = esc_attr(role)
-        sel = _THEME_ELEMENT_SELECTORS.get(role) or \
-            (f'.wf-role-{r}.wf-role-{r}.wf-role-{r}, '
-             f'[data-name="{r}"][data-name="{r}"][data-name="{r}"]')
-        lines.append(f'{sel}{{{";".join(decls)}}}')
-    return '\n'.join(lines)
+    lines = [_theme_tokens_css(_THEME_TOKENS), _theme_base_css(_THEME_BASE),
+             _theme_components_css(_THEME_COMPONENTS), _theme_bindings_css(_THEME)]
+    return '\n'.join(x for x in lines if x)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -625,9 +798,10 @@ CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'embed', 'slot'}
 LEAF_ROLES = ['text.title', 'text.heading', 'text.label', 'text.strong', 'text.hint', 'text',
               'input', 'select', 'button', 'status.badge', 'status.muted', 'status.strong', 'status',
               'alert', 'icon', 'divider', 'tabs', 'image', 'checkbox', 'radio', 'link',
-              'progress', 'avatar']
+              'progress', 'avatar', 'nav-item']
 TEXT_CLASS = {'text': 'wf-label', 'text.title': 'wf-h wf-h1', 'text.heading': 'wf-h wf-h2',
               'text.label': 'wf-label wf-fieldlabel', 'text.strong': 'wf-b', 'text.hint': 'wf-hint'}
+_UI_STATES = {'selected', 'disabled', 'hover', 'focus', 'active'}   # 顯示態（→ data-ui-state；theme states 綁）
 
 _NOTES = []   # Layer2 note → 右側 gutter（供 render.sh 量測對齊（位置烤進 DOM））
 _NCOUNT = 0
@@ -657,6 +831,18 @@ CSS_EXTRA = r"""
                    linear-gradient(-45deg,transparent 47%,#d1d5db 48%,#d1d5db 52%,transparent 53%); }
 .wf-fieldlabel { color:#6b7280; font-size:.9em; }
 .wf-hyperlink { color:#2563eb; text-decoration:underline; text-underline-offset:2px; }
+/* nav-item / nav-group：側欄選單。低保真灰階骨架；顏色/選中/停用態全走 --mockup theme components */
+.wf-nav-item { display:flex; align-items:center; gap:var(--wf-space-sm,.5rem); padding:.35rem .5rem;
+  color:inherit; text-decoration:none; border-radius:var(--wf-radius,3px); white-space:nowrap; cursor:pointer; }
+.wf-nav-item::after { content:none; }   /* 選單非行內連結，不要 ↗ 動線記號 */
+.wf-nav-item-icon { display:inline-flex; flex:none; }
+.wf-nav-item-text { flex:1; }
+.wf-nav-item[data-ui-state="disabled"] { opacity:.5; cursor:default; }
+.wf-nav-group { display:flex; flex-direction:column; }
+.wf-nav-group-arrow { margin-left:auto; transition:transform .2s ease; }
+.wf-nav-group.wf-expanded .wf-nav-group-arrow { transform:rotate(180deg); }
+.wf-nav-group:not(.wf-expanded) .wf-nav-group-children { display:none; }
+.wf-nav-group-children .wf-nav-item { padding-left:1.75rem; }   /* 子項縮排（量走 theme 可覆寫） */
 /* Layer2 spotlight（明顯是註記、非 UI；可剝離：.wf-clean 全部隱藏）*/
 .wf-spot { position:relative; }
 .wf-spot-focus  { background:rgba(253,224,71,.4); box-shadow:0 0 0 3px rgba(253,224,71,.4); border-radius:var(--wf-radius); }
@@ -938,6 +1124,18 @@ def render_leaf(d, xcls, xattr):
         if to:
             return f'<a href="{_href(to)}" class="{cls("wf-btn wf-link")}"{A}>{inner}</a>'
         return f'<button class="{cls("wf-btn")}"{A}>{inner}</button>'
+    if role == 'nav-item':
+        # 側欄選單列（滿版可點）。視覺全歸 theme components.nav-item；工具只給低保真骨架。
+        # 不加 wf-link（不要 ↗ 記號——選單非行內連結）；有 to 仍是 <a> 可走動線/flowmap。
+        if isinstance(val, dict):
+            txt, to, ic = val.get('text', ''), val.get('to'), val.get('icon')
+        else:
+            txt, to, ic = val, None, None
+        inner = (f'<span class="wf-nav-item-icon">{_icon(ic)}</span>' if ic else '') + \
+                f'<span class="wf-nav-item-text">{inline(txt)}</span>'
+        if to:
+            return f'<a href="{_href(to)}" class="{cls("wf-nav-item")}"{A}>{inner}</a>'
+        return f'<div class="{cls("wf-nav-item")}"{A}>{inner}</div>'
     if role == 'status.badge':
         return f'<label class="{cls("wf-badge")}"{A}>{inline(val)}</label>'
     if role in ('status', 'status.muted', 'status.strong'):
@@ -1166,6 +1364,26 @@ def render_widget(d, xcls, xattr, src=None, path=None):
     return f'<div class="{" ".join(cls)}"{_attrs(xattr)}>{head}{can_html}{body_html}{foot}</div>'
 
 
+def render_nav_group(d, xcls, xattr, src=None, path=None):
+    """側欄可展開群組：頭列（icon+text+chevron）+ children（nav-item）。
+    expanded 決定 chevron 朝向 + children 顯隱。視覺全歸 theme components.nav-group / nav-item。"""
+    g = d['nav-group']
+    if not isinstance(g, dict):
+        g = {'text': g}
+    txt, ic = g.get('text', ''), g.get('icon')
+    expanded = bool(g.get('expanded'))
+    children = d.get('children') or []
+    bpath = (f'{path}.children' if path else 'children')
+    head_icon = f'<span class="wf-nav-item-icon">{_icon(ic)}</span>' if ic else ''
+    head = (f'<div class="wf-nav-item wf-nav-group-head">{head_icon}'
+            f'<span class="wf-nav-item-text">{inline(txt)}</span>'
+            f'<span class="wf-nav-group-arrow">▾</span></div>')
+    kids = ''.join(render_item(it, src, f'{bpath}[{i}]') for i, it in enumerate(children))
+    cls = ['wf-node', 'wf-nav-group'] + (['wf-expanded'] if expanded else []) + xcls
+    return (f'<div class="{" ".join(cls)}"{_attrs(xattr)}>{head}'
+            f'<div class="wf-nav-group-children">{kids}</div></div>')
+
+
 def _ckeys(it):
     """內容鍵（排除 __ 開頭的內部 metadata 蓋章）→ 供結構判斷不受干擾。"""
     return {k for k in it if not (isinstance(k, str) and k.startswith('__'))}
@@ -1236,6 +1454,7 @@ def render_item(it, src=None, path=None):
             "產品狀態色 → --mockup theme binding；評審聚焦 → spotlight/badge（標註面）；"
             "語義強調 → text.strong / status.strong")
     is_widget = 'widget' in d
+    is_navgroup = 'nav-group' in d
     block_to = d.pop('to', None) if (is_container(d) or is_widget) else None
     spot = d.pop('spotlight', None)
     note = d.pop('note', None)
@@ -1243,8 +1462,13 @@ def render_item(it, src=None, path=None):
     pin = d.pop('pin', None)          # 浮層：錨點(center/邊/角)
     modal = d.pop('modal', None)      # 浮層：擋後面(scrim + inert)
     layer = d.pop('layer', None)      # 浮層：z 帶(base/overlay/notify/top)
+    ui_state = d.pop('ui-state', None)  # 顯示態（selected/disabled/hover/focus）→ data-ui-state（theme states 綁）
+    if ui_state is not None and ui_state not in _UI_STATES:
+        raise ValueError(f"ui-state 只接 {sorted(_UI_STATES)}（收到 {ui_state!r}）")
 
     xcls, xattr = [], {}
+    if ui_state:
+        xattr['data-ui-state'] = ui_state
     if _role:                          # 語義 token 展開後保留角色指紋：可區分/針對 styling、產物語義可讀（drawer ≠ 一般 box）
         xcls.append('wf-role-' + esc_attr(_role))
         xattr['data-wf-role'] = _role
@@ -1257,7 +1481,9 @@ def render_item(it, src=None, path=None):
     if isinstance(span, int):
         xattr['style'] = f'grid-column:span {span}'
 
-    if is_widget:
+    if is_navgroup:
+        core = render_nav_group(d, xcls, xattr, esrc, epath)
+    elif is_widget:
         core = render_widget(d, xcls, xattr, esrc, epath)
     elif is_container(d):
         d.setdefault('span', span) if isinstance(span, int) else None
@@ -1401,7 +1627,7 @@ def expand(items, basedir, ctx, stack=()):
             # P7 theme 綁定：embed 的 component 名帶為 wf-role 指紋（讓 theme 可 target）
             # basename 從 `components/tx-item` 或 `layouts/mobile` 取 `tx-item` / `mobile`
             embed_role = os.path.basename(str(name))
-            if ann or _THEME:
+            if ann or _theme_active():
                 for pk in ('__src', '__path'):
                     if pk in it:
                         ann[pk] = it[pk]
@@ -1425,7 +1651,7 @@ def expand(items, basedir, ctx, stack=()):
 def _child_list_keys(nd):
     """節點的結構子清單 keys：方向 key / items + overlay 角色內容（dialog/toast/專案自定…）。
     expand / _fill_slots 都要走訪這些，否則藏在 overlay 角色裡的 embed / slot 靜默失效。"""
-    keys = [k for k in ('items', 'row', 'col', 'grid') if isinstance(nd.get(k), list)]
+    keys = [k for k in ('items', 'row', 'col', 'grid', 'children') if isinstance(nd.get(k), list)]
     keys += [k for k in _overlay_tokens() if isinstance(nd.get(k), list)]
     return keys
 
@@ -1672,6 +1898,7 @@ _ENUMS = {
             'top-left', 'top-right', 'bottom-left', 'bottom-right',
             'top-center', 'bottom-center', 'left-center', 'right-center'},
     'layer': {'base', 'overlay', 'notify', 'top'},
+    'ui-state': _UI_STATES,
 }
 # 已知頂層 grammar keys（未知 → warn typo）
 # body: 主要內容區；content/placeholder: component 檔頂層（完整/降階佔位）
@@ -1681,7 +1908,8 @@ _GRAMMAR_KEYS = {'viewport', 'body', 'extends', 'with', 'slots', 'routes',
 _CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'box', 'gap', 'padding',
                     'justify', 'align', 'span', 'grow', 'scroll', 'scroll-x',
                     'name', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
-                    'embed', 'with', 'slot', 'as', 'when'}
+                    'embed', 'with', 'slot', 'as', 'when', 'ui-state',
+                    'nav-group', 'children'}
 _DIRECTION_KEYS = {'row', 'col', 'grid'}
 _STRUCTURE_UNITS = {'page', 'layout', 'component', 'widget'}
 _OVERLAY_SUGARS = {'dialog', 'drawer', 'sheet', 'toast', 'loading'}
@@ -1809,7 +2037,7 @@ def _walk_lint(node, path, diag):
 
     # 9. 遞迴子節點：只走結構性 key，跳過 leaf value / meta / 參數
     # 結構性 key：direction values (list) / items / body / overlay 角色內容 / slots values / routes items
-    _RECURSE_INTO = _DIRECTION_KEYS | {'items', 'body'}   # 這些 value 是結構樹
+    _RECURSE_INTO = _DIRECTION_KEYS | {'items', 'body', 'children'}   # 這些 value 是結構樹
     for k, v in node.items():
         if k in ('__src', '__path'):
             continue
