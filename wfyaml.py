@@ -334,6 +334,20 @@ _THEME_ELEMENT_SELECTORS = {
     'status.strong': '.wf-tag-strong',
     'status.badge':  '.wf-badge',
     'box':           '.wf-box',
+    # Leaf / composite parts: themes keep the same role vocabulary as YAML.
+    'checkbox':      '.wf-check',
+    'radio':         '.wf-radio',
+    'progress':      '.wf-progress',
+    'progress.fill': '.wf-progress-fill',
+    'avatar':        '.wf-avatar',
+    'avatars':       '.wf-avatars',
+    'icon':          '.wf-icon',
+    'image':         '.wf-image',
+    'divider':       '.wf-hr',
+    'widget':        '.wf-widget',
+    'tab':           '.wf-tab',
+    'tab.active':    '.wf-tab-active',
+    'link':          '.wf-hyperlink',
 }
 
 # components: 元件名 → base selector。內建元件走既有 wf-* class；
