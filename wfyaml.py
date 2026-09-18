@@ -997,6 +997,25 @@ DEBUG_CSS = r"""
   border-radius:var(--wf-radius);padding:14px;box-shadow:0 10px 40px rgba(0,0,0,.35);font:13px sans-serif;color:#111;}
 #wf-dbg-export textarea{display:block;width:100%;height:62vh;font:12px monospace;margin:8px 0;}
 #wf-dbg-export button{cursor:pointer;padding:4px 12px;margin-right:8px;}
+@media(max-width:860px){
+  body.wf-debug{padding-bottom:calc(var(--wf-dbg-bar-clearance,74px) + env(safe-area-inset-bottom));}
+  body.wf-debug #wf-main{padding-bottom:calc(var(--wf-dbg-bar-clearance,74px) + env(safe-area-inset-bottom));}
+  #wf-dbg{top:auto;bottom:calc(10px + var(--wf-dbg-lift,0px) + env(safe-area-inset-bottom));
+    left:10px;right:auto;max-width:calc(100% - 20px);display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:11px;}
+  #wf-dbg button{margin:0;min-height:40px;min-width:56px;}
+  #wf-dbg-pop{position:fixed;left:8px;right:8px;top:auto;
+    bottom:calc(var(--wf-dbg-bar-clearance,74px) + var(--wf-dbg-lift,0px) + env(safe-area-inset-bottom));
+    max-height:calc(var(--wf-dbg-vh,100dvh) * .46);overflow:auto;overflow-wrap:anywhere;}
+  #wf-dbg-pop textarea{width:100%;box-sizing:border-box;min-height:70px;font-size:16px;}
+  #wf-dbg-pop button{min-height:40px;min-width:56px;}
+  #wf-dbg-export{inset:auto 4%;top:calc(var(--wf-dbg-vtop,0px) + 8px + env(safe-area-inset-top));
+    bottom:calc(var(--wf-dbg-lift,0px) + 8px + env(safe-area-inset-bottom));
+    display:flex;flex-direction:column;overflow:auto;}
+  #wf-dbg-export textarea{height:auto;min-height:0;flex:1;font-size:16px;}
+  #wf-dbg-export button{min-height:40px;min-width:56px;}
+  body:has(#wf-dbg-export) #wf-dbg{visibility:hidden;}
+}
+
 """
 
 DEBUG_JS = r"""
@@ -1008,17 +1027,29 @@ DEBUG_JS = r"""
   function keyOf(el){return (el.getAttribute('data-wf-src')||'')+'|'+(el.getAttribute('data-wf-path')||'');}
   function mark(){document.querySelectorAll('[data-wf-path]').forEach(function(el){el.classList.toggle('wf-dbg-has',!!store[keyOf(el)]);});}
   mark();
-  var pop=null;
-  function close(){if(pop){pop.remove();pop=null;}}
+  var pop=null,anchor=null;
+  var narrow=window.matchMedia('(max-width:860px)');
+  function position(){
+    var vv=window.visualViewport,root=document.documentElement;
+    root.style.setProperty('--wf-dbg-vh',(vv?vv.height:innerHeight)+'px');
+    root.style.setProperty('--wf-dbg-vtop',(vv?vv.offsetTop:0)+'px');
+    root.style.setProperty('--wf-dbg-lift',Math.max(0,innerHeight-(vv?vv.height+vv.offsetTop:innerHeight))+'px');
+    root.style.setProperty('--wf-dbg-bar-clearance',(bar.offsetHeight+26)+'px');
+    if(pop){
+      if(narrow.matches){pop.style.removeProperty('top');pop.style.removeProperty('left');}
+      else if(anchor){var r=anchor.getBoundingClientRect();
+        pop.style.top=(scrollY+r.bottom+4)+'px';pop.style.left=(scrollX+r.left)+'px';}
+    }
+  }
+  function close(){if(pop){pop.remove();pop=null;}anchor=null;}
   function open(el){
-    close();var k=keyOf(el),src=el.getAttribute('data-wf-src')||'',path=el.getAttribute('data-wf-path')||'',r=el.getBoundingClientRect();
-    pop=document.createElement('div');pop.id='wf-dbg-pop';
-    pop.style.top=(scrollY+r.bottom+4)+'px';pop.style.left=(scrollX+r.left)+'px';
+    close();var k=keyOf(el),src=el.getAttribute('data-wf-src')||'',path=el.getAttribute('data-wf-path')||'';
+    pop=document.createElement('div');pop.id='wf-dbg-pop';anchor=el;
     pop.innerHTML='<div class="h">'+src+' → '+path+'</div>';
     var ta=document.createElement('textarea');ta.value=(store[k]&&store[k].note)||'';ta.placeholder='修改建議…';
     var s=document.createElement('button');s.textContent='存';
     var d=document.createElement('button');d.textContent='刪';
-    pop.appendChild(ta);pop.appendChild(s);pop.appendChild(d);document.body.appendChild(pop);ta.focus();
+    pop.appendChild(ta);pop.appendChild(s);pop.appendChild(d);document.body.appendChild(pop);position();ta.focus();
     s.onclick=function(){var v=ta.value.trim();
       if(v)store[k]={src:src,path:path,role:role(el),text:snap(el),note:v};else delete store[k];
       localStorage.setItem(KEY,JSON.stringify(store));mark();close();};
@@ -1033,11 +1064,15 @@ DEBUG_JS = r"""
   },true);
   var bar=document.createElement('div');bar.id='wf-dbg';
   bar.innerHTML='<b>DEBUG</b><button id="wf-dbg-mode">模式:瀏覽</button><button id="wf-dbg-exp">匯出</button><button id="wf-dbg-clr">清除</button>';
-  document.body.appendChild(bar);
+  document.body.appendChild(bar);document.body.classList.add('wf-debug');
+  window.addEventListener('resize',position);
+  if(window.visualViewport){visualViewport.addEventListener('resize',position);visualViewport.addEventListener('scroll',position);}
+  position();
   var mbtn=document.getElementById('wf-dbg-mode');
   mbtn.onclick=function(){ann=!ann;mbtn.textContent='模式:'+(ann?'註記':'瀏覽');document.body.classList.toggle('wf-annotate',ann);if(!ann)close();};
   document.getElementById('wf-dbg-clr').onclick=function(){if(confirm('清除本頁所有註記?')){store={};localStorage.removeItem(KEY);mark();}};
   document.getElementById('wf-dbg-exp').onclick=function(){
+    close();var previous=document.getElementById('wf-dbg-export');if(previous)previous.remove();
     var byFile={};Object.keys(store).forEach(function(k){var s=store[k];(byFile[s.src]=byFile[s.src]||[]).push(s);});
     var L=['# debug 註記（貼給 LLM 改 YAML）'];
     Object.keys(byFile).sort().forEach(function(f){
@@ -1049,7 +1084,8 @@ DEBUG_JS = r"""
     var ta=document.createElement('textarea');ta.readOnly=true;ta.value=L.join('\n');
     var cp=document.createElement('button');cp.textContent='複製';cp.onclick=function(){ta.select();try{document.execCommand('copy');cp.textContent='已複製✓';}catch(e){}};
     var cl=document.createElement('button');cl.textContent='關閉';cl.onclick=function(){ov.remove();};
-    ov.appendChild(ta);ov.appendChild(cp);ov.appendChild(cl);document.body.appendChild(ov);ta.select();
+    var actions=document.createElement('div');actions.appendChild(cp);actions.appendChild(cl);
+    ov.appendChild(ta);ov.appendChild(actions);document.body.appendChild(ov);position();ta.select();
   };
 })();
 """
@@ -1941,7 +1977,7 @@ def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=N
     # debug：root 也帶 data-wf-src/path → viewport 本身可被點選標記（畫布級建議：背景/尺寸/整體）
     page_attr = (f' data-wf-page="{esc(_PAGE_BASE)}" data-wf-src="{esc(_PAGE_BASE)}"'
                  f' data-wf-path="viewport"') if debug else ''
-    head = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><style>{css}</style>'
+    head = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>{css}</style>'
             f'</head><body><div class="wf-root"{page_attr}>')
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
     return head + content + '</div>' + tail
