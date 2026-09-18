@@ -23,6 +23,7 @@ wireframe-lofi compiler
 - `wfyaml.py lint <files>` schema validation + fail-fast diagnostics
 """
 import sys, os, re, html, gzip, json, base64, glob, yaml
+import xml.etree.ElementTree as ET
 
 
 class AuthorError(ValueError):
@@ -307,6 +308,9 @@ _THEME_BINDABLE = {
                       })),
 }
 
+_THEME_ASSETS = {}
+_THEME_ASSET_WARNINGS = []
+
 _THEME = {}          # 當前載入的 theme bindings（綁 name/role 的專案微調）；空 dict = wireframe 模式
 _THEME_BASE = {}     # theme 的 base: 模式開關（chrome/link-marker/scrollbar）
 _THEME_TOKENS = {}   # theme 的 tokens: 值層（Tier-1 design token，FE 可直接接手）
@@ -575,6 +579,8 @@ def _theme_bindings_css(bindings):
             merged.update(preset)
         merged.update({k: v for k, v in rules.items() if k != 'apply'})
         for k, v in merged.items():
+            if k in ('image', 'icon', 'fit'):
+                continue
             use_enum = k in _THEME_BINDABLE and not (isinstance(v, str) and '{' in v)
             if k in ('padding', 'margin', 'gap') and str(v) not in GAP and str(v) not in (_TOKENS.get('gap') or {}):
                 use_enum = False
@@ -592,17 +598,96 @@ def _theme_bindings_css(bindings):
                 raise ValueError(f"theme.bindings.{role}.{k}: 未知綁定屬性/CSS property{hint}")
             decls.append(f'{css_prop}:{_resolve_value(v)}')
         r = esc_attr(role)
+        named = json.dumps(str(role), ensure_ascii=False).replace('<', r'\3c ')
         # 優先序：語義身份（role/name）selector 三疊拉高 specificity，贏過元件皮。
         sel = _THEME_ELEMENT_SELECTORS.get(role) or \
             (f'.wf-role-{r}.wf-role-{r}.wf-role-{r}, '
-             f'[data-name="{r}"][data-name="{r}"][data-name="{r}"]')
+             f'[data-name={named}][data-name={named}][data-name={named}]')
         lines.append(f'{sel}{{{";".join(decls)}}}')
     return '\n'.join(lines)
 
 
+def _safe_asset_svg(raw, recolor=False):
+    """Shape-only SVG: no scripts, event handlers, external references or embedded HTML."""
+    root = ET.fromstring(raw)
+    tags = {'svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'title', 'desc'}
+    attrs = {'viewBox', 'width', 'height', 'd', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry',
+             'points', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'fill-rule',
+             'clip-rule', 'opacity', 'fill-opacity', 'stroke-opacity', 'transform', 'preserveAspectRatio'}
+    def clean(el):
+        el.tag = el.tag.split('}')[-1]
+        for key, value in list(el.attrib.items()):
+            if key not in attrs or 'url(' in value.lower():
+                del el.attrib[key]
+            elif recolor and key in ('fill', 'stroke') and value != 'none':
+                el.set(key, 'currentColor')
+        for child in list(el):
+            if child.tag.split('}')[-1] not in tags:
+                el.remove(child)
+            else:
+                clean(child)
+    if root.tag.split('}')[-1] != 'svg':
+        raise ValueError('不是 SVG')
+    clean(root)
+    if 'viewBox' not in root.attrib:
+        w, h = root.get('width', ''), root.get('height', '')
+        if re.fullmatch(r'[0-9.]+', w) and re.fullmatch(r'[0-9.]+', h):
+            root.set('viewBox', f'0 0 {w} {h}')
+    root.set('xmlns', 'http://www.w3.org/2000/svg')
+    if recolor:
+        root.set('fill', root.get('fill', 'currentColor'))
+        root.set('class', 'wf-asset-icon')
+        root.set('width', '1em'); root.set('height', '1em')
+    return ET.tostring(root, encoding='unicode')
+
+
+def _load_theme_assets(assets, theme_path):
+    if not isinstance(assets, dict):
+        raise AuthorError('theme.assets 必須是 dict', theme_path, 'assets')
+    types = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+             '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml'}
+    total = 0
+    for name, relative in assets.items():
+        if not isinstance(name, str) or not isinstance(relative, str) or os.path.isabs(relative) or re.match(r'^[a-zA-Z]+:', relative):
+            raise AuthorError('素材須為邏輯名 → 相對 theme 的本機檔案', theme_path, f'assets.{name}')
+        mime = types.get(os.path.splitext(relative)[1].lower())
+        if not mime:
+            raise AuthorError('素材只接 PNG/JPEG/GIF/WebP/SVG', theme_path, f'assets.{name}')
+        entry = {'mime': mime, 'uri': None, 'icon': None}
+        _THEME_ASSETS[name] = entry
+        try:
+            with open(os.path.join(os.path.dirname(theme_path), relative), 'rb') as handle:
+                raw = handle.read()
+            if len(raw) > 300 * 1024:
+                _THEME_ASSET_WARNINGS.append(f'素材 {name} 超過 300KB（{len(raw)} bytes）')
+            if mime == 'image/svg+xml':
+                entry['icon'] = _safe_asset_svg(raw, True)
+                raw = _safe_asset_svg(raw).encode('utf-8')
+            entry['uri'] = f'data:{mime};base64,' + base64.b64encode(raw).decode('ascii')
+            total += len(entry['uri'])
+        except (OSError, ET.ParseError, ValueError) as e:
+            _THEME_ASSET_WARNINGS.append(f'素材 {name} 無法讀取 {relative}：{e}；使用佔位')
+    if total > 5 * 1024 * 1024:
+        _THEME_ASSET_WARNINGS.append(f'素材內嵌總量超過 5MB（{total} bytes；重複使用會增加產物大小）')
+
+
+def _warn_asset_output(output):
+    size = sum(len(x) for x in re.findall(r'data:image/[^"\s]+', output))
+    if size > 5 * 1024 * 1024:
+        print(f'warning: 產物素材內嵌總量超過 5MB（{size} bytes）', file=sys.stderr)
+
+
+def _bound_asset(node, kind):
+    # Assets bind only stable node names; role and label never select files.
+    rules = _THEME.get(node.get('data-name'), {})
+    asset = _THEME_ASSETS.get(rules.get(kind), {})
+    return asset, rules.get('fit', 'contain')
+
+
 def _load_theme(path):
     """載入 theme YAML；驗證 tokens / preset / base / components / bindings（fail-fast）。"""
-    global _THEME, _THEME_BASE, _THEME_TOKENS, _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS
+    global _THEME, _THEME_BASE, _THEME_TOKENS, _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS, _THEME_ASSETS, _THEME_ASSET_WARNINGS
+    _THEME_ASSETS, _THEME_ASSET_WARNINGS = {}, []
     if not path:
         _THEME, _THEME_BASE, _THEME_TOKENS = {}, {}, {}
         _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS = {}, {}, {}
@@ -612,9 +697,10 @@ def _load_theme(path):
     data = _read_yaml(path)
     if not isinstance(data, dict):
         raise AuthorError('theme 頂層必須是 dict', path, '<root>')
-    unknown = set(data.keys()) - {'tokens', 'base', 'bindings', 'components'}
+    unknown = set(data.keys()) - {'tokens', 'base', 'bindings', 'components', 'assets'}
     if unknown:
-        raise ValueError(f"theme 檔頂層 key 只允許 tokens/base/bindings/components（收到多餘: {sorted(unknown)}）")
+        raise ValueError(f"theme 檔頂層 key 只允許 tokens/base/bindings/components/assets（收到多餘: {sorted(unknown)}）")
+    _load_theme_assets(data.get('assets', {}), path)
     tokens = data.get('tokens') or {}
     if not isinstance(tokens, dict):
         raise ValueError(f"theme.tokens 必須是 dict（收到 {type(tokens).__name__}）")
@@ -631,6 +717,13 @@ def _load_theme(path):
     for role, rules in bindings.items():
         if not isinstance(rules, dict):
             raise AuthorError(f'theme.bindings.{role} 必須是 dict', path, f'bindings.{role}')
+        for kind in ('image', 'icon'):
+            if kind in rules and (not isinstance(rules[kind], str) or rules[kind] not in _THEME_ASSETS):
+                raise AuthorError(f'未定義素材 {rules[kind]!r}', path, f'bindings.{role}.{kind}')
+            if kind == 'icon' and kind in rules and _THEME_ASSETS[rules[kind]]['mime'] != 'image/svg+xml':
+                raise AuthorError('icon 素材必須是 SVG', path, f'bindings.{role}.icon')
+        if 'fit' in rules and rules['fit'] not in ('cover', 'contain'):
+            raise AuthorError('fit 只接受 cover/contain', path, f'bindings.{role}.fit')
         radius = rules.get('radius')
         if radius is not None and '{' not in str(radius) and str(radius) not in ('none', 'sm', 'md', 'lg', 'pill', 'full'):
             raise AuthorError(
@@ -658,6 +751,8 @@ def _load_theme(path):
     _theme_tokens_css(tokens)
     _theme_components_css(components)
     _theme_bindings_css(bindings)
+    for warning in _THEME_ASSET_WARNINGS:
+        print(f'warning: {path} → {warning}', file=sys.stderr)
     return bindings
 
 
@@ -953,6 +1048,11 @@ CSS_EXTRA = r"""
   border-radius:var(--wf-radius-pill); transition:width .2s ease; }
 .wf-progress-label { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   font-size:.7em; color:#111827; font-weight:600; }
+.wf-asset-image { position:relative; padding:0 !important; overflow:hidden; background-image:none !important; }
+.wf-asset-image::before,.wf-asset-image::after { display:none !important; }
+.wf-asset-image img { position:absolute; inset:0; width:100%; height:100%; }
+.wf-avatar img { width:100%; height:100%; border-radius:inherit; }
+.wf-asset-icon { vertical-align:middle; }
 /* avatar leaf：只 label(縮寫) + size(sm/md/lg)；圓形佔位，禁 src/bg（守視覺封印） */
 .wf-avatar { display:inline-flex; align-items:center; justify-content:center;
   background:#e5e7eb; color:#374151; border:1px solid #9ca3af; border-radius:var(--wf-radius-pill);
@@ -1287,7 +1387,8 @@ def render_leaf(d, xcls, xattr):
     if role == 'alert':
         return f'<span class="{cls("wf-warn")}"{A}><span class="wf-icon">⚠</span> {inline(val)}</span>'
     if role == 'icon':
-        return f'<span class="{cls("")}"{A}>{_icon(val)}</span>'
+        asset, _fit = _bound_asset(xattr, 'icon')
+        return f'<span class="{cls("")}"{A}>{asset.get("icon") or _icon(val)}</span>'
     if role == 'divider':
         return f'<hr class="{cls("wf-hr")}"{A}/>'
     if role == 'link':
@@ -1303,6 +1404,8 @@ def render_leaf(d, xcls, xattr):
             mark, mcls = ('◉' if checked else '○'), 'wf-radio'
         return f'<span class="{cls("")}"{A}><span class="{mcls}">{mark}</span> {inline(label)}</span>'
     if role == 'image':
+        if isinstance(val, dict) and ('src' in val or 'bg' in val):
+            raise ValueError('image 禁 src/bg；素材路徑只可放 theme.assets')
         label = val.get('label', '') if isinstance(val, dict) else (val or '圖片')
         style = []
         if isinstance(val, dict):
@@ -1315,6 +1418,9 @@ def render_leaf(d, xcls, xattr):
                 if b:
                     style.append(f'aspect-ratio:{a}/{b}')
         st = f' style="{";".join(style)}"' if style else ''
+        asset, fit = _bound_asset(xattr, 'image')
+        if asset.get('uri'):
+            return f'<div class="{cls("wf-image wf-asset-image")}"{st}{A}><img src="{asset["uri"]}" alt="{esc(label)}" style="object-fit:{fit}"></div>'
         return f'<div class="{cls("wf-image")}"{st}{A}>▧ {_placeholder_html(label)}</div>'
     if role == 'tabs':
         items = val.get('items', []) if isinstance(val, dict) else (val or [])
@@ -1356,7 +1462,9 @@ def render_leaf(d, xcls, xattr):
             size = 'md'
         if size not in ('sm', 'md', 'lg'):
             raise ValueError(f"avatar.size 只接 sm/md/lg（收到 {size!r}）")
-        return f'<div class="{cls(f"wf-avatar wf-avatar-{size}")}"{A}>{_placeholder_html(label)}</div>'
+        asset, fit = _bound_asset(xattr, 'image')
+        inner = (f'<img src="{asset["uri"]}" alt="{esc(label)}" style="object-fit:{fit}">' if asset.get('uri') else _placeholder_html(label))
+        return f'<div class="{cls(f"wf-avatar wf-avatar-{size}")}"{A}>{inner}</div>'
     if role == 'avatars':
         if not isinstance(val, dict) or not isinstance(val.get('items'), list):
             raise ValueError('avatars 需為 {items: [...], max: 3}；items 必須是 list')
@@ -1980,7 +2088,9 @@ def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=N
     head = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>{css}</style>'
             f'</head><body><div class="wf-root"{page_attr}>')
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
-    return head + content + '</div>' + tail
+    result = head + content + '</div>' + tail
+    _warn_asset_output(result)
+    return result
 
 
 BUNDLE_CSS = r"""
@@ -2098,9 +2208,11 @@ def bundle(files, debug=False, title='prototype', style=None, story=None, standa
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + BUNDLE_CSS + (DEBUG_CSS if debug else '')
                          + _style_css() + _tokens_css() + _theme_css() + ''.join(overrides))
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
-    return (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(title)}</title>'
+    result = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(title)}</title>'
             f'<style>{css}</style></head><body class="wf-bundle{" wf-radio-nav" if standalone else ""}">'
             f'<nav id="wf-nav">{"".join(navs)}</nav><div id="wf-main">{"".join(secs)}</div>{tail}')
+    _warn_asset_output(result)
+    return result
 
 
 def compile_all(src, basedir='.', base='', debug=False, style=None, source_name=None):
@@ -2581,11 +2693,16 @@ def main():
 
     # ---- lint 子命令：P0.7 Schema Validation + Fail-Fast ----
     if len(sys.argv) >= 2 and sys.argv[1] == 'lint':
-        files = [a for a in sys.argv[2:] if not a.startswith('-')]
+        theme = _argval('--mockup')
+        if '--mockup' in sys.argv and not theme:
+            raise ValueError('--mockup 需要 theme 檔')
+        if theme:
+            _load_theme(theme)
+        files = [a for a in sys.argv[2:] if not a.startswith('-') and a != theme]
         if not files:
             print("usage: wfyaml.py lint <file.wf.yaml> [...]", file=sys.stderr)
             sys.exit(1)
-        total_err, total_warn = 0, 0
+        total_err, total_warn = 0, len(_THEME_ASSET_WARNINGS)
         for f in files:
             e, w = _lint_file(f)
             total_err += e

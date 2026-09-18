@@ -1,0 +1,12 @@
+viewport: 390x844
+title: 素材綁定
+body:
+  - text.heading: 圖像只由 theme 提供
+  - image: {label: 封面示意, ratio: 3/4}
+    name: 封面
+  - row:
+      - avatar: {label: 我, size: lg}
+        name: 成員
+      - icon: star
+        name: 郵票圖示
+      - text: 郵票與成員
