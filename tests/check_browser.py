@@ -79,7 +79,116 @@ def main():
         page.locator('#nav-wf-pg-deal-routes-approving-pending').click()
         assert page.locator('#wf-pg-deal-routes-approving-pending').is_visible()
         assert page.locator('#wf-pg-deal-routes-approving-pending').get_by_text('已送出，等待主管核准').is_visible()
-        print('bundle navigation, titles/groups and routes with JS disabled: OK')
+        page.goto(dest.as_uri() + '#wf-pg-phone-long', wait_until='load')
+        assert page.locator('.wf-pg:visible').count() == 1
+        assert page.locator('#wf-pg-phone-long').is_visible()
+        assert page.url.endswith('#wf-pg-phone-long')
+        print('bundle navigation, deep link, titles/groups and routes with JS disabled: OK')
+
+        # Dedicated fixtures exercise every internal link form, duplicate destinations,
+        # native keyboard controls, responsive layout and a scripts-disabled sandbox.
+        a = out / 'a.wf.yaml'
+        b = out / 'b.wf.yaml'
+        a.write_text("""title: 首頁
+group: App
+viewport: 390x844
+body:
+  - button: 按鈕動線
+    name: next
+    to: b
+  - row: [{text: 卡片動線}]
+    to: b
+  - text: '[文字動線](to:b) · [真連結](https://example.com)'
+""")
+        b.write_text('viewport: 390x844\nbody: [{button: 返回, to: a}]')
+        standalone_files = [str(a), str(b), files[-1]]
+        standalone = wf.bundle(standalone_files, standalone=True)
+        standalone_dest = out / 'standalone.html'
+        standalone_dest.write_text(standalone)
+        page.goto(standalone_dest.as_uri(), wait_until='load')
+        initial_url = page.url
+        page.keyboard.press('Tab')
+        assert page.locator('#r-wf-pg-a').evaluate('(n)=>n === document.activeElement')
+        page.keyboard.press('ArrowRight')
+        assert page.locator('#wf-pg-b').is_visible()
+        page.keyboard.press('ArrowLeft')
+        assert page.locator('#wf-pg-a').is_visible()
+        assert page.locator('a[href^="#"]').count() == 0
+        assert page.locator('a[href="https://example.com"]').count() == 1
+        ids = page.locator('[id]').evaluate_all('(ns)=>ns.map(n=>n.id)')
+        assert len(ids) == len(set(ids)), ids
+        for selector in ('.wf-btn', '.wf-blocklink-a', '.wf-hyperlink.wf-radio-link'):
+            page.locator('#wf-pg-a ' + selector).click()
+            assert page.locator('.wf-pg:visible').count() == 1
+            assert page.locator('#wf-pg-b').is_visible()
+            assert page.locator('#nav-wf-pg-b').evaluate('(n)=>getComputedStyle(n).backgroundColor') == 'rgb(15, 118, 110)'
+            assert page.url == initial_url
+            page.locator('#wf-pg-b .wf-btn').click()
+            assert page.locator('#wf-pg-a').is_visible()
+        page.keyboard.press('Tab')  # Enter keyboard modality before checking :focus-visible.
+        page.locator('#r-wf-pg-a').focus()
+        assert page.locator('#nav-wf-pg-a').evaluate('(n)=>getComputedStyle(n).outlineStyle') == 'solid'
+        page.keyboard.press('ArrowRight')
+        assert page.locator('#wf-pg-b').is_visible()
+        assert page.url == initial_url
+        page.locator('#nav-wf-pg-a').click()
+        outgoing = page.locator('#wf-pg-a .wf-btn input')
+        outgoing.focus()
+        page.keyboard.press('Space')
+        assert page.locator('#wf-pg-b').is_visible()
+        page.locator('#nav-wf-pg-deal-routes-approving-pending').click()
+        assert page.locator('#wf-pg-deal-routes-approving-pending').is_visible()
+        assert page.url == initial_url
+
+        for mode in (False, True):
+            standalone_dest.write_text(wf.bundle(standalone_files, standalone=mode))
+            page.goto(standalone_dest.as_uri(), wait_until='load')
+            for width in (390, 860, 861):
+                page.set_viewport_size({'width': width, 'height': 1000})
+                layout = page.evaluate("""() => {
+                    const nav=document.querySelector('#wf-nav'), main=document.querySelector('#wf-main');
+                    const nr=nav.getBoundingClientRect(), mr=main.getBoundingClientRect();
+                    return {direction:getComputedStyle(document.body).flexDirection,
+                        navBottom:nr.bottom,mainTop:mr.top,navRight:nr.right,mainLeft:mr.left,
+                        navScroll:nav.scrollWidth,navWidth:nav.clientWidth,
+                        mainScroll:main.scrollWidth,mainWidth:main.clientWidth,
+                        bodyWidth:document.body.scrollWidth,
+                        canvas:document.querySelector('#wf-pg-a .wf-root').getBoundingClientRect().width};
+                }""")
+                assert layout['canvas'] == 390, layout
+                if width <= 860:
+                    assert layout['direction'] == 'column', layout
+                    assert layout['mainTop'] >= layout['navBottom'] - 1, layout
+                    assert layout['bodyWidth'] <= width, layout
+                    if width == 390:
+                        assert layout['navScroll'] > layout['navWidth'], layout
+                        assert layout['mainScroll'] > layout['mainWidth'], layout
+                        page.screenshot(path=str(out / ('bundle-radio-mobile.png' if mode else 'bundle-anchor-mobile.png')), full_page=True)
+                else:
+                    assert layout['direction'] == 'row', layout
+                    assert layout['mainLeft'] >= layout['navRight'] - 1, layout
+        page.set_viewport_size({'width': 1200, 'height': 1000})
+        story = out / 'review.story.yaml'
+        story.write_text('story: review\npage: a\nflow: [{step: 1, target: next, desc: 前往下一頁, to: b}]')
+        standalone_dest.write_text(wf.bundle(standalone_files, story=str(story), standalone=True))
+        page.goto(standalone_dest.as_uri(), wait_until='load')
+        page.locator('#nav-wf-pg-story-review').click()
+        assert page.locator('#wf-pg-story-review').is_visible()
+        page.locator('#wf-pg-story-review .wf-story-step-pin').click()
+        assert page.locator('#wf-pg-b').is_visible()
+        assert page.url == initial_url
+        standalone_dest.write_text(standalone)
+        parent = out / 'sandbox.html'
+        parent.write_text('<iframe sandbox src="' + standalone_dest.as_uri() + '" style="width:100%;height:900px"></iframe>')
+        page.goto(parent.as_uri(), wait_until='load')
+        frame = page.frames[1]
+        parent_url, frame_url = page.url, frame.url
+        frame.locator('#nav-wf-pg-b').click()
+        assert frame.locator('#wf-pg-b').is_visible()
+        frame.locator('#wf-pg-b .wf-btn').click()
+        assert frame.locator('#wf-pg-a').is_visible()
+        assert page.url == parent_url and frame.url == frame_url
+        print('radio links, native keyboard, routes, both responsive modes and sandbox without JS: OK')
 
         debug_html = wf.bundle(files, debug=True)
         debug_dest = out / 'prototype.debug.html'
@@ -100,6 +209,24 @@ def main():
         assert 'layouts/phone.wf.yaml' in exported and '[body[0].items[0]]' in exported and '縮短頁首文字' in exported
         debug_page.close()
         print('debug feedback preserves layout source/path and reload/export: OK')
+
+        # Annotation clicks must cancel radio selection; browse clicks must switch pages.
+        debug_dest.write_text(wf.bundle(standalone_files, debug=True, standalone=True))
+        debug_page = browser.new_page(java_script_enabled=True)
+        debug_page.route('**/*', lambda r: r.abort() if r.request.url.startswith(('http:', 'https:')) else r.continue_())
+        debug_page.goto(debug_dest.as_uri(), wait_until='load')
+        debug_page.locator('#wf-dbg-mode').click()
+        debug_page.locator('#wf-pg-a .wf-btn').click()
+        assert debug_page.locator('#wf-pg-a').is_visible()
+        debug_page.locator('#wf-dbg-pop textarea').fill('調整動線按鈕')
+        debug_page.locator('#wf-dbg-pop').get_by_text('存', exact=True).click()
+        debug_page.locator('#wf-dbg-mode').click()
+        debug_page.locator('#wf-pg-a .wf-btn').click()
+        assert debug_page.locator('#wf-pg-b').is_visible()
+        debug_page.locator('#wf-dbg-exp').click()
+        assert '調整動線按鈕' in debug_page.locator('#wf-dbg-export textarea').input_value()
+        debug_page.close()
+        print('radio debug annotation cancels navigation; browse and export: OK')
 
         wf._load_theme(str(ROOT / 'examples/themes/inverse.yaml'))
         html = wf.compile_all('body: [{box: true, col: [{text: white card}]}]', base='theme')[0][1]

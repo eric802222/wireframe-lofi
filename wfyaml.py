@@ -692,6 +692,8 @@ _NOTES = []   # Layer2 note → 右側 gutter（供 render.sh 量測對齊（位
 _NCOUNT = 0
 _PAGE_BASE = ''   # 目前頁面檔名 base，供 `to: "#stage.state"` 同頁路由連結解析
 _DEBUG = False    # debug 模式：輸出 data-wf-src/data-wf-path 供評審回饋定位
+_RADIO_NAV = False
+_LINK_SERIAL = 0
 _BUNDLE = False   # bundle 模式：連結改寫成單檔內錨點（#wf-pg-...）
 
 
@@ -895,8 +897,9 @@ def inline(s):
         if m.group(2) is None:
             return _placeholder_match(m.group(3), m.group(0))
         txt, tgt = m.group(1), m.group(2)
-        href = _href(tgt[3:]) if tgt.startswith('to:') else tgt
-        return f'<a class="wf-hyperlink" href="{href}">{txt}</a>'
+        if tgt.startswith('to:'):
+            return _wire_link(tgt[3:], txt, "wf-hyperlink")
+        return f'<a class="wf-hyperlink" href="{tgt}">{txt}</a>'
 
     s = _INLINE_BRACKETS.sub(_a, s)
     s = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
@@ -971,6 +974,24 @@ def _href(target):
     return esc(t + '.html')
 
 
+def _wire_link(target, inner, classes='', attrs='', page_id=None, nav=False, checked=False):
+    """Wireframe links share the same output mode, including story and inline links.
+
+    Each radio label owns a focusable native control, so Space/arrow keys work
+    without JavaScript. Duplicate destinations share values, never input IDs.
+    """
+    global _LINK_SERIAL
+    href = '#' + page_id if page_id else _href(target)
+    if not (_BUNDLE and _RADIO_NAV):
+        return f'<a href="{href}" class="{classes}"{attrs}>{inner}</a>'
+    pid = page_id or href[1:]
+    _LINK_SERIAL += 1
+    rid = 'r-' + pid if nav else f'wf-r-link-{_LINK_SERIAL}'
+    control = (f'<input class="wf-r" type="radio" name="wfpg" id="{rid}" '
+               f'value="{pid}" aria-controls="{pid}"' + (' checked' if checked else '') + '>')
+    return f'<label for="{rid}" class="{classes} wf-radio-link"{attrs}>{control}{inner}</label>'
+
+
 def _attrs(d):
     return ''.join(f' {k}="{esc(v)}"' for k, v in d.items())
 
@@ -1028,7 +1049,7 @@ def render_leaf(d, xcls, xattr):
         else:
             txt, to, inner = val, d.get('to'), inline(val)
         if to:
-            return f'<a href="{_href(to)}" class="{cls("wf-btn wf-link")}"{A}>{inner}</a>'
+            return _wire_link(to, inner, cls("wf-btn wf-link"), A)
         return f'<button class="{cls("wf-btn")}"{A}>{inner}</button>'
     if role == 'status.badge':
         return f'<label class="{cls("wf-badge")}"{A}>{inline(val)}</label>'
@@ -1410,7 +1431,7 @@ def _render_item(it, src=None, path=None):
         core = render_leaf(d, xcls, xattr)
 
     if block_to:
-        core = f'<a href="{_href(block_to)}" class="wf-blocklink-a wf-link">{core}</a>'
+        core = _wire_link(block_to, core, "wf-blocklink-a wf-link")
     if story_badge or story_steps:    # SAC：貼紙 + flow 序號徽章（絕對定位疊在元素角落；story 的 to 掛徽章上）
         extra = ''
         if story_badge:
@@ -1418,7 +1439,7 @@ def _render_item(it, src=None, path=None):
         for st in (story_steps or []):
             lbl = esc(st['label'])
             if st.get('to'):
-                extra += f'<a class="wf-story-step wf-story-step-pin" href="{_href(st["to"])}">{lbl}</a>'
+                extra += _wire_link(st["to"], lbl, "wf-story-step wf-story-step-pin")
             else:
                 extra += f'<span class="wf-story-step wf-story-step-pin">{lbl}</span>'
         disp = 'block' if (is_widget or is_container(d)) else 'inline-block'
@@ -1718,20 +1739,39 @@ body.wf-bundle{display:flex;margin:0;align-items:flex-start;font-family:var(--wf
   border-right:1px solid #e5e7eb;font:12px/1.5 sans-serif;background:#fafafa;}
 #wf-nav .wf-navgrp{margin-bottom:6px;}
 #wf-nav b{display:block;color:#6b7280;margin:8px 0 2px;font-size:11px;letter-spacing:.03em;}
-#wf-nav a{display:block;padding:2px 8px;color:#0f766e;text-decoration:none;border-radius:var(--wf-radius);}
-#wf-nav a:hover{background:#f0fdfa;}
-#wf-main{flex:1;padding:24px;overflow:auto;}
+#wf-nav :is(a,label){display:block;padding:2px 8px;color:#0f766e;text-decoration:none;border-radius:var(--wf-radius);}
+#wf-nav :is(a,label):hover{background:#f0fdfa;}
+#wf-main{flex:1;min-width:0;padding:24px;overflow:auto;}
 .wf-pg{display:none;}
-.wf-pg:target{display:block;}
-body:not(:has(.wf-pg:target)) .wf-pg:first-of-type{display:block;}  /* 無 target 才顯第一頁；有 target(含第一頁) 只顯 target */
+body:not(.wf-radio-nav) .wf-pg:target{display:block;}
+body:not(.wf-radio-nav):not(:has(.wf-pg:target)) .wf-pg:first-of-type{display:block;}
+/* Keep native radios focusable while hiding their visual boxes. */
+.wf-r{position:absolute;width:1px;height:1px;padding:0;margin:0;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap;border:0;}
+.wf-radio-link{cursor:pointer;}
+.wf-radio-link:has(> .wf-r:focus-visible){outline:2px solid #0f766e;outline-offset:2px;}
+@media(max-width:860px){
+  body.wf-bundle{flex-direction:column;padding:0;}
+  #wf-nav{width:100%;flex:0 0 auto;display:flex;gap:12px;max-height:none;
+    overflow-x:auto;border-right:0;border-bottom:1px solid #e5e7eb;z-index:10;}
+  #wf-nav .wf-navgroup,#wf-nav .wf-navgrp{flex:0 0 auto;margin-bottom:0;}
+  #wf-nav .wf-navgroup{display:flex;gap:12px;align-items:center;}
+  #wf-nav h2{font-size:12px;margin:0;white-space:nowrap;}
+  #wf-nav .wf-navgrp{display:flex;gap:4px;align-items:center;}
+  #wf-nav b{margin:0 4px 0 0;white-space:nowrap;}
+  #wf-nav :is(a,label){white-space:nowrap;padding:6px 8px;}
+  #wf-main{width:100%;padding:12px;}
+}
 """
 
 
-def bundle(files, debug=False, title='prototype', style=None, story=None):
+def bundle(files, debug=False, title='prototype', style=None, story=None, standalone=False):
     """把多個 .wf.yaml 併成單一可點擊 prototype.html（左 nav + :target 切頁 + 頁內 to: 錨點）。
-    debug=True → 疊評審回饋層；story=<path> → 附加故事疊加版 section（📖 nav 分組）。"""
-    global _PAGE_BASE, _DEBUG, _BUNDLE, _STYLE, _STORY
+    standalone=True → radio/label 切頁，不改 URL；debug=True → 疊評審回饋層。
+    story=<path> → 附加故事疊加版 section（📖 nav 分組）。"""
+    global _PAGE_BASE, _DEBUG, _BUNDLE, _STYLE, _STORY, _RADIO_NAV, _LINK_SERIAL
     _DEBUG, _BUNDLE, _STYLE = debug, True, style
+    _RADIO_NAV, _LINK_SERIAL = standalone, 0
     _load_tokens(os.path.dirname(files[0]) if files else '.')   # 專案 semantic token（探首檔所在夾）
     secs, navs, overrides, pids = [], [], [], []
     nav_groups = {}
@@ -1754,7 +1794,9 @@ def bundle(files, debug=False, title='prototype', style=None, story=None):
             pids.append(pid)
             secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root">{content}</div></section>')
             overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
-            navitems.append(f'<a href="#{pid}" id="nav-{pid}">{esc(label if routes else doc.get("title", base))}</a>')
+            navitems.append(_wire_link('', esc(label if routes else doc.get("title", base)),
+                                       attrs=f' id="nav-{pid}"', page_id=pid, nav=True,
+                                       checked=len(pids) == 1))
         entry = f'<div class="wf-navgrp"><b>{esc(doc.get("title", base))}</b>{"".join(navitems)}</div>'
         nav_groups.setdefault(doc.get('group') or '', []).append(entry)
     # 群組按首次出現，組內維持輸入順序。未指定 meta 時保留原本 nav 結構。
@@ -1789,17 +1831,23 @@ def bundle(files, debug=False, title='prototype', style=None, story=None):
         secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root">{content}</div></section>')
         overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
         navs.append(f'<div class="wf-navgrp"><b>📖 {esc(str(sdata["story"]))}</b>'
-                    f'<a href="#{pid}" id="nav-{pid}">{esc(sbase)}（故事版）</a></div>')
+                    + _wire_link('', esc(sbase) + '（故事版）', attrs=f' id="nav-{pid}"',
+                                 page_id=pid, nav=True, checked=len(pids) == 1) + '</div>')
     # nav 當前頁高亮（零 JS：:has(section:target) → 對應 nav 連結；無 target 則第一頁）
     if pids:
-        sel = ','.join(f'body:has(#{p}:target) #nav-{p}' for p in pids)
-        sel += f',body:not(:has(.wf-pg:target)) #nav-{pids[0]}'
+        if standalone:
+            for p in pids:
+                overrides.append(f'body:has(.wf-r[value="{p}"]:checked) #{p}' + '{display:block;}')
+            sel = ','.join(f'body:has(.wf-r[value="{p}"]:checked) #nav-{p}' for p in pids)
+        else:
+            sel = ','.join(f'body:has(#{p}:target) #nav-{p}' for p in pids)
+            sel += f',body:not(:has(.wf-pg:target)) #nav-{pids[0]}'
         overrides.append(sel + '{background:#0f766e;color:#fff;font-weight:600;}')
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + BUNDLE_CSS + (DEBUG_CSS if debug else '')
                          + _style_css() + _tokens_css() + _theme_css() + ''.join(overrides))
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
-    return (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><title>{esc(title)}</title>'
-            f'<style>{css}</style></head><body class="wf-bundle">'
+    return (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(title)}</title>'
+            f'<style>{css}</style></head><body class="wf-bundle{" wf-radio-nav" if standalone else ""}">'
             f'<nav id="wf-nav">{"".join(navs)}</nav><div id="wf-main">{"".join(secs)}</div>{tail}')
 
 
@@ -2222,7 +2270,8 @@ def _lint_document(doc, path, diag, stack, load_tokens=True):
 
 def main():
     debug = '--debug' in sys.argv
-    do_bundle = '--bundle' in sys.argv
+    standalone = '--bundle-standalone' in sys.argv
+    do_bundle = '--bundle' in sys.argv or standalone
     # 檢查 list 子命令前，先定義（inline，短小）
     def _list_vocab(basedir, ring=None):
         """列 Ring 0（結構原語）+ Ring 1（專案 semantic token）。給 AI/作者一眼看完詞彙。"""
@@ -2294,11 +2343,11 @@ def main():
     style = _argval('--style')
     mockup_theme = _argval('--mockup')
     story_path = _argval('--story')
-    skip = {'--debug', '--bundle', '--no-lint', '-o', out_path,
+    skip = {'--debug', '--bundle', '--bundle-standalone', '--no-lint', '-o', out_path,
             '--style', style, '--mockup', mockup_theme, '--story', story_path}
     args = [a for a in sys.argv[1:] if a not in skip]
     if not args and not story_path:
-        print("usage: wfyaml.py [--debug] [--bundle [-o out.html]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
+        print("usage: wfyaml.py [--debug] [--bundle|--bundle-standalone [-o out.html]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
         print("       wfyaml.py --story <x.story.yaml>                 # SAC 單獨生成：底圖+故事疊加 → <id>.story.html", file=sys.stderr)
         print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection", file=sys.stderr)
         print("       wfyaml.py lint <file.wf.yaml> [...]              # P0.7 schema validation", file=sys.stderr)
@@ -2353,7 +2402,7 @@ def main():
     if do_bundle:
         out = out_path or os.path.join(os.path.dirname(args[0]) or '.',
                                        'prototype' + ('.debug' if debug else '') + '.html')
-        open(out, 'w').write(bundle(args, debug=debug, style=style, story=story_path))
+        open(out, 'w').write(bundle(args, debug=debug, style=style, story=story_path, standalone=standalone))
         extra = (' [style:' + style + ']' if style else '') + (f' [story:{os.path.basename(story_path)}]' if story_path else '')
         print(f"  bundled: {out} ({len(args)} 檔){extra}")
         return

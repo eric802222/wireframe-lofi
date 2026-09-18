@@ -6,6 +6,7 @@
 python3 wfyaml.py lint examples/*.wf.yaml
 ./render.sh examples/deal-detail.wf.yaml
 python3 wfyaml.py --bundle examples/*.wf.yaml
+python3 wfyaml.py --bundle-standalone examples/*.wf.yaml  # iframe 預覽；不改 URL，無 deep link
 python3 wfyaml.py --bundle --debug examples/phone-home.wf.yaml examples/phone-long.wf.yaml
 python3 wfyaml.py --mockup examples/themes/inverse.yaml examples/deal-detail.wf.yaml
 python3 wfyaml.py --bundle examples/expense-app/*.wf.yaml

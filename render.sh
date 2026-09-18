@@ -7,9 +7,10 @@
 # Layer2 邊註（note）對齊靠瀏覽器量測後烤進 DOM（零 JS 產物）。
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
-DEBUG=0; BUNDLE=0; STYLE=""; MOCKUP=""; STORY=""
+DEBUG=0; BUNDLE=0; STANDALONE=0; STYLE=""; MOCKUP=""; STORY=""
 while :; do case "$1" in
   --debug) DEBUG=1; shift;;   # 出 .debug.html（可點擊註記+匯出）
+  --bundle-standalone) BUNDLE=1; STANDALONE=1; shift;;
   --bundle) BUNDLE=1; shift;; # 併成單檔 prototype.html（左 nav + 走動線）；可疊 --debug
   --style) STYLE="$2"; shift 2;;  # 風格：clean(預設) / sketch(手繪框)。mockup 樣貌由 --mockup <theme.yaml> 決定，不進 --style。
   --mockup) MOCKUP="$2"; shift 2;;  # P7 theme binding：進 mockup 模式 + 該 theme 綁定
@@ -57,7 +58,7 @@ if [ -n "$STORY" ] && [ "$BUNDLE" != 1 ]; then
   exit $?
 fi
 if [ "$BUNDLE" = 1 ]; then
-  FLAGS="--bundle"; [ "$DEBUG" = 1 ] && FLAGS="$FLAGS --debug"; [ -n "$STYLE" ] && FLAGS="$FLAGS --style $STYLE"
+  FLAGS="--bundle"; [ "$STANDALONE" = 1 ] && FLAGS="--bundle-standalone"; [ "$DEBUG" = 1 ] && FLAGS="$FLAGS --debug"; [ -n "$STYLE" ] && FLAGS="$FLAGS --style $STYLE"
   FLAGS="$FLAGS $MOCKUP_ARG $STORY_ARG"
   "$PY" "$DIR/wfyaml.py" $FLAGS "$@"
   if [ "$DEBUG" = 1 ]; then
