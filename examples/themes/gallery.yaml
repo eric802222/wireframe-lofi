@@ -1,0 +1,9 @@
+assets:
+  landscape: gallery.assets/cover.png
+  stamp: gallery.assets/stamp.svg
+bindings:
+  封面: {image: landscape, fit: cover}
+  成員: {image: landscape, fit: cover}
+  郵票圖示: {icon: stamp, text: '{color.primary}'}
+tokens:
+  color: {primary: '#406b58'}

@@ -17,3 +17,6 @@ python3 wfyaml.py --bundle examples/expense-app/*.wf.yaml
 HTML 限定 viewport 高度；PNG／SVG 的 show-all 模式會展開內容並畫捲軸示意。
 
 `expense-app/` 是五頁精簡記帳範例，供 layout、component 與 `to:` 動線操作；歷史設計筆記中的個人範例不代表現行完整產品。
+
+`gallery.wf.yaml` 搭配 `themes/gallery.yaml` 展示具名封面、avatar 與 SVG 圖示。
+不加 `--mockup` 時仍是線框佔位；素材放在 `themes/gallery.assets/`，產物內嵌且可離線。

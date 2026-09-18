@@ -475,5 +475,43 @@ python3 tests/check_browser.py  # 另需 playwright + chromium
 
 **自含、可整包帶走**：runtime 只需 `python3 + pyyaml`（截圖另需 `playwright`、動線圖需 `graphviz dot`），
 封印 CSS 與 icon 圖庫都 vendored 在 `assets/`，**無外部依賴**。
+### Mockup 素材綁定
+
+素材只在 theme 定義，結構檔使用穩定的 `name:`，不含素材路徑。相同 label 不會自動選圖。
+
+```yaml
+# themes/tripbook.yaml；路徑相對這個 theme 檔
+assets:
+  cover-kyoto: tripbook.assets/covers/kyoto.jpg
+  stamp: tripbook.assets/icons/stamp.svg
+bindings:
+  封面: {image: cover-kyoto, fit: cover}
+  郵票圖示: {icon: stamp, text: primary}
+```
+
+```yaml
+# 畫面結構
+body:
+  - image: {label: 京都 · 封面, ratio: 3/4}
+    name: 封面
+  - icon: star
+    name: 郵票圖示
+```
+
+`image` 素材綁定適用 image 與 avatar；`icon` 綁定只接 SVG。`fit` 為 cover/contain，預設 contain。
+保留 image 的 ratio/w/h 與 avatar 的 size。素材只依具名 binding 生效，role 綁定仍用於樣式。
+一般線框仍顯示原本佔位。PNG/JPEG/GIF/WebP 與圖形型 SVG 皆內嵌，單頁及 bundle 不依賴外部檔案。
+SVG 圖示的填色／筆畫使用 currentColor（保留 none）；白名單限於基本圖形、群組、title/desc，
+會移除 script、外部引用、foreignObject、style、漸層／濾鏡等。複雜 SVG 請先轉點陣圖。
+
+缺檔或無法解析的 SVG 回退佔位並 warning；未定義素材名、格式或 fit 是 schema error。
+單素材超過 300KiB、已載入素材或產物重複內嵌總量超過 5MiB 會提醒，仍可 render。
+`lint --mockup` 包含素材 warning（exit 1）；一般 lint 不讀 theme。debug 的來源路徑不變。
+
+```bash
+python3 wfyaml.py lint --mockup examples/themes/gallery.yaml examples/gallery.wf.yaml
+python3 wfyaml.py --bundle-standalone --mockup examples/themes/gallery.yaml examples/gallery.wf.yaml
+```
+
 > **Theming hook**：圓角/間距/字體走 `assets/wf.css` `:root` 的 CSS 變數——圓角 `--wf-radius`/`--wf-radius-pill`、間距 `--wf-space-sm/md/lg`、字體 `--wf-font`/`--wf-font-size`/`--wf-h1|h2|h3`、頁框 `--wf-page-border`/`--wf-page-pad`。改一處即全域生效；覆蓋 `:root` 即成一個 theme（產品色走 `--mockup <theme.yaml>` binding）。
 > 要更新視覺改 `assets/wf.css`；要更新圖庫用 Font Awesome / Lucide 來源重新打包後覆蓋 `assets/*.json.gz`。
