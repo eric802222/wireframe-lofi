@@ -335,8 +335,9 @@ _THEME_ELEMENT_SELECTORS = {
     'status.badge':  '.wf-badge',
     'box':           '.wf-box',
     # Leaf / composite parts: themes keep the same role vocabulary as YAML.
-    'checkbox':      '.wf-check',
-    'radio':         '.wf-radio',
+    # checkbox/radio bind the drawn control, never the accompanying label.
+    'checkbox':      '.wf-check-control',
+    'radio':         '.wf-radio-control',
     'progress':      '.wf-progress',
     'progress.fill': '.wf-progress-fill',
     'avatar':        '.wf-avatar',
@@ -1039,6 +1040,16 @@ CSS_EXTRA = r"""
 .wf-placeholder { color:#6b7280; border-bottom:1px dashed currentColor; }
 .wf-avatars { display:flex; align-items:center; padding-left:var(--wf-space-sm); }
 .wf-avatars > .wf-avatar { margin-left:calc(-1 * var(--wf-space-sm)); flex-shrink:0; outline:2px solid #fff; }
+/* checkbox/radio are deliberately drawn HTML controls, rather than glyphs or native inputs.
+   Theme bindings target only .wf-*-control; label text remains ordinary document text. */
+.wf-choice { display:inline-flex; align-items:center; gap:.45em; }
+.wf-choice-control { box-sizing:border-box; width:1.55em; height:1.55em; flex:0 0 1.55em;
+  display:inline-flex; align-items:center; justify-content:center; color:#374151;
+  background:#fff; border:2px solid #374151; line-height:1; }
+.wf-check-control { border-radius:calc(var(--wf-radius,6px) * .6); }
+.wf-radio-control { border-radius:50%; }
+.wf-choice-control.wf-choice-checked::after { content:'✓'; font-size:1.18em; font-weight:800; line-height:1; }
+.wf-radio-control.wf-choice-checked::after { content:''; width:.7em; height:.7em; border-radius:50%; background:currentColor; }
 .wf-map { border:1px dashed #9ca3af; min-height:8rem; padding:var(--wf-space-md);
   display:flex; flex-wrap:wrap; align-content:center; justify-content:center; gap:var(--wf-space-md);
   background:repeating-linear-gradient(0deg,transparent,transparent 23px,#e5e7eb 24px),
@@ -1359,13 +1370,21 @@ def render_string(s, xattr=None):
         return render_leaf({m.group(1): m.group(2)}, [], dict(xattr or {}))
     m = re.match(r'^\[([ xX])\]\s*(.*)$', s)
     if m:
-        box = '☑' if m.group(1).lower() == 'x' else '☐'
-        return f'<span class="wf-label"{A}><span class="wf-check">{box}</span> {inline(m.group(2))}</span>'
+        return _choice_html('checkbox', m.group(1).lower() == 'x', m.group(2), A)
     m = re.match(r'^\(([ xXoO])\)\s*(.*)$', s)
     if m:
-        dot = '◉' if m.group(1).lower() in ('x', 'o') else '○'
-        return f'<span class="wf-label"{A}><span class="wf-radio">{dot}</span> {inline(m.group(2))}</span>'
+        return _choice_html('radio', m.group(1).lower() in ('x', 'o'), m.group(2), A)
     return f'<span class="wf-label"{A}>{inline(s)}</span>'
+
+
+def _choice_html(kind, checked, label, attrs='', extra_class=''):
+    """Non-interactive wireframe choice with a separately themeable visual control."""
+    state = ' wf-choice-checked' if checked else ''
+    role = 'checkbox' if kind == 'checkbox' else 'radio'
+    short = 'check' if kind == 'checkbox' else 'radio'
+    control = (f'<span class="wf-{short}-control wf-choice-control{state}" role="{role}" '
+               f'aria-checked="{str(bool(checked)).lower()}" aria-hidden="true"></span>')
+    return f'<span class="wf-choice wf-{short} {extra_class}"{attrs}>{control}<span class="wf-choice-label">{inline(label)}</span></span>'
 
 
 def render_leaf(d, xcls, xattr):
@@ -1412,11 +1431,7 @@ def render_leaf(d, xcls, xattr):
     if role in ('checkbox', 'radio'):
         label = val.get('label', '') if isinstance(val, dict) else val
         checked = val.get('checked') if isinstance(val, dict) else False
-        if role == 'checkbox':
-            mark, mcls = ('☑' if checked else '☐'), 'wf-check'
-        else:
-            mark, mcls = ('◉' if checked else '○'), 'wf-radio'
-        return f'<span class="{cls("")}"{A}><span class="{mcls}">{mark}</span> {inline(label)}</span>'
+        return _choice_html(role, checked, label, A, ' '.join(xcls))
     if role == 'image':
         if isinstance(val, dict) and ('src' in val or 'bg' in val):
             raise ValueError('image 禁 src/bg；素材路徑只可放 theme.assets')

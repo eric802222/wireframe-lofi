@@ -11,7 +11,7 @@ class ThemeLeafBindings(unittest.TestCase):
         names=['checkbox','radio','progress','progress.fill','avatar','avatars','icon','image','divider','widget','tab','tab.active','link']
         p.write_text('bindings:\n'+''.join(f'  {x}: {{background: "#123456", border: none, radius: sm}}\n' for x in names))
         wf._load_theme(str(p));css=wf._theme_css()
-        for selector in ('.wf-check','.wf-radio','.wf-progress{','.wf-progress-fill{','.wf-avatar{','.wf-avatars{','.wf-icon{','.wf-image{','.wf-hr{','.wf-widget{','.wf-tab{','.wf-tab-active{','.wf-hyperlink{'):
+        for selector in ('.wf-check-control','.wf-radio-control','.wf-progress{','.wf-progress-fill{','.wf-avatar{','.wf-avatars{','.wf-icon{','.wf-image{','.wf-hr{','.wf-widget{','.wf-tab{','.wf-tab-active{','.wf-hyperlink{'):
             self.assertIn(selector,css)
         self.assertNotIn('.wf-widget-tag{',css)
     def test_mockup_applies_to_existing_classes_only(self):
@@ -37,7 +37,21 @@ tokens: {color: {inverse: '#fff'}}
  - link: {text: Go, to: '#'}
  - widget: {is: Map, can: [pan]}
 ''',self.tmp.name,'p')[0][1]
-        for cls in ('wf-check','wf-radio','wf-progress','wf-progress-fill','wf-avatar','wf-hr','wf-tab-active','wf-hyperlink','wf-widget','wf-widget-tag'):
+        for cls in ('wf-check','wf-check-control','wf-radio','wf-radio-control','wf-choice-checked','wf-progress','wf-progress-fill','wf-avatar','wf-hr','wf-tab-active','wf-hyperlink','wf-widget','wf-widget-tag'):
             self.assertIn(cls,html)
         self.assertIn('.wf-widget-tag{',wf._theme_css()) if False else self.assertNotIn('.wf-widget-tag{',wf._theme_css())
+
+    def test_choice_controls_are_html_not_unicode_glyphs(self):
+        html=wf.compile_all('''body:
+ - checkbox: {label: Agree, checked: true}
+ - radio: {label: Yes, checked: false}
+ - "[x] Inline checkbox"
+ - "( ) Inline radio"
+''',self.tmp.name,'p')[0][1]
+        self.assertEqual(html.count('class="wf-check-control'), 2)
+        self.assertEqual(html.count('class="wf-radio-control'), 2)
+        self.assertIn('aria-checked="true"',html)
+        self.assertIn('aria-checked="false"',html)
+        self.assertNotIn('☑',html)
+        self.assertNotIn('◉',html)
 if __name__=='__main__':unittest.main()
