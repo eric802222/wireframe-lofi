@@ -267,6 +267,8 @@ components:
         page.locator('summary').click()
         assert page.get_by_text('收合內容', exact=True).is_visible()
         print('L3 token references/preset, embed selected skin and native collapsible menu without JS: OK')
+        from check_debug_mobile import check_debug_mobile
+        check_debug_mobile(browser, out, wf, files)
         browser.close()
 
 
