@@ -10,9 +10,9 @@
 body { background:#ffffff; font-family:var(--wf-font); font-size:var(--wf-font-size); color:#1f2937; }
 .wf-root { border:var(--wf-page-border); border-radius:var(--wf-radius); padding:var(--wf-page-pad); }
 /* 連結上色（href 規則：互動才上色 teal）*/
-a.wf-link { color:#0f766e; }
-a.wf-label.wf-link { text-decoration:underline; text-underline-offset:2px; }
-a.wf-btn.wf-link { border-color:#0d9488; background:#0d9488; color:#fff; font-weight:600; }
+a.wf-link, label.wf-radio-link.wf-link { color:#0f766e; }
+a.wf-label.wf-link, label.wf-radio-link.wf-label.wf-link { text-decoration:underline; text-underline-offset:2px; }
+a.wf-btn.wf-link, label.wf-radio-link.wf-btn.wf-link { border-color:#0d9488; background:#0d9488; color:#fff; font-weight:600; }
 .wf-blocklink-a::after { color:#0f766e; }
 .wf-link:hover { outline:2px solid #99f6e4; }
 /* box / 表單控制 外觀 */

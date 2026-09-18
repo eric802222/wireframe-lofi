@@ -1,0 +1,16 @@
+viewport: 390x844
+body:
+  - name: header
+    row: between
+    items:
+      - text.heading: "{{title}}"
+      - button: 選單
+  - divider:
+  - name: main
+    col:
+      - slot: main
+    grow: true
+    scroll: true
+  - name: footer
+    col:
+      - slot: footer

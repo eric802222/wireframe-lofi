@@ -24,6 +24,51 @@ wireframe-lofi compiler
 """
 import sys, os, re, html, gzip, json, base64, glob, yaml
 
+
+class AuthorError(ValueError):
+    """作者輸入錯誤；保留來源，不把非預期程式例外偽裝成語法問題。"""
+    def __init__(self, message, source=None, path=None):
+        super().__init__(message)
+        self.source, self.path = source, path
+
+
+def _yaml_load(src, source='<input>'):
+    try:
+        return yaml.safe_load(src) or {}
+    except yaml.YAMLError as e:
+        mark = getattr(e, 'problem_mark', None)
+        location = f'line {mark.line + 1}, column {mark.column + 1}' if mark else '<root>'
+        problem = getattr(e, 'problem', None) or str(e)
+        hint = '\n文字含 [ ] , : # 時，請為整個值加引號（尤其 flow sequence）。'
+        raise AuthorError(f'YAML 解析失敗：{problem}{hint}', source, location) from e
+
+
+def _read_yaml(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return _yaml_load(f.read(), path)
+    except OSError as e:
+        raise AuthorError(f'讀不到檔案：{e.strerror}', path, '<root>') from e
+
+
+def cli_entry(run):
+    """CLI 與截圖入口共用的簡潔作者錯誤輸出；程式錯誤保留 traceback。"""
+    trace = '--traceback' in sys.argv or os.environ.get('WF_TRACEBACK') == '1'
+    if '--traceback' in sys.argv:
+        sys.argv.remove('--traceback')
+    try:
+        return run()
+    except (ValueError, yaml.YAMLError) as e:
+        if trace:
+            raise
+        source, path = getattr(e, 'source', None), getattr(e, 'path', None)
+        print(f'error: {source or "<input>"} → {path or "<root>"}', file=sys.stderr)
+        for line in str(e).splitlines():
+            if line.strip():
+                print(f'  {line}', file=sys.stderr)
+        print('  （用 --traceback 或 WF_TRACEBACK=1 看完整 traceback）', file=sys.stderr)
+        sys.exit(1)
+
 # ---- 自含資產（封印 CSS + icon 圖庫），可整包帶走；無外部依賴 ----
 # assets/ 為自帶的封印視覺（CSS + Font Awesome / Lucide 圖庫）；要更新視覺改 assets/wf.css 或重新打包圖庫。
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -246,6 +291,7 @@ _THEME_BINDABLE = {
                           'brand':   '1.5px solid var(--wf-brand,#0d9488)',
                       })),
     'background':    ('background',    _enum_var('background', {
+                          'inverse':      'var(--wf-inverse,#ffffff)',
                           'surface':      'var(--wf-surface,#ffffff)',
                           'surface-alt':  'var(--wf-surface-alt,#f9fafb)',
                           'surface-sunk': 'var(--wf-surface-sunk,#f3f4f6)',
@@ -276,7 +322,7 @@ def _theme_active():
 # bindings 綁「內建元件 role」→ selector（同一套詞彙換元件皮，不另發明語彙）。
 _THEME_ELEMENT_SELECTORS = {
     'button':        '.wf-btn',
-    'button-link':   'a.wf-btn.wf-link',    # 帶 to: 的按鈕（主要動作/導航）
+    'button-link':   ':is(a,label.wf-radio-link).wf-btn.wf-link',    # 帶 to: 的按鈕（主要動作/導航）
     'input':         '.wf-input',
     'select':        '.wf-select',
     'status':        '.wf-tag',
@@ -337,7 +383,7 @@ _THEME_CHROME = {
 }
 
 
-def _slug(s):
+def _theme_slug(s):
     return re.sub(r'[^a-z0-9-]', '-', str(s).lower())
 
 
@@ -346,7 +392,7 @@ def _theme_var_name(family, name):
     fam = _THEME_TOKEN_VARS.get(family)
     if fam and str(name) in fam:
         return fam[str(name)]
-    return f'--wf-{_slug(family)}-{_slug(name)}'
+    return f'--wf-{_theme_slug(family)}-{_theme_slug(name)}'
 
 
 def _token_scalar(entry):
@@ -487,11 +533,10 @@ def _theme_base_css(base):
 
 def _state_selector(sel, sname):
     """狀態 selector：hover/focus 走真 pseudo（.html 互動可見）；其餘走 [data-ui-state]。"""
-    if sname == 'hover':
-        return sel + ':hover'
-    if sname == 'focus':
-        return sel + ':focus'
-    return f'{sel}[data-ui-state="{_slug(sname)}"]'
+    if sname in ('hover', 'focus'):
+        pseudo = ':focus-within' if sname == 'focus' else ':hover'
+        return f'{sel}:is({pseudo},[data-ui-state="{sname}"])'
+    return f'{sel}[data-ui-state="{_theme_slug(sname)}"]'
 
 
 def _theme_components_css(components):
@@ -500,7 +545,7 @@ def _theme_components_css(components):
     for cname, spec in components.items():
         if not isinstance(spec, dict):
             raise ValueError(f"theme.components.{cname} 必須是 dict（收到 {type(spec).__name__}）")
-        sel = _THEME_COMPONENT_SELECTORS.get(cname) or f'.wf-role-{_slug(cname)}'
+        sel = _THEME_COMPONENT_SELECTORS.get(cname) or f'.wf-role-{_theme_slug(cname)}'
         base = {k: v for k, v in spec.items() if k not in ('variants', 'states')}
         if base:
             props = _expand_props(base, f'components.{cname}')
@@ -508,7 +553,7 @@ def _theme_components_css(components):
                 lines.append(f'{sel}{{{_props_str(props)}}}')
         for vname, vrules in (spec.get('variants') or {}).items():
             props = _expand_props(vrules, f'components.{cname}.variants.{vname}')
-            lines.append(f'{sel}[data-variant="{_slug(vname)}"]{{{_props_str(props)}}}')
+            lines.append(f'{sel}[data-variant="{_theme_slug(vname)}"]{{{_props_str(props)}}}')
         for sname, srules in (spec.get('states') or {}).items():
             props = _expand_props(srules, f'components.{cname}.states.{sname}')
             lines.append(f'{_state_selector(sel, sname)}{{{_props_str(props)}}}')
@@ -531,6 +576,8 @@ def _theme_bindings_css(bindings):
         merged.update({k: v for k, v in rules.items() if k != 'apply'})
         for k, v in merged.items():
             use_enum = k in _THEME_BINDABLE and not (isinstance(v, str) and '{' in v)
+            if k in ('padding', 'margin', 'gap') and str(v) not in GAP and str(v) not in (_TOKENS.get('gap') or {}):
+                use_enum = False
             if use_enum:
                 try:
                     css_prop, resolver = _THEME_BINDABLE[k]
@@ -538,11 +585,12 @@ def _theme_bindings_css(bindings):
                     continue
                 except ValueError:
                     pass   # 非 enum 值 → 落到 raw property 路徑
-            if k not in _CSS_PROP_ALLOW:
+            css_prop = _THEME_BINDABLE[k][0] if k in _THEME_BINDABLE else k
+            if css_prop not in _CSS_PROP_ALLOW:
                 sugg = _suggest_key(k, _CSS_PROP_ALLOW | set(_THEME_BINDABLE))
                 hint = f"（是不是「{sugg}」？）" if sugg else ""
                 raise ValueError(f"theme.bindings.{role}.{k}: 未知綁定屬性/CSS property{hint}")
-            decls.append(f'{k}:{_resolve_value(v)}')
+            decls.append(f'{css_prop}:{_resolve_value(v)}')
         r = esc_attr(role)
         # 優先序：語義身份（role/name）selector 三疊拉高 specificity，贏過元件皮。
         sel = _THEME_ELEMENT_SELECTORS.get(role) or \
@@ -561,7 +609,9 @@ def _load_theme(path):
         return {}
     if not os.path.exists(path):
         raise ValueError(f"--mockup 找不到 theme 檔：{path}")
-    data = yaml.safe_load(open(path, encoding='utf-8')) or {}
+    data = _read_yaml(path)
+    if not isinstance(data, dict):
+        raise AuthorError('theme 頂層必須是 dict', path, '<root>')
     unknown = set(data.keys()) - {'tokens', 'base', 'bindings', 'components'}
     if unknown:
         raise ValueError(f"theme 檔頂層 key 只允許 tokens/base/bindings/components（收到多餘: {sorted(unknown)}）")
@@ -578,6 +628,15 @@ def _load_theme(path):
     bindings = data.get('bindings') or {}
     if not isinstance(bindings, dict):
         raise ValueError(f"theme.bindings 必須是 dict（收到 {type(bindings).__name__}）")
+    for role, rules in bindings.items():
+        if not isinstance(rules, dict):
+            raise AuthorError(f'theme.bindings.{role} 必須是 dict', path, f'bindings.{role}')
+        radius = rules.get('radius')
+        if radius is not None and '{' not in str(radius) and str(radius) not in ('none', 'sm', 'md', 'lg', 'pill', 'full'):
+            raise AuthorError(
+                f'bindings.{role}.radius 收語義名，不接受 {radius!r}。\n'
+                f'請在 tokens.radius.lg 定義 {radius!r}，並使用 bindings.{role}.radius: lg；'
+                '原始 CSS 屬性使用 border-radius。', path, f'bindings.{role}.radius')
     components = data.get('components') or {}
     if not isinstance(components, dict):
         raise ValueError(f"theme.components 必須是 dict（收到 {type(components).__name__}）")
@@ -811,7 +870,7 @@ CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'embed', 'slot'}
 LEAF_ROLES = ['text.title', 'text.heading', 'text.label', 'text.strong', 'text.hint', 'text',
               'input', 'select', 'button', 'status.badge', 'status.muted', 'status.strong', 'status',
               'alert', 'icon', 'divider', 'tabs', 'image', 'checkbox', 'radio', 'link',
-              'progress', 'avatar']
+              'progress', 'avatar', 'avatars', 'map']
 TEXT_CLASS = {'text': 'wf-label', 'text.title': 'wf-h wf-h1', 'text.heading': 'wf-h wf-h2',
               'text.label': 'wf-label wf-fieldlabel', 'text.strong': 'wf-b', 'text.hint': 'wf-hint'}
 _UI_STATES = {'selected', 'disabled', 'hover', 'focus', 'active'}   # 顯示態（→ data-ui-state；theme states 綁）
@@ -820,6 +879,8 @@ _NOTES = []   # Layer2 note → 右側 gutter（供 render.sh 量測對齊（位
 _NCOUNT = 0
 _PAGE_BASE = ''   # 目前頁面檔名 base，供 `to: "#stage.state"` 同頁路由連結解析
 _DEBUG = False    # debug 模式：輸出 data-wf-src/data-wf-path 供評審回饋定位
+_RADIO_NAV = False
+_LINK_SERIAL = 0
 _BUNDLE = False   # bundle 模式：連結改寫成單檔內錨點（#wf-pg-...）
 
 
@@ -865,6 +926,14 @@ CSS_EXTRA = r"""
 /* --- scroll 捲動：HTML 用瀏覽器原生捲軸（overflow:auto + 封頂，模擬真實）；PNG(wf-show-all) 全展開 + 手畫低保真示意 --- */
 .wf-scroll { overflow-y:auto; }   /* HTML：內距純 md，原生捲軸自理，不預留 15px */
 .wf-scroll-x { overflow-x:auto; }
+.wf-scroll > * { flex-shrink:0; }
+.wf-placeholder { color:#6b7280; border-bottom:1px dashed currentColor; }
+.wf-avatars { display:flex; align-items:center; padding-left:var(--wf-space-sm); }
+.wf-avatars > .wf-avatar { margin-left:calc(-1 * var(--wf-space-sm)); flex-shrink:0; outline:2px solid #fff; }
+.wf-map { border:1px dashed #9ca3af; min-height:8rem; padding:var(--wf-space-md);
+  display:flex; flex-wrap:wrap; align-content:center; justify-content:center; gap:var(--wf-space-md);
+  background:repeating-linear-gradient(0deg,transparent,transparent 23px,#e5e7eb 24px),
+             repeating-linear-gradient(90deg,transparent,transparent 23px,#e5e7eb 24px); }
 /* PNG 才為 DOS bar 保留 gutter = 捲軸寬 15px + md 間距(.5rem)；!important 蓋過 inline padding shorthand */
 .wf-show-all .wf-scroll { max-height:none !important; position:relative; padding-right:calc(15px + var(--wf-space-md)) !important; }
 .wf-show-all .wf-scroll-x { overflow:visible; }
@@ -1017,15 +1086,41 @@ def inline(s):
     s = esc(s)
 
     def _a(m):
+        if m.group(2) is None:
+            return _placeholder_match(m.group(3), m.group(0))
         txt, tgt = m.group(1), m.group(2)
-        href = _href(tgt[3:]) if tgt.startswith('to:') else tgt   # to:→動線解析；否則外部字面（已於上方 esc）
-        return f'<a class="wf-hyperlink" href="{href}">{txt}</a>'
+        if tgt.startswith('to:'):
+            return _wire_link(tgt[3:], txt, "wf-hyperlink")
+        return f'<a class="wf-hyperlink" href="{tgt}">{txt}</a>'
 
-    s = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _a, s)
+    s = _INLINE_BRACKETS.sub(_a, s)
     s = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
     s = re.sub(r'~~(.+?)~~', r'<del>\1</del>', s)
     s = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', s)
     return s
+
+
+# 一次分類連結與未定值；連結整段先吃掉，避免將 href 中的方括號標成未定值。
+_INLINE_BRACKETS = re.compile(r'\[([^\[\]\n]+)\]\(([^)\n]+)\)|(?<!\\)\[([^\[\]\n]+)\](?!\()')
+
+
+def _placeholder_match(label, original):
+    if label.strip().lower() in ('', 'x'):
+        return original
+    return f'<span class="wf-placeholder" title="未定值">{original}</span>'
+
+
+def _placeholder_html(value):
+    return _INLINE_BRACKETS.sub(
+        lambda m: m.group(0) if m.group(2) is not None else _placeholder_match(m.group(3), m.group(0)),
+        esc(value))
+
+
+def _placeholder_count(value):
+    if not isinstance(value, str):
+        return 0
+    return sum(1 for m in _INLINE_BRACKETS.finditer(value)
+               if m.group(2) is None and m.group(3).strip().lower() not in ('', 'x'))
 
 
 def _icon(val):
@@ -1069,6 +1164,24 @@ def _href(target):
     if frag:
         return esc(f'{(page or _PAGE_BASE)}.{frag}.html')
     return esc(t + '.html')
+
+
+def _wire_link(target, inner, classes='', attrs='', page_id=None, nav=False, checked=False):
+    """Wireframe links share the same output mode, including story and inline links.
+
+    Each radio label owns a focusable native control, so Space/arrow keys work
+    without JavaScript. Duplicate destinations share values, never input IDs.
+    """
+    global _LINK_SERIAL
+    href = '#' + page_id if page_id else _href(target)
+    if not (_BUNDLE and _RADIO_NAV):
+        return f'<a href="{href}" class="{classes}"{attrs}>{inner}</a>'
+    pid = page_id or href[1:]
+    _LINK_SERIAL += 1
+    rid = 'r-' + pid if nav else f'wf-r-link-{_LINK_SERIAL}'
+    control = (f'<input class="wf-r" type="radio" name="wfpg" id="{rid}" '
+               f'value="{pid}" aria-controls="{pid}"' + (' checked' if checked else '') + '>')
+    return f'<label for="{rid}" class="{classes} wf-radio-link"{attrs}>{control}{inner}</label>'
 
 
 def _attrs(d):
@@ -1116,19 +1229,19 @@ def render_leaf(d, xcls, xattr):
     if role == 'input':
         ph = val.get('placeholder', '') if isinstance(val, dict) else val
         v = val.get('value') if isinstance(val, dict) else None
-        inner = esc(v) if v else (esc(ph) or '&nbsp;&nbsp;')
+        inner = _placeholder_html(v) if v else (_placeholder_html(ph) or '&nbsp;&nbsp;')
         return f'<span class="{cls("wf-input")}"{A}>{inner}</span>'
     if role == 'select':
         txt = val.get('text', '') if isinstance(val, dict) else val
         return f'<span class="{cls("wf-select")}"{A}>{inline(txt)}</span>'
     if role == 'button':
         if isinstance(val, dict):
-            txt, to, ic = val.get('text', ''), val.get('to'), val.get('icon')
+            txt, to, ic = val.get('text', ''), val.get('to', d.get('to')), val.get('icon')
             inner = (_icon(ic) + ' ' if ic else '') + inline(txt)
         else:
-            txt, to, inner = val, None, inline(val)
+            txt, to, inner = val, d.get('to'), inline(val)
         if to:
-            return f'<a href="{_href(to)}" class="{cls("wf-btn wf-link")}"{A}>{inner}</a>'
+            return _wire_link(to, inner, cls("wf-btn wf-link"), A)
         return f'<button class="{cls("wf-btn")}"{A}>{inner}</button>'
     if role == 'status.badge':
         return f'<label class="{cls("wf-badge")}"{A}>{inline(val)}</label>'
@@ -1166,7 +1279,7 @@ def render_leaf(d, xcls, xattr):
                 if b:
                     style.append(f'aspect-ratio:{a}/{b}')
         st = f' style="{";".join(style)}"' if style else ''
-        return f'<div class="{cls("wf-image")}"{st}{A}>▧ {esc(label)}</div>'
+        return f'<div class="{cls("wf-image")}"{st}{A}>▧ {_placeholder_html(label)}</div>'
     if role == 'tabs':
         items = val.get('items', []) if isinstance(val, dict) else (val or [])
         active = val.get('active') if isinstance(val, dict) else None
@@ -1207,7 +1320,35 @@ def render_leaf(d, xcls, xattr):
             size = 'md'
         if size not in ('sm', 'md', 'lg'):
             raise ValueError(f"avatar.size 只接 sm/md/lg（收到 {size!r}）")
-        return f'<div class="{cls(f"wf-avatar wf-avatar-{size}")}"{A}>{esc(label)}</div>'
+        return f'<div class="{cls(f"wf-avatar wf-avatar-{size}")}"{A}>{_placeholder_html(label)}</div>'
+    if role == 'avatars':
+        if not isinstance(val, dict) or not isinstance(val.get('items'), list):
+            raise ValueError('avatars 需為 {items: [...], max: 3}；items 必須是 list')
+        maximum = val.get('max', 3)
+        if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
+            raise ValueError('avatars.max 需為正整數（不含 +N 溢出標記）')
+        items = val['items']
+        # 全部成員都驗證，避免超過 max 的錯誤輸入被隱藏。
+        rendered = [render_leaf({'avatar': item}, [], {}) for item in items]
+        overflow = len(items) - maximum
+        rest = render_leaf({'avatar': f'+{overflow}'}, [], {}) if overflow > 0 else ''
+        return f'<div class="{cls("wf-avatars")}"{A}>{"".join(rendered[:maximum])}{rest}</div>'
+    if role == 'map':
+        w = {'is': '地圖', 'can': ['pan', 'zoom', 'markers']}
+        if isinstance(val, dict):
+            if _ckeys(val) - {'label', 'markers', 'can'}:
+                raise ValueError('map 只接受 label / markers / can（示意，非真實地圖服務）')
+            markers = val.get('markers', [])
+            if not isinstance(markers, list) or any(not isinstance(x, str) for x in markers):
+                raise ValueError('map.markers 必須是文字標記 list')
+            w['is'] = val.get('label', '地圖')
+            w['can'] = val.get('can', w['can'])
+        else:
+            w['is'], markers = val or '地圖', []
+        if not isinstance(w['can'], list) or any(not isinstance(x, str) for x in w['can']):
+            raise ValueError('map.can 必須是文字能力 list')
+        w['body'] = [{'row': [{'text': '⊙ ' + m} for m in markers], 'name': '地圖標記'}]
+        return render_widget({'widget': w}, xcls + ['wf-map'], xattr)
     # 走到這裡 = 節點沒任何已知 leaf role → 明確錯誤而非靜默 fallback
     keys = list(d.keys()) if isinstance(d, dict) else [type(d).__name__]
     raise ValueError(f"leaf 節點沒有已知 role key（收到 keys={keys}；合法：{sorted(LEAF_ROLES)}）")
@@ -1226,6 +1367,8 @@ def _items_of(d, direction):
     - row/col 值為 dict：dict-form 明拒（P0） → error
     - 無方向 key（box 隱式 col）：`items:` 是允許的
     """
+    if 'items' in d and d['items'] is not None and not isinstance(d['items'], list):
+        raise ValueError('items 必須是 list')
     if direction == 'grid':
         return 'items', (d.get('items', []) or [])
     v = d.get(direction)
@@ -1238,7 +1381,7 @@ def _items_of(d, direction):
         return direction, v
     if isinstance(v, dict):
         raise ValueError(
-            f"{direction}: 不接受 dict 形式（收到 keys={list(v)}）。\n"
+            f"{direction}: 不接受 dict 形式（收到 keys={[k for k in v if not str(k).startswith('__')]}）。\n"
             f"container 屬性一律 sibling — 方向 key `{direction}:` 只承載 items 短寫或 justify 短寫。\n"
             f"請改寫成：\n"
             f"  {direction}: [ item1, item2, ... ]     # items 短寫\n"
@@ -1249,6 +1392,15 @@ def _items_of(d, direction):
 
 
 def render_container(d, xcls, xattr, src=None, base=''):
+    try:
+        return _render_container(d, xcls, xattr, src, base)
+    except ValueError as e:
+        if isinstance(e, AuthorError) and e.source:
+            raise
+        raise AuthorError(str(e), d.get('__src', src), d.get('__path', base)) from e
+
+
+def _render_container(d, xcls, xattr, src=None, base=''):
     direction = 'grid' if 'grid' in d else 'row' if 'row' in d else 'col'
     itemkey, items = _items_of(d, direction)
     boxed = bool(d.get('box'))     # box 只畫框；標題請用 text.title / text.heading（語義化）
@@ -1401,6 +1553,17 @@ def _overlay_tokens():
 
 
 def render_item(it, src=None, path=None):
+    try:
+        return _render_item(it, src, path)
+    except ValueError as e:
+        if isinstance(e, AuthorError) and e.source:
+            raise
+        source = it.get('__src', src) if isinstance(it, dict) else src
+        location = it.get('__path', path) if isinstance(it, dict) else path
+        raise AuthorError(str(e), source, location) from e
+
+
+def _render_item(it, src=None, path=None):
     global _NCOUNT
     if _is_spacer(it):
         return '<span class="wf-spacer"></span>'
@@ -1476,9 +1639,9 @@ def render_item(it, src=None, path=None):
         core = render_leaf(d, xcls, xattr)
 
     if block_to:
-        # span 要落在 grid 的直接子項＝這個 anchor（否則 to: 區塊在 grid 內 span 失效）
+        # Grid span belongs on the direct child link in either navigation mode.
         sp = f' style="grid-column:span {span}"' if isinstance(span, int) else ''
-        core = f'<a href="{_href(block_to)}" class="wf-blocklink-a wf-link"{sp}>{core}</a>'
+        core = _wire_link(block_to, core, "wf-blocklink-a wf-link", sp)
     if story_badge or story_steps:    # SAC：貼紙 + flow 序號徽章（絕對定位疊在元素角落；story 的 to 掛徽章上）
         extra = ''
         if story_badge:
@@ -1486,7 +1649,7 @@ def render_item(it, src=None, path=None):
         for st in (story_steps or []):
             lbl = esc(st['label'])
             if st.get('to'):
-                extra += f'<a class="wf-story-step wf-story-step-pin" href="{_href(st["to"])}">{lbl}</a>'
+                extra += _wire_link(st["to"], lbl, "wf-story-step wf-story-step-pin")
             else:
                 extra += f'<span class="wf-story-step wf-story-step-pin">{lbl}</span>'
         disp = 'block' if (is_widget or is_container(d)) else 'inline-block'
@@ -1592,12 +1755,14 @@ def expand(items, basedir, ctx, stack=()):
             name = it['embed']
             params = it.get('with', {}) or {}
             as_ = it.get('as')
-            path = _resolve(name, basedir)
+            try:
+                path = _resolve(name, basedir)
+            except ValueError as e:
+                raise AuthorError(str(e), it.get('__src'), it.get('__path')) from e
             if path in stack:
                 raise ValueError(f"模板循環引用：{' -> '.join(stack + (path,))}")
-            comp = yaml.safe_load(open(path)) or {}
-            if _DEBUG:
-                _stamp(comp, str(name))            # component 節點來源 = 其 embed 名
+            comp = _read_yaml(path)
+            _stamp(comp, str(name) if _DEBUG else path)
             cdir = os.path.dirname(path) or '.'
             if as_ == 'placeholder':                    # 降階佔位（ctx 無意義）
                 content, child_ctx = (comp.get('placeholder') or _auto_stub(name)), ctx
@@ -1626,8 +1791,13 @@ def expand(items, basedir, ctx, stack=()):
             nd = dict(it)
             for k in _child_list_keys(nd):
                 nd[k] = expand(nd[k], basedir, ctx, stack)
-            if isinstance(nd.get('widget'), dict) and isinstance(nd['widget'].get('body'), list):
-                nd['widget'] = {**nd['widget'], 'body': expand(nd['widget']['body'], basedir, ctx, stack)}
+            if isinstance(nd.get('widget'), dict) and 'body' in nd['widget']:
+                wb = nd['widget']['body']
+                if isinstance(wb, list):
+                    wb = expand(wb, basedir, ctx, stack)
+                elif isinstance(wb, dict):
+                    wb = expand([wb], basedir, ctx, stack)[0]
+                nd['widget'] = {**nd['widget'], 'body': wb}
             out.append(nd)
         else:
             out.append(it)
@@ -1637,7 +1807,8 @@ def expand(items, basedir, ctx, stack=()):
 def _child_list_keys(nd):
     """節點的結構子清單 keys：方向 key / items + overlay 角色內容（dialog/toast/專案自定…）。
     expand / _fill_slots 都要走訪這些，否則藏在 overlay 角色裡的 embed / slot 靜默失效。"""
-    keys = [k for k in ('items', 'row', 'col', 'grid') if isinstance(nd.get(k), list)]
+    # grid 的 list 是欄寬 tracks，不是子節點。
+    keys = [k for k in ('items', 'row', 'col') if isinstance(nd.get(k), list)]
     keys += [k for k in _overlay_tokens() if isinstance(nd.get(k), list)]
     return keys
 
@@ -1651,8 +1822,13 @@ def _fill_slots(items, slots):
             nd = dict(it)
             for k in _child_list_keys(nd):
                 nd[k] = _fill_slots(nd[k], slots)
-            if isinstance(nd.get('widget'), dict) and isinstance(nd['widget'].get('body'), list):
-                nd['widget'] = {**nd['widget'], 'body': _fill_slots(nd['widget']['body'], slots)}
+            if isinstance(nd.get('widget'), dict) and 'body' in nd['widget']:
+                wb = nd['widget']['body']
+                if isinstance(wb, list):
+                    wb = _fill_slots(wb, slots)
+                elif isinstance(wb, dict):
+                    wb = _fill_slots([wb], slots)[0]
+                nd['widget'] = {**nd['widget'], 'body': wb}
             out.append(nd)
         else:
             out.append(it)
@@ -1668,16 +1844,22 @@ def resolve_body(doc, provider, basedir, ctx):
     extends/with/viewport 屬 doc 級（各路由共用）。ctx = 當前路由 {stage, state}，供 when: 過濾與元件繼承。"""
     viewport = _viewport_of(doc)
     if 'extends' in doc:
-        layout = yaml.safe_load(open(_resolve(doc['extends'], basedir))) or {}
-        if _DEBUG:
-            _stamp(layout, str(doc['extends']))    # layout 節點來源 = 其引用名
+        try:
+            lpath = _resolve(doc['extends'], basedir)
+        except ValueError as e:
+            raise AuthorError(str(e), doc.get('__src'), 'extends') from e
+        layout = _read_yaml(lpath)
+        _stamp(layout, str(doc['extends']) if _DEBUG else lpath)
         params = {**(doc.get('with') or {}), **(provider.get('with') or {})}
-        body = _fill_slots(layout.get('body', []), provider.get('slots', {}) or {})
-        body = _subst(body, params)
+        # layout 的 embed 相對 layout；頁面 slots 的 embed 相對頁面。
+        lbody = expand(_subst(layout.get('body', []), params), os.path.dirname(lpath) or '.', ctx)
+        slots = {k: expand(_subst(v, params), basedir, ctx)
+                 for k, v in (provider.get('slots', {}) or {}).items()}
+        body = _fill_slots(lbody, slots)
         viewport = viewport or _viewport_of(layout)
     else:
         body = provider.get('body', [])
-    body = expand(body, basedir, ctx)
+        body = expand(body, basedir, ctx)
     if _STORY:                          # SAC：story 注入在 expand 之後（name 錨點需 embed 展開後才存在）
         body = _apply_story(body, _STORY)
     return body, viewport
@@ -1740,8 +1922,13 @@ def _width_css(sel, w, h, has_notes):
               f'body{{padding-right:{g + gap}px;}}')
     elif w:
         o += f'{sel}{{width:{w}px;}}'
-    if h:   # 有畫布高度：root 成 flex-col、body 撐滿該高 → spacer/justify 能把內容(如 footer)推到底
-        o += f'{sel}{{min-height:{h}px;display:flex;flex-direction:column;}}{sel}>.wf-node{{flex:1 1 auto;min-height:0;}}'
+    if h:
+        o += (f'{sel}{{height:{h}px;min-height:{h}px;display:flex;flex-direction:column;}}'
+              f'{sel}>.wf-node{{flex:1 1 auto;min-height:0;}}'
+              f'{sel}>.wf-node>.wf-node,{sel}>.wf-node>.wf-hr{{flex-shrink:0;}}'
+              f'{sel}>.wf-node>.wf-scroll{{flex-shrink:1;}}'
+              f'{sel}.wf-show-all{{height:auto;}}'
+              f'{sel}.wf-show-all .wf-scroll{{flex-shrink:0;overflow:visible;}}')
     return o
 
 
@@ -1766,30 +1953,49 @@ body.wf-bundle{display:flex;margin:0;align-items:flex-start;font-family:var(--wf
   border-right:1px solid #e5e7eb;font:12px/1.5 sans-serif;background:#fafafa;}
 #wf-nav .wf-navgrp{margin-bottom:6px;}
 #wf-nav b{display:block;color:#6b7280;margin:8px 0 2px;font-size:11px;letter-spacing:.03em;}
-#wf-nav a{display:block;padding:2px 8px;color:#0f766e;text-decoration:none;border-radius:var(--wf-radius);}
-#wf-nav a:hover{background:#f0fdfa;}
-#wf-main{flex:1;padding:24px;overflow:auto;}
+#wf-nav :is(a,label){display:block;padding:2px 8px;color:#0f766e;text-decoration:none;border-radius:var(--wf-radius);}
+#wf-nav :is(a,label):hover{background:#f0fdfa;}
+#wf-main{flex:1;min-width:0;padding:24px;overflow:auto;}
 .wf-pg{display:none;}
-.wf-pg:target{display:block;}
-body:not(:has(.wf-pg:target)) .wf-pg:first-of-type{display:block;}  /* 無 target 才顯第一頁；有 target(含第一頁) 只顯 target */
+body:not(.wf-radio-nav) .wf-pg:target{display:block;}
+body:not(.wf-radio-nav):not(:has(.wf-pg:target)) .wf-pg:first-of-type{display:block;}
+/* Keep native radios focusable while hiding their visual boxes. */
+.wf-r{position:absolute;width:1px;height:1px;padding:0;margin:0;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap;border:0;}
+.wf-radio-link{cursor:pointer;}
+.wf-radio-link:has(> .wf-r:focus-visible){outline:2px solid #0f766e;outline-offset:2px;}
+@media(max-width:860px){
+  body.wf-bundle{flex-direction:column;padding:0;}
+  #wf-nav{width:100%;flex:0 0 auto;display:flex;gap:12px;max-height:none;
+    overflow-x:auto;border-right:0;border-bottom:1px solid #e5e7eb;z-index:10;}
+  #wf-nav .wf-navgroup,#wf-nav .wf-navgrp{flex:0 0 auto;margin-bottom:0;}
+  #wf-nav .wf-navgroup{display:flex;gap:12px;align-items:center;}
+  #wf-nav h2{font-size:12px;margin:0;white-space:nowrap;}
+  #wf-nav .wf-navgrp{display:flex;gap:4px;align-items:center;}
+  #wf-nav b{margin:0 4px 0 0;white-space:nowrap;}
+  #wf-nav :is(a,label){white-space:nowrap;padding:6px 8px;}
+  #wf-main{width:100%;padding:12px;}
+}
 """
 
 
-def bundle(files, debug=False, title='prototype', style=None, story=None):
+def bundle(files, debug=False, title='prototype', style=None, story=None, standalone=False):
     """把多個 .wf.yaml 併成單一可點擊 prototype.html（左 nav + :target 切頁 + 頁內 to: 錨點）。
-    debug=True → 疊評審回饋層；story=<path> → 附加故事疊加版 section（📖 nav 分組）。"""
-    global _PAGE_BASE, _DEBUG, _BUNDLE, _STYLE, _STORY
+    standalone=True → radio/label 切頁，不改 URL；debug=True → 疊評審回饋層。
+    story=<path> → 附加故事疊加版 section（📖 nav 分組）。"""
+    global _PAGE_BASE, _DEBUG, _BUNDLE, _STYLE, _STORY, _RADIO_NAV, _LINK_SERIAL
     _DEBUG, _BUNDLE, _STYLE = debug, True, style
+    _RADIO_NAV, _LINK_SERIAL = standalone, 0
     _load_tokens(os.path.dirname(files[0]) if files else '.')   # 專案 semantic token（探首檔所在夾）
     secs, navs, overrides, pids = [], [], [], []
+    nav_groups = {}
     for f in files:
         src = open(f).read()
         basedir = os.path.dirname(f) or '.'
         base = re.sub(r'\.(wf\.)?ya?ml$', '', os.path.basename(f))
         _PAGE_BASE = base
-        doc = yaml.safe_load(src) or {}
-        if debug:
-            _stamp(doc, base)
+        doc = _yaml_load(src, f)
+        _stamp(doc, base if debug else f)
         routes = doc.get('routes')
         entries = ([('', doc, base, None)] if not routes
                    else [_route_entry(r) for r in routes])
@@ -1803,14 +2009,23 @@ def bundle(files, debug=False, title='prototype', style=None, story=None):
             root_attr = f' data-wf-src="{esc(base)}" data-wf-path="viewport"' if debug else ''
             secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root"{root_attr}>{content}</div></section>')
             overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
-            navitems.append(f'<a href="#{pid}" id="nav-{pid}">{esc(label if routes else base)}</a>')
-        navs.append(f'<div class="wf-navgrp"><b>{esc(base)}</b>{"".join(navitems)}</div>')
+            navitems.append(_wire_link('', esc(label if routes else doc.get("title", base)),
+                                       attrs=f' id="nav-{pid}"', page_id=pid, nav=True,
+                                       checked=len(pids) == 1))
+        entry = f'<div class="wf-navgrp"><b>{esc(doc.get("title", base))}</b>{"".join(navitems)}</div>'
+        nav_groups.setdefault(doc.get('group') or '', []).append(entry)
+    # 群組按首次出現，組內維持輸入順序。未指定 meta 時保留原本 nav 結構。
+    for group, entries in nav_groups.items():
+        if group:
+            navs.append(f'<div class="wf-navgroup"><h2>{esc(group)}</h2>{"".join(entries)}</div>')
+        else:
+            navs.extend(entries)
     if story:
         # SAC (b)：story nav 分組 = 綁定頁疊加版一頁；flow 跳轉連 bundle 內 clean 頁（錨點改寫沿用）
         sdata = _load_story(story)
         spath, sfrag = _resolve_story_page(sdata['page'], os.path.dirname(story) or '.')
         sbase = re.sub(r'\.(wf\.)?ya?ml$', '', os.path.basename(spath))
-        sdoc = yaml.safe_load(open(spath).read()) or {}
+        sdoc = _read_yaml(spath)
         _stamp(sdoc, sbase)                       # story 路徑 target 比對需要蓋章
         _PAGE_BASE = sbase
         sid = _slug(sdata['story'])
@@ -1832,29 +2047,38 @@ def bundle(files, debug=False, title='prototype', style=None, story=None):
         secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root"{root_attr}>{content}</div></section>')
         overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
         navs.append(f'<div class="wf-navgrp"><b>📖 {esc(str(sdata["story"]))}</b>'
-                    f'<a href="#{pid}" id="nav-{pid}">{esc(sbase)}（故事版）</a></div>')
+                    + _wire_link('', esc(sbase) + '（故事版）', attrs=f' id="nav-{pid}"',
+                                 page_id=pid, nav=True, checked=len(pids) == 1) + '</div>')
     # nav 當前頁高亮（零 JS：:has(section:target) → 對應 nav 連結；無 target 則第一頁）
     if pids:
-        sel = ','.join(f'body:has(#{p}:target) #nav-{p}' for p in pids)
-        sel += f',body:not(:has(.wf-pg:target)) #nav-{pids[0]}'
+        if standalone:
+            for p in pids:
+                overrides.append(f'body:has(.wf-r[value="{p}"]:checked) #{p}' + '{display:block;}')
+            sel = ','.join(f'body:has(.wf-r[value="{p}"]:checked) #nav-{p}' for p in pids)
+        else:
+            sel = ','.join(f'body:has(#{p}:target) #nav-{p}' for p in pids)
+            sel += f',body:not(:has(.wf-pg:target)) #nav-{pids[0]}'
         overrides.append(sel + '{background:#0f766e;color:#fff;font-weight:600;}')
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + BUNDLE_CSS + (DEBUG_CSS if debug else '')
                          + _style_css() + _tokens_css() + _theme_css() + ''.join(overrides))
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
-    return (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><title>{esc(title)}</title>'
-            f'<style>{css}</style></head><body class="wf-bundle">'
+    return (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(title)}</title>'
+            f'<style>{css}</style></head><body class="wf-bundle{" wf-radio-nav" if standalone else ""}">'
             f'<nav id="wf-nav">{"".join(navs)}</nav><div id="wf-main">{"".join(secs)}</div>{tail}')
 
 
-def compile_all(src, basedir='.', base='', debug=False, style=None):
+def compile_all(src, basedir='.', base='', debug=False, style=None, source_name=None):
     """回傳 [(rid, html), ...]。無 routes → [('', html)]；有 routes → 每路由一份可定址輸出。
     debug=True → 注入 --debug 評審回饋層（JS+localStorage）；否則維持零 <script>。"""
-    global _PAGE_BASE, _DEBUG, _STYLE
+    global _PAGE_BASE, _DEBUG, _STYLE, _BUNDLE
     _PAGE_BASE, _DEBUG, _STYLE = base, debug, style
+    _BUNDLE = False
     _load_tokens(basedir)              # 探測選配的 wf.tokens.yaml（專案 semantic token）
-    doc = yaml.safe_load(src) or {}
-    if debug or _STORY:
-        _stamp(doc, base)          # 蓋來源+路徑：debug 定位 / story 路徑 target 比對
+    source = source_name or (os.path.join(basedir, base + '.wf.yaml') if base else '<input>')
+    doc = _yaml_load(src, source)
+    if not isinstance(doc, dict):
+        raise AuthorError('頁面頂層必須是 dict', source, '<root>')
+    _stamp(doc, base if debug or _STORY else source)
     routes = doc.get('routes')
     if not routes:
         return [('', _compile_page(doc, doc, basedir, debug=debug))]
@@ -1892,7 +2116,7 @@ _ENUMS = {
 }
 # 已知頂層 grammar keys（未知 → warn typo）
 # body: 主要內容區；content/placeholder: component 檔頂層（完整/降階佔位）
-_GRAMMAR_KEYS = {'viewport', 'body', 'extends', 'with', 'slots', 'routes',
+_GRAMMAR_KEYS = {'viewport', 'title', 'group', 'body', 'extends', 'with', 'slots', 'routes',
                  'content', 'placeholder'}
 # 已知 container 屬性 keys（sibling 掛在容器 dict 上）
 _CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'box', 'gap', 'padding',
@@ -1925,33 +2149,48 @@ def _suggest_key(unknown, known_set, max_dist=2):
 
 
 class _Diag:
-    def __init__(self):
-        self.errors = []
-        self.warnings = []
+    def __init__(self, source=None, shared=None, allow_parameters=False):
+        self.source = source
+        self.allow_parameters = allow_parameters
+        self.errors = shared.errors if shared else []
+        self.warnings = shared.warnings if shared else []
+        self.placeholders = shared.placeholders if shared else {}
 
     def error(self, path, msg, hint=None):
-        self.errors.append((path, msg, hint))
+        self.errors.append((self.source, path, msg, hint))
 
     def warn(self, path, msg, hint=None):
-        self.warnings.append((path, msg, hint))
+        self.warnings.append((self.source, path, msg, hint))
 
-    def dump(self, file_label, out=sys.stderr):
+    def dump(self, file_label, out=None):
+        out = out or sys.stderr
         for level, items in (('error', self.errors), ('warn', self.warnings)):
-            for path, msg, hint in items:
+            for source, path, msg, hint in items:
                 head = f'\033[1;31m{level}\033[0m' if level == 'error' else f'\033[1;33m{level}\033[0m'
-                print(f'{head}: {file_label}', file=out)
+                print(f'{head}: {source or file_label}', file=out)
                 print(f'  → path: {path or "<root>"}', file=out)
-                print(f'  → {msg}', file=out)
+                first, *rest = msg.splitlines()
+                print(f'  → {first}', file=out)
+                for line in rest:
+                    print(f'    {line}', file=out)
                 if hint:
                     for line in hint.split('\n'):
                         print(f'  hint: {line}', file=out)
 
 
-def _walk_lint(node, path, diag):
+def _walk_lint(node, path, diag, basedir='.', stack=()):
     """遞迴 lint YAML 結構樹。只走結構節點，跳過 leaf value dict / with / as / meta 值。"""
     if isinstance(node, list):
         for i, item in enumerate(node):
-            _walk_lint(item, f'{path}[{i}]', diag)
+            _walk_lint(item, f'{path}[{i}]', diag, basedir, stack)
+        return
+    if isinstance(node, str):
+        if diag.allow_parameters and _has_parameter(node):
+            return
+        try:
+            render_string(node)
+        except ValueError as e:
+            diag.error(path, str(e))
         return
     if not isinstance(node, dict):
         return
@@ -1967,6 +2206,32 @@ def _walk_lint(node, path, diag):
     is_embed = 'embed' in keys
     # overlay 角色 = 內建 sugar ∪ 專案 token（wf.tokens.yaml overlay: 自定角色，與 render _overlay_tokens 同源）
     has_overlay_sugar = keys & (_OVERLAY_SUGARS | set(_TOKENS.get('overlay') or {}))
+    for key, expected in (('with', dict), ('slots', dict)):
+        if key in node and not isinstance(node[key], expected):
+            diag.error(f'{path}.{key}', f'{key} 必須是 {expected.__name__}')
+
+    # 共用 render 的 items 判定；grid list 是 tracks，與 items 並存合法。
+    if has_direction or 'items' in keys:
+        direction = 'grid' if 'grid' in keys else 'row' if 'row' in keys else 'col'
+        try:
+            _items_of(node, direction)
+        except ValueError as e:
+            diag.error(path, str(e))
+
+    if is_embed:
+        if not isinstance(node.get('embed'), str):
+            diag.error(path + '.embed', 'embed 必須是模板路徑字串')
+        else:
+            _lint_reference(node['embed'], basedir, diag, path + '.embed', stack, node.get('with'))
+
+    # 葉子與未知 role 沿用 render 的驗證（包含 avatar / progress / icon）。
+    is_route_context = 'when' in keys and keys <= {'when', 'with', 'default'}
+    if not (has_direction or keys & {'items', 'body', 'slots', 'default'} or is_route_context or is_widget or is_embed or has_overlay_sugar or is_slot_marker or is_spacer):
+        if not (diag.allow_parameters and _has_parameter({k: node[k] for k in has_leaf_role})):
+            try:
+                render_leaf(node, [], {})
+            except ValueError as e:
+                diag.error(path, str(e))
 
     # 3. container 恰一個 direction key
     if len(has_direction) > 1:
@@ -1987,7 +2252,9 @@ def _walk_lint(node, path, diag):
     for key, allowed in _ENUMS.items():
         if key in node:
             v = node[key]
-            if v not in allowed:
+            if diag.allow_parameters and _has_parameter(v):
+                continue
+            if not isinstance(v, (str, int, float, bool, type(None))) or v not in allowed:
                 proj = (_TOKENS.get(key) or {})
                 if str(v) in proj:
                     continue
@@ -2027,7 +2294,7 @@ def _walk_lint(node, path, diag):
 
     # 9. 遞迴子節點：只走結構性 key，跳過 leaf value / meta / 參數
     # 結構性 key：direction values (list) / items / body / overlay 角色內容 / slots values / routes items
-    _RECURSE_INTO = _DIRECTION_KEYS | {'items', 'body'}   # 這些 value 是結構樹
+    _RECURSE_INTO = {'row', 'col', 'items', 'body'}   # grid list 不是結構樹
     for k, v in node.items():
         if k in ('__src', '__path'):
             continue
@@ -2035,29 +2302,32 @@ def _walk_lint(node, path, diag):
         if k in _RECURSE_INTO or k in _overlay_tokens():
             if isinstance(v, list):
                 for i, item in enumerate(v):
-                    _walk_lint(item, f'{sub_path}[{i}]', diag)
+                    _walk_lint(item, f'{sub_path}[{i}]', diag, basedir, stack)
             elif isinstance(v, dict):
-                _walk_lint(v, sub_path, diag)
+                _walk_lint(v, sub_path, diag, basedir, stack)
+        elif k == 'widget' and isinstance(v, dict) and 'body' in v:
+            _walk_lint(v['body'], f'{sub_path}.body', diag, basedir, stack)
         elif k == 'slots':
             # slots 的 key 是使用者定義的 slot 名（不是 vocab key）→ 只走各 slot 的內容
             if isinstance(v, dict):
                 for slot_name, slot_content in v.items():
-                    _walk_lint(slot_content, f'{sub_path}.{slot_name}', diag)
+                    _walk_lint(slot_content, f'{sub_path}.{slot_name}', diag, basedir, stack)
         elif k == 'routes':
             # routes 內每項是路由 dict，含 slots/body
             if isinstance(v, list):
                 for i, r in enumerate(v):
-                    _walk_lint(r, f'{sub_path}[{i}]', diag)
+                    _walk_lint(r, f'{sub_path}[{i}]', diag, basedir, stack)
         # 其他 key（with/as/note/spotlight/button 等的 dict value）不遞迴 lint —— 屬 value 空間
 
 
 def _lint_file(path):
     """對單一檔案跑 lint。回傳 (error_count, warning_count)。story 檔走 story schema 驗證。"""
     try:
-        doc = yaml.safe_load(open(path, encoding='utf-8')) or {}
-    except Exception as e:
-        print(f'\033[1;31merror\033[0m: {path}', file=sys.stderr)
-        print(f'  → YAML 解析失敗：{e}', file=sys.stderr)
+        doc = _read_yaml(path)
+    except AuthorError as e:
+        diag = _Diag(path)
+        diag.error(e.path or '<root>', str(e))
+        diag.dump(path)
         return 1, 0
     if isinstance(doc, dict) and 'story' in doc:
         # SAC story 檔：schema + page 存在性（target 命中驗證在 render 時 fail-fast）
@@ -2069,7 +2339,105 @@ def _lint_file(path):
             print(f'\033[1;31merror\033[0m: {path}', file=sys.stderr)
             print(f'  → {e}', file=sys.stderr)
             return 1, 0
-    diag = _Diag()
+    template = (isinstance(doc, list) or (isinstance(doc, dict) and bool(set(doc) & {'content', 'placeholder'}))
+                or bool(set(os.path.normpath(path).split(os.sep)) & {'components', 'layouts', 'partials'}))
+    diag = _Diag(path, allow_parameters=template)
+    _lint_document(doc, path, diag, (os.path.realpath(path),))
+    if diag.errors or diag.warnings:
+        diag.dump(path)
+    for source, count in diag.placeholders.items():
+        if count:
+            print(f'info: {source} → {count} 個未定值（按來源出現次數，不影響 exit code）', file=sys.stderr)
+    return len(diag.errors), len(diag.warnings)
+
+
+def _has_parameter(value):
+    if isinstance(value, str):
+        return '{{' in value
+    if isinstance(value, list):
+        return any(_has_parameter(x) for x in value)
+    if isinstance(value, dict):
+        return any(_has_parameter(x) for x in value.values())
+    return False
+
+
+def _lint_reference(name, basedir, diag, path, stack, params=None):
+    global _TOKENS
+    try:
+        target = _resolve(name, basedir)
+    except ValueError as e:
+        diag.error(path, str(e), '檢查檔名或 components/ layouts/ partials/ 相對路徑')
+        return
+    canonical = os.path.realpath(target)
+    if canonical in stack:
+        diag.error(path, '模板循環引用：' + ' -> '.join(stack + (canonical,)))
+        return
+    previous_tokens = _TOKENS
+    child = _Diag(target, diag)
+    try:
+        doc = _read_yaml(target)
+        bindings = params if isinstance(params, dict) else {}
+        _lint_document(_subst(doc, bindings), target, child, stack + (canonical,), load_tokens=False)
+        diag.placeholders[target] = _declared_placeholders(doc)
+    except AuthorError as e:
+        child.error(e.path or '<root>', str(e))
+    finally:
+        _TOKENS = previous_tokens
+
+
+def _declared_placeholders(node):
+    """來源文字的出現次數，不計 metadata、URL、when 或重複展開的引用。"""
+    if isinstance(node, str):
+        return _placeholder_count(node)
+    if isinstance(node, list):
+        return sum(_declared_placeholders(x) for x in node)
+    if not isinstance(node, dict):
+        return 0
+    count = 0
+    fields = {'text', 'label', 'placeholder', 'value'}
+    for role in LEAF_ROLES:
+        if role not in node or role in ('icon', 'divider'):
+            continue
+        value = node[role]
+        if isinstance(value, str):
+            count += _placeholder_count(value)
+        elif isinstance(value, dict):
+            count += sum(_placeholder_count(value.get(k)) for k in fields)
+            if role in ('tabs', 'avatars') and isinstance(value.get('items', []), list):
+                for item in value.get('items', []):
+                    count += _placeholder_count(item.get('label') if isinstance(item, dict) else item)
+            if role == 'map' and isinstance(value.get('markers', []), list):
+                count += sum(_placeholder_count(x) for x in value.get('markers', []))
+    for key in ('body', 'content', 'placeholder', 'routes', 'items', 'row', 'col', *_overlay_tokens()):
+        if key in node:
+            count += _declared_placeholders(node[key])
+    if isinstance(node.get('slots'), dict):
+        for value in node['slots'].values():
+            count += _declared_placeholders(value)
+    widget = node.get('widget')
+    if isinstance(widget, dict):
+        count += _placeholder_count(widget.get('is')) + _declared_placeholders(widget.get('body'))
+    elif isinstance(widget, str):
+        count += _placeholder_count(widget)
+    if isinstance(node.get('with'), dict):
+        count += sum(_placeholder_count(v) for v in node['with'].values())
+    return count
+
+
+def _lint_document(doc, path, diag, stack, load_tokens=True):
+    basedir = os.path.dirname(path) or '.'
+    if load_tokens:
+        _load_tokens(basedir)
+    if isinstance(doc, list):
+        _walk_lint(doc, '<root>', diag, os.path.dirname(path) or '.', stack)
+        diag.placeholders[path] = _declared_placeholders(doc)
+        return
+    if not isinstance(doc, dict):
+        diag.error('<root>', '頂層必須是 dict（component 亦可使用 list）')
+        return
+    for key, expected in (('with', dict), ('slots', dict), ('routes', list)):
+        if key in doc and not isinstance(doc[key], expected):
+            diag.error(key, f'{key} 必須是 {expected.__name__}')
     # 頂層 keys：允許 grammar keys；未知頂層 → warn
     top_keys = set(doc.keys()) if isinstance(doc, dict) else set()
     for k in top_keys:
@@ -2079,25 +2447,49 @@ def _lint_file(path):
         hint = f"是不是「{sugg}」？" if sugg else f"合法頂層 key：{sorted(_GRAMMAR_KEYS)}"
         diag.warn('<root>', f"未知頂層 key `{k}`", hint)
     # 走 body / slots / routes（slots 的 key 是使用者 slot 名，只走各值；routes 每項是路由 dict）
-    basedir = os.path.dirname(path) or '.'
-    _load_tokens(basedir)
+    for key in ('title', 'group'):
+        if key in doc and not isinstance(doc[key], str):
+            diag.error(key, f'{key} metadata 必須是字串')
+    if 'viewport' in doc:
+        try:
+            _viewport_wh(doc['viewport'])
+        except ValueError as e:
+            diag.error('viewport', str(e), '使用 390x844 / 1100x / x800')
+    if 'extends' in doc:
+        if isinstance(doc['extends'], str):
+            common = doc.get('with') if isinstance(doc.get('with'), dict) else {}
+            providers = doc.get('routes') if isinstance(doc.get('routes'), list) and doc['routes'] else [doc]
+            for provider in providers:
+                extra = provider.get('with') if isinstance(provider, dict) and isinstance(provider.get('with'), dict) else {}
+                _lint_reference(doc['extends'], basedir, diag, 'extends', stack, {**common, **extra})
+        else:
+            diag.error('extends', 'extends 必須是模板路徑字串')
     if isinstance(doc, dict):
-        if 'body' in doc:
-            _walk_lint(doc['body'], 'body', diag)
+        for key in ('body', 'content', 'placeholder'):
+            if key in doc:
+                if not isinstance(doc[key], list):
+                    diag.error(key, f'{key} 必須是 list')
+                else:
+                    _walk_lint(doc[key], key, diag, basedir, stack)
         if 'slots' in doc and isinstance(doc['slots'], dict):
             for slot_name, slot_content in doc['slots'].items():
-                _walk_lint(slot_content, f'slots.{slot_name}', diag)
+                if not isinstance(slot_content, list):
+                    diag.error(f'slots.{slot_name}', 'slot 內容必須是 list')
+                else:
+                    _walk_lint(slot_content, f'slots.{slot_name}', diag, basedir, stack)
         if 'routes' in doc and isinstance(doc['routes'], list):
             for i, r in enumerate(doc['routes']):
-                _walk_lint(r, f'routes[{i}]', diag)
-    if diag.errors or diag.warnings:
-        diag.dump(path)
-    return len(diag.errors), len(diag.warnings)
+                if not isinstance(r, dict):
+                    diag.error(f'routes[{i}]', 'route 必須是 dict')
+                else:
+                    _walk_lint(r, f'routes[{i}]', diag, basedir, stack)
+    diag.placeholders[path] = _declared_placeholders(doc)
 
 
 def main():
     debug = '--debug' in sys.argv
-    do_bundle = '--bundle' in sys.argv
+    standalone = '--bundle-standalone' in sys.argv
+    do_bundle = '--bundle' in sys.argv or standalone
     # 檢查 list 子命令前，先定義（inline，短小）
     def _list_vocab(basedir, ring=None):
         """列 Ring 0（結構原語）+ Ring 1（專案 semantic token）。給 AI/作者一眼看完詞彙。"""
@@ -2106,7 +2498,7 @@ def main():
         if want_r0:
             print("═══ Ring 0：結構原語（恆定，AI 必背）═══")
             print("\n[Grammar 關鍵字]")
-            print("  viewport / body / extends / embed / with / slot / slots / as / routes / default / when / items")
+            print("  viewport / title / group / body / extends / embed / with / slot / slots / as / routes / default / when / items")
             print("\n[結構單元類型]")
             print("  page / layout / component / widget")
             print("\n[Container]")
@@ -2116,7 +2508,7 @@ def main():
             print("  文字：text / text.title / text.heading / text.label / text.strong / text.hint")
             print("  表單：input / select / button / checkbox / radio")
             print("  狀態：status / status.muted / status.strong / status.badge / alert")
-            print("  其他：icon / divider / image / tabs / link / progress / avatar")
+            print("  其他：icon / divider / image / tabs / link / progress / avatar / avatars / map")
             print("\n[Widget 屬性]")
             print("  is / can")
             print("\n[空間屬性]")
@@ -2169,11 +2561,11 @@ def main():
     style = _argval('--style')
     mockup_theme = _argval('--mockup')
     story_path = _argval('--story')
-    skip = {'--debug', '--bundle', '--no-lint', '-o', out_path,
+    skip = {'--debug', '--bundle', '--bundle-standalone', '--no-lint', '-o', out_path,
             '--style', style, '--mockup', mockup_theme, '--story', story_path}
     args = [a for a in sys.argv[1:] if a not in skip]
     if not args and not story_path:
-        print("usage: wfyaml.py [--debug] [--bundle [-o out.html]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
+        print("usage: wfyaml.py [--debug] [--bundle|--bundle-standalone [-o out.html]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
         print("       wfyaml.py --story <x.story.yaml>                 # SAC 單獨生成：底圖+故事疊加 → <id>.story.html", file=sys.stderr)
         print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection", file=sys.stderr)
         print("       wfyaml.py lint <file.wf.yaml> [...]              # P0.7 schema validation", file=sys.stderr)
@@ -2228,7 +2620,7 @@ def main():
     if do_bundle:
         out = out_path or os.path.join(os.path.dirname(args[0]) or '.',
                                        'prototype' + ('.debug' if debug else '') + '.html')
-        open(out, 'w').write(bundle(args, debug=debug, style=style, story=story_path))
+        open(out, 'w').write(bundle(args, debug=debug, style=style, story=story_path, standalone=standalone))
         extra = (' [style:' + style + ']' if style else '') + (f' [story:{os.path.basename(story_path)}]' if story_path else '')
         print(f"  bundled: {out} ({len(args)} 檔){extra}")
         return
@@ -2238,11 +2630,11 @@ def main():
         stem = re.sub(r'\.(wf\.)?ya?ml$', '', path)
         base = os.path.basename(stem)
         suffix = '.debug.html' if debug else '.html'
-        for rid, htmlout in compile_all(src, basedir, base, debug=debug, style=style):
+        for rid, htmlout in compile_all(src, basedir, base, debug=debug, style=style, source_name=path):
             out = stem + (('.' + rid) if rid else '') + suffix
             open(out, 'w').write(htmlout)
             print(f"  compiled: {out}")
 
 
 if __name__ == '__main__':
-    main()
+    cli_entry(main)

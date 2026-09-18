@@ -1,0 +1,16 @@
+title: 報價單詳情
+group: 業務流程
+viewport: 1100x
+body:
+  - text.title: 報價單 Q-001
+  - row: between
+    items:
+      - status: 草稿
+      - button: 返回列表
+        to: deal-routes
+  - embed: components/quote-lines
+    with: { product: NAS, amount: "[金額]" }
+  - row: end
+    items:
+      - button: 送出審核
+        to: "deal-routes#approving.pending"

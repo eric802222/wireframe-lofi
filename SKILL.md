@@ -44,11 +44,19 @@ python3 wfyaml.py --story stories/x.story.yaml # SAC 故事疊加（底圖+spotl
 ```
 需 `python3 + pyyaml + playwright`（截圖）；動線圖需 `graphviz dot`。bundle/debug 不需截圖。
 
+官方可執行範例見 [`examples/README.md`](examples/README.md)：`deal-detail` 單頁、`deal-routes` 路由、
+`layouts/`／`components/` 共用，以及五頁 `expense-app/`。手機常駐頁首/footer 與獨立捲動 main，
+直接用 `examples/layouts/phone.wf.yaml`，參考 `phone-home`（短內容）／`phone-long`（長內容）。
+lint 遞迴驗證引用檔案、component content/placeholder 與 widget.body；錯誤列來源檔與 YAML path。
+CLI 的作者錯誤預設簡潔輸出，除錯工具時用 `--traceback` 或 `WF_TRACEBACK=1`。
+
 ## 語法速查
 
 ```yaml
 # 頁面三形態（body 通用內容容器；繼承時換成 slots）
 viewport: 1100x                            # 或 390x844（render meta，AST/codegen 忽略）
+title: 顯示名稱                            # 選填，bundle nav 預設檔名
+group: 群組                                # 選填，群組按首次出現，組內按輸入順序
 body: [ ... ]                              # (a) 獨立頁
 # ---
 extends: layouts/x                         # (b) 繼承 layout
@@ -73,6 +81,8 @@ routes:                                    # (c) 路由多輸出（各產可定�
 **葉子（`role: 值`）**：`text` / `text.title` / `text.heading` / `text.label` / `text.strong` / `text.hint`；
 `input` `select` `button:{text,to,icon}` `status`(.muted/.strong/.badge 方角) `alert` `icon` `divider`
 `image:{label,w,h,ratio}` `tabs:{active,items}` `progress:{value: 0-1, label}` `avatar:{label,size}`；
+`avatars:{items:[我,伴,友,家],max:3}`（顯示前三位與 +1；max 不含溢出標記）、
+`map:{label,markers:[飯店,車站],can:[pan,zoom,markers]}`（沿用 widget 的示意／能力宣告，無真實地圖互動）；
 `[x]`/`[ ]` checkbox、`(x)`/`( )` radio。text 值內行內 markdown：`**粗**` `*斜*` `~~刪除線~~` `[字](url)`。
 
 **顯示態**：`ui-state: selected|disabled|hover|focus|active`（cross-cutting metadata，可掛任意 leaf/容器）→
@@ -81,6 +91,11 @@ routes:                                    # (c) 路由多輸出（各產可定�
 
 **可收合**：`collapsible: <摘要>`（或 `collapsible: true` + `summary:`）掛容器 + `expanded: true`
 → 原生 `<details>/<summary>`（零 JS 可展開）。通用（FAQ/設定分組/明細皆可），非選單專屬。
+
+文字含 `[ ] , : #` 時建議整個值加引號，尤其 flow sequence，避免解析失敗或內容被拆項／截斷。
+`[金額]`／`[旅伴]` 會顯示為灰階虛線底線未定值；Markdown link/task-list 不誤判。
+lint 按來源出現次數統計（引用來源只計一次，含 with 文字參數、不按展開倍增），只輸出 info、不影響 exit code。
+title/group 不渲染產品 UI、不改 id；to 仍用檔名，route 子連結仍顯示原 label。
 
 **widget（示意複雜元件）**：`widget: {is: 工單表格, can: [search, filter], body: [...]}`（純量簡寫 `widget: 名`）——
 自帶「◫ 示意」標記，內部排版是代表性非規格，實作歸元件庫。
@@ -99,6 +114,9 @@ routes:                                    # (c) 路由多輸出（各產可定�
 ＝一組 property 被 `apply:` 組合）→ `components:`（元件皮，`base`/`variants`/`states`，值引用 token/preset）→
 `bindings:`（綁 `name:`/role 的專案微調）→ `base:`（chrome/link-marker/scrollbar 模式開關）。
 優先序：tokens < base < components < bindings。舊扁平 `bindings` 格式續相容。
+
+theme 的 `tokens.radius.lg: 16px` 定義物理 CSS 值，`bindings.box.radius: lg` 引用語義名，勿在 bindings 寫 16px。
+`background: inverse`／`text: inverse` 共用 `tokens.color.inverse`（fallback 白色）；完整範例在 `examples/themes/inverse.yaml`。
 
 **Demo 標註（標註面，可剝離；render 另出 .clean.png）**：
 `note: {ref: 1, text: ...}`（右側便利貼 + 物件小標，ref 作者自編）；

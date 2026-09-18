@@ -1,0 +1,5 @@
+content:
+  - row: between
+    items:
+      - text: "{{label}}"
+      - text.strong: "{{amount}}"

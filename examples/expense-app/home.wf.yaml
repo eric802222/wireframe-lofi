@@ -1,0 +1,11 @@
+title: 記帳總覽
+group: 記帳
+extends: layouts/mobile
+with: {title: 記帳總覽}
+slots:
+  main:
+    - text.heading: "本月支出 [金額]"
+    - embed: components/tx-item
+      with: {label: 早餐, amount: "[金額]"}
+    - button: 查看交易
+      to: transactions

@@ -1,0 +1,25 @@
+title: 完整行程
+group: 手機 app
+extends: layouts/phone
+with: {title: 完整行程}
+slots:
+  main:
+    - text.heading: 今日行程
+    - image: {label: 今日照片, ratio: 16/9}
+    - box: true
+      col: ["08:00 起床", "09:00 早餐", "10:00 搭車", "11:00 散步"]
+    - box: true
+      col: ["12:00 午餐", "13:00 逛街", "14:00 休息", "15:00 博物館"]
+    - image: {label: 午後照片, ratio: 16/9}
+    - box: true
+      col: ["16:00 點心", "17:00 海邊", "18:00 晚餐", "19:00 夜景"]
+    - image: {label: 晚間照片, ratio: 16/9}
+    - box: true
+      col: ["20:00 回程", "21:00 整理照片", "22:00 同步行程", "23:00 休息"]
+  footer:
+    - row:
+        - button: 返回首頁
+          to: phone-home
+          grow: true
+        - button: 完成今日行程
+          grow: true

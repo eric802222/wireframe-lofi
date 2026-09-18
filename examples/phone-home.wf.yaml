@@ -1,0 +1,23 @@
+title: 旅途首頁
+group: 手機 app
+extends: layouts/phone
+with: {title: 旅途首頁}
+slots:
+  main:
+    - text.heading: "與 [旅伴] 的旅行"
+    - avatars: {items: [我, 伴, 友, 家], max: 3}
+    - text: "出發日：[出發日]"
+    - map: {label: 今日路線, markers: [飯店, 車站, 景點]}
+    - widget:
+        is: 行程時間軸
+        can: [reorder, inspect]
+        body:
+          - text: "09:00 早餐"
+          - text: "10:00 散步"
+  footer:
+    - row:
+        - button: 首頁
+          grow: true
+        - button: 行程
+          grow: true
+          to: phone-long

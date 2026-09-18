@@ -51,10 +51,54 @@ python3 wfyaml.py --debug examples/deal-detail.wf.yaml
 需求：`python3` + `pyyaml` + `playwright`（截圖用；`pip3 install pyyaml playwright && python3 -m playwright install chromium`）。
 CJK 對齊靠系統 `Sarasa Mono TC`，無則 fallback monospace（不影響 layout）。
 
+官方範例已納入 `examples/`，入口與完整指令見 [`examples/README.md`](examples/README.md)。
+`examples/layouts/` 與 `examples/components/` 是實際共用檔案；語法說明中的 `layouts/x`、`components/x` 等未指向範例的名稱是示意路徑。
+
+### lint 與錯誤診斷
+
+```bash
+python3 wfyaml.py lint examples/*.wf.yaml  # exit 0/1/2 = clean/warning/error
+python3 wfyaml.py --traceback --no-lint bad.wf.yaml
+WF_TRACEBACK=1 ./render.sh bad.wf.yaml
+```
+
+一般 render 先跑 lint gate（compiler 可用 `--no-lint` 略過）。lint 共用 renderer 的 items／leaf 驗證，
+並遞迴檢查 extends/embed、相對路徑、循環引用、component content/placeholder 與 widget.body。
+引用檔案錯誤會列出該檔與 YAML path。CLI 的作者錯誤預設只顯示來源、位置與修正提示；
+`--traceback` 或 `WF_TRACEBACK=1` 保留完整 traceback，非預期程式例外仍顯示 traceback。
+
 ### `--bundle` 單檔原型（走動線）
 
 `--bundle` 把多張畫面（含各 routes）併成單一 `prototype.html`：左側 nav 分組 + `:target` 切頁（**零 JS**），
 `to:` 連結自動改寫成頁內錨點 → 點著走完整動線。交付時只給一個 `.html` 即可跨平台點擊探索。
+
+若預覽宿主（例如 artifact iframe）攔截同文件錨點，可改用 radio／label 導覽：
+
+```bash
+./render.sh --bundle-standalone examples/*.wf.yaml
+python3 wfyaml.py --bundle-standalone --debug examples/*.wf.yaml
+```
+
+`--bundle-standalone` 已包含 bundle，不必再加 `--bundle`。頁籤和頁內 `to:` 使用原生 radio，
+切頁不改 URL、一般產物仍零 JS；真正外部連結保持 `<a>`。Tab 聚焦選頁控制項，方向鍵或 Space 選頁，
+焦點和目前頁面會顯示在頁籤上。這個模式不支援 URL hash deep link，也不把切頁記入瀏覽器上一頁／下一頁歷史；
+需要 deep link 時使用預設 `--bundle`。`--debug` 的評審功能仍使用 JavaScript。
+
+兩種模式在 860px 以下都改為頂部可橫向捲動頁籤；畫布置中，固定 viewport 不縮小，
+比螢幕寬時可在畫布區橫向捲動。
+
+頁面可用 render metadata 控制 nav 顯示與分組，與 `viewport` 同層，不會產生 UI 節點：
+
+```yaml
+title: 旅途首頁
+group: 旅途中
+viewport: 390x844
+body: [ { text: 行程內容 } ]
+```
+
+`title` 未指定時沿用檔名；`group` 未指定時不加入具名群組。群組按輸入中的首次出現排序，
+組內保留輸入順序（無獨立 order 欄位）。有 routes 時，title 是頁面標題，子連結仍顯示既有 route label。
+改 title/group 不改檔名、頁面 id、輸出檔名或 `to:`；動線仍使用穩定檔名，例如 `to: phone-home`。
 
 ### `--debug` 評審回饋迴路
 
@@ -177,6 +221,26 @@ content:
 
 > **置底/固定視窗**：`viewport` 設高度(如 `820x520`)時，body 會撐滿該高 → 用 `spacer:` 或 `col` + `justify:end|between` 可把 footer/動作列釘到底。
 
+### 3.1 手機 app shell：頁首常駐、中間可捲、底部常駐
+
+`spacer`／`justify: end` 適合短內容的置底；長內容需讓 main 自己捲動。
+官方 [`examples/layouts/phone.wf.yaml`](examples/layouts/phone.wf.yaml) 用 `grow: true` 分配剩餘高度，
+`scroll: true` 讓 main 獨立捲動；header/footer 留在同一個固定高度 viewport 內。
+
+```yaml
+# 使用 examples/layouts/phone；放在 examples/ 下
+extends: layouts/phone
+with: { title: 我的行程 }
+slots:
+  main:
+    - text: 今日內容
+  footer:
+    - button: 完成
+```
+
+短、長內容的可執行頁面分別是 `examples/phone-home.wf.yaml`、`examples/phone-long.wf.yaml`。
+HTML 在 `390x844` 中只有 main 捲動；PNG/SVG 的 show-all 模式解除固定高度，展開全部內容並畫捲軸示意。
+
 **間距用語義 scale**（可 theme，非數字階）：`none` / `sm` / `md`(**預設**) / `lg` / `xl`。`gap`（子項間距）與 `box` 內距
 都預設 `md`，用 `gap:`/`padding:` 覆寫（`box` 內距亦吃 `padding:`）。
 > **間距=節奏（語義刻度）、寬度=關係（填滿/依內容/比例）**——間距是設計系統節奏核心，語義名換 theme 只改一張對照表；寬度只有相對容器才有意義，故走關係型而非另發明一套刻度。
@@ -212,6 +276,34 @@ gap: { section: lg, list: sm }     # 用途名 → 引用內建刻度
 | `tabs: {active: 報價, items: [...]}` | 分頁列 |
 
 **行內 markdown**（在任一 text 值內）：`**粗**` / `*斜*` / `~~刪除線~~` / `[字](目標)`。
+
+### 4.1 YAML 引號與未定值
+
+文字值含 `[ ] , : #` 時，建議為**整個值加引號**，尤其在 flow sequence 中。
+方括號可能造成解析失敗；逗號可能拆成兩項、冒號配空白可能產生 mapping、空白後的井號可能開始註解，
+後三者可能沒有 error 卻改變內容。這是保守寫作建議，不表示所有情境都必須加引號。
+
+```yaml
+- row: ["11:12", "照片 ×3 · [N] MB", "檢視, 刪除", "備註: 待定", "編號 #1"]
+```
+
+文字中的 `[金額]`、`[旅伴]`、`[出發日]` 等未定值顯示灰字與虛線底線；按每次出現統計，
+重複名稱算多次。lint 列出每份來源檔的未定值數（包含文字參數 with），引用同一 component 多次只統計來源一次，
+不按 layout/component 展開後重複計數，也不計 title/group、URL 等 metadata。統計是 info，不增加 warning、不改 exit code。
+Markdown 連結、checkbox `[x]`／`[ ]` 及 YAML list 不當作未定值；`\[字面值]` 可避開辨識（雙引號 YAML 中需寫 `\\[字面值]`）。
+這與 component 的 `placeholder:`／`as: placeholder` 降階佔位功能獨立。
+
+### 4.2 多人成員與地圖示意
+
+```yaml
+- avatars: { items: [我, 伴, 友, 家], max: 3 }  # 前三個 avatar +「+1」
+- map: { label: 今日路線, markers: [飯店, 車站], can: [pan, zoom, markers] }
+```
+
+`avatars.items` 接 avatar 簡寫文字或 `{label, size}`；`max` 是顯示成員上限（正整數，預設 3），
+不包含額外的 `+N` 溢出標記。空集合顯示空群組，既有 `avatar` 行為不變。
+`map` 純量可簡寫地圖名稱；具名版沿用 widget 的能力 chips 與「◫ 示意」標記，
+標記是文字，預設 can 為 pan/zoom/markers，沒有地圖服務或真實拖曳縮放。時間軸、曲線等仍用 widget 的 is/can/body 表達。
 
 ### 5. 動線 / 連結
 
@@ -357,6 +449,29 @@ wireframe-yaml/
 - flow PDF；`table` / `textarea` 等葉子。
 
 ## 依賴備忘
+
+### Theme：tokens 是物理值，bindings 是語義名
+
+```yaml
+# examples/themes/inverse.yaml 的精簡形式
+tokens:
+  color: { inverse: "#ffffff" }
+  radius: { lg: 16px }
+bindings:
+  box: { background: inverse, text: ink, radius: lg }
+```
+
+`tokens.radius.lg` 收 CSS 值；`bindings.box.radius` 收 none/sm/md/lg/pill/full 等語義名。
+不要把 `16px` 寫進 bindings；錯誤提示會指出 binding 路徑與應移到 tokens 的修正方式。
+`background: inverse` 與 `text: inverse` 共用 `--wf-inverse`（未指定時 fallback 白色 `#ffffff`）；
+表面背景也可用既有 surface／surface-alt／surface-sunk。
+text 的 surface 系列未新增。theme 只在 `--mockup` 生效，一般 wireframe 仍使用既有灰階元件。
+
+```bash
+python3 wfyaml.py --mockup examples/themes/inverse.yaml examples/deal-detail.wf.yaml
+python3 -m unittest discover -s tests -v
+python3 tests/check_browser.py  # 另需 playwright + chromium
+```
 
 **自含、可整包帶走**：runtime 只需 `python3 + pyyaml`（截圖另需 `playwright`、動線圖需 `graphviz dot`），
 封印 CSS 與 icon 圖庫都 vendored 在 `assets/`，**無外部依賴**。

@@ -1,0 +1,12 @@
+title: 新增交易
+group: 記帳
+extends: layouts/mobile
+with: {title: 新增交易}
+slots:
+  main:
+    - text.label: 金額
+    - input: "[金額]"
+    - text.label: 科目
+    - select: 餐飲
+    - button: 儲存
+      to: transactions
