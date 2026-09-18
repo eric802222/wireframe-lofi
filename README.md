@@ -463,6 +463,12 @@ bindings:
 
 `tokens.radius.lg` 收 CSS 值；`bindings.box.radius` 收 none/sm/md/lg/pill/full 等語義名。
 不要把 `16px` 寫進 bindings；錯誤提示會指出 binding 路徑與應移到 tokens 的修正方式。
+
+除 `button`／`input`／`box` 等容器外，theme binding 也可直接使用既有 leaf role：
+`checkbox`、`radio`、`progress`、`progress.fill`、`avatar`、`avatars`、`icon`、`image`、
+`divider`、`widget`、`tab`、`tab.active`、`link`。它們沿用同一組 background / border /
+radius / shadow / padding / text 等屬性；不需要另記 class 名。`widget` 綁定不會影響
+「◫ 示意」標記，讓 mockup 仍清楚保留示意元件的邊界。
 `background: inverse` 與 `text: inverse` 共用 `--wf-inverse`（未指定時 fallback 白色 `#ffffff`）；
 表面背景也可用既有 surface／surface-alt／surface-sunk。
 text 的 surface 系列未新增。theme 只在 `--mockup` 生效，一般 wireframe 仍使用既有灰階元件。
