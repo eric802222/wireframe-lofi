@@ -271,6 +271,8 @@ components:
         check_debug_mobile(browser, out, wf, files)
         from check_debug_notes import check_debug_notes
         check_debug_notes(browser, out, wf)
+        from check_debug_backups import check_debug_backups
+        check_debug_backups(browser, out, wf)
         browser.close()
 
 

@@ -108,7 +108,7 @@ def check_debug_notes(browser, out, wf):
         assert not panel.is_visible() and not toggle.is_visible()
         page.on('dialog', lambda dialog: dialog.accept())
         page.locator('#wf-dbg-clr').click()
-        assert page.evaluate('(key)=>localStorage.getItem(key)', key) is None
+        assert json.loads(page.evaluate('(key)=>localStorage.getItem(key)', key)) == {}
         page.locator('#wf-dbg-mode').click()
         toggle.click()
         assert panel.get_by_text('尚無註記', exact=True).is_visible()

@@ -17,3 +17,7 @@ python3 wfyaml.py --bundle examples/expense-app/*.wf.yaml
 HTML 限定 viewport 高度；PNG／SVG 的 show-all 模式會展開內容並畫捲軸示意。
 
 `expense-app/` 是五頁精簡記帳範例，供 layout、component 與 `to:` 動線操作；歷史設計筆記中的個人範例不代表現行完整產品。
+
+`wf-claude-bridge.html` 為選配宿主 adapter 範例，不會預設載入。
+使用 `--debug --debug-bridge examples/wf-claude-bridge.html`，並設定片段的 `data-project`；
+能力契約、備份流程與共用 API 見根目錄 README。無宿主能力時可離線匯出／匯入。

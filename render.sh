@@ -7,9 +7,10 @@
 # Layer2 邊註（note）對齊靠瀏覽器量測後烤進 DOM（零 JS 產物）。
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
-DEBUG=0; BUNDLE=0; STANDALONE=0; STYLE=""; MOCKUP=""; STORY=""
+DEBUG=0; BUNDLE=0; STANDALONE=0; STYLE=""; MOCKUP=""; STORY=""; BRIDGE=(); DEBUG_ARG=()
 while :; do case "$1" in
-  --debug) DEBUG=1; shift;;   # 出 .debug.html（可點擊註記+匯出）
+  --debug-bridge) BRIDGE=(--debug-bridge "$2"); shift 2;;
+  --debug) DEBUG=1; DEBUG_ARG=(--debug); shift;;   # 出 .debug.html（可點擊註記+匯出）
   --bundle-standalone) BUNDLE=1; STANDALONE=1; shift;;
   --bundle) BUNDLE=1; shift;; # 併成單檔 prototype.html（左 nav + 走動線）；可疊 --debug
   --style) STYLE="$2"; shift 2;;  # 風格：clean(預設) / sketch(手繪框)。mockup 樣貌由 --mockup <theme.yaml> 決定，不進 --style。
@@ -17,6 +18,7 @@ while :; do case "$1" in
   --story) STORY="$2"; shift 2;;    # SAC：單獨生成故事版（無 --bundle）或渲進 bundle（有 --bundle）
   --traceback) export WF_TRACEBACK=1; shift;;
   *) break;; esac; done
+if [ "${#BRIDGE[@]}" -gt 0 ] && [ "$DEBUG" != 1 ]; then echo "[error] --debug-bridge 必須搭配 --debug" >&2; exit 1; fi
 if [ "$#" -eq 0 ]; then set -- "$DIR"/examples/*.wf.yaml; fi
 
 # --style 值域限縮：只認 clean / sketch（mockup 樣貌由 --mockup <theme> 決定）
@@ -54,13 +56,13 @@ fi
 # bundle / debug：都在瀏覽器跑、不需截圖 → 直接用 compiler 產出後結束
 # SAC 單獨生成模式：--story 無 --bundle → 直接交給 compiler（產 <id>.story.html）
 if [ -n "$STORY" ] && [ "$BUNDLE" != 1 ]; then
-  "$PY" "$DIR/wfyaml.py" $STORY_ARG $MOCKUP_ARG
+  "$PY" "$DIR/wfyaml.py" $STORY_ARG $MOCKUP_ARG "${DEBUG_ARG[@]}" "${BRIDGE[@]}"
   exit $?
 fi
 if [ "$BUNDLE" = 1 ]; then
   FLAGS="--bundle"; [ "$STANDALONE" = 1 ] && FLAGS="--bundle-standalone"; [ "$DEBUG" = 1 ] && FLAGS="$FLAGS --debug"; [ -n "$STYLE" ] && FLAGS="$FLAGS --style $STYLE"
   FLAGS="$FLAGS $MOCKUP_ARG $STORY_ARG"
-  "$PY" "$DIR/wfyaml.py" $FLAGS "$@"
+  "$PY" "$DIR/wfyaml.py" $FLAGS "${BRIDGE[@]}" "$@"
   if [ "$DEBUG" = 1 ]; then
     echo "  → 開 prototype.debug.html：左 nav 切頁走動線；切「模式:註記」點元素寫建議→「匯出」貼給我"
   else
@@ -70,7 +72,7 @@ if [ "$BUNDLE" = 1 ]; then
 fi
 if [ "$DEBUG" = 1 ]; then
   SF=""; [ -n "$STYLE" ] && SF="--style $STYLE"
-  "$PY" "$DIR/wfyaml.py" --debug $SF $MOCKUP_ARG "$@"
+  "$PY" "$DIR/wfyaml.py" --debug $SF $MOCKUP_ARG "${BRIDGE[@]}" "$@"
   echo "  → 用瀏覽器開 .debug.html：點元素寫建議，右上「匯出」複製後貼給我改 YAML"
   exit 0
 fi

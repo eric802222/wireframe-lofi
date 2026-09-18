@@ -274,6 +274,25 @@ flow:
         self.assertIn('class="wf-story-step wf-story-step-pin wf-radio-link"', html)
         self.assertNotIn('href="#wf-pg-', html)
 
+    def test_debug_bridge_injection_order_and_cli_validation(self):
+        page = self.write('a.wf.yaml', 'body: [{text: A}]')
+        bridge = self.write('bridge fragment.html', '<script>window.bridgeLoaded = true;</script>')
+        for flags in (('--debug',), ('--debug', '--bundle'), ('--debug', '--bundle-standalone')):
+            out = self.directory / 'review.html'
+            result = self.cli(*flags, '--debug-bridge', bridge, '-o', out, page)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            html = (out if '--bundle' in flags or '--bundle-standalone' in flags else self.directory / 'a.debug.html').read_text()
+            self.assertLess(html.index('window.wfReview='), html.index('var review=window.wfReview'))
+            self.assertLess(html.index('var review=window.wfReview'), html.index('window.bridgeLoaded'))
+            self.assertTrue(html.endswith(bridge.read_text() + '</body></html>'))
+        for flags in (('--debug-bridge', bridge), ('--debug', '--debug-bridge', self.directory / 'missing.html')):
+            result = self.cli(*flags, page)
+            self.assertEqual(result.returncode, 1)
+            self.assertNotIn('Traceback', result.stderr)
+        with self.assertRaises(ValueError):
+            wf.compile_all(page.read_text(), debug_bridge=bridge.read_text())
+        self.assertNotIn('window.wfReview', wf.compile_all(page.read_text())[0][1])
+
     def test_metadata_validation(self):
         for key in ('title', 'group'):
             p = self.write('bad.wf.yaml', f'{key}: [not, text]\nbody: []')
