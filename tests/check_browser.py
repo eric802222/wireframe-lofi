@@ -269,6 +269,8 @@ components:
         print('L3 token references/preset, embed selected skin and native collapsible menu without JS: OK')
         from check_debug_mobile import check_debug_mobile
         check_debug_mobile(browser, out, wf, files)
+        from check_debug_notes import check_debug_notes
+        check_debug_notes(browser, out, wf)
         browser.close()
 
 
