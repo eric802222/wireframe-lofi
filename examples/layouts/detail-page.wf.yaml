@@ -1,0 +1,7 @@
+viewport: 1100x
+body:
+  - text.title: "{{title}}"
+  - slot: main
+  - row: end
+    items:
+      - slot: actions

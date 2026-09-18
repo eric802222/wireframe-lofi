@@ -1,0 +1,12 @@
+title: 交易列表
+group: 記帳
+extends: layouts/mobile
+with: {title: 交易列表}
+slots:
+  main:
+    - widget:
+        is: 交易表格
+        can: [search, filter, sort]
+        body:
+          - row: [早餐, "[金額]", 現金]
+            to: detail

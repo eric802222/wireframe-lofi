@@ -1,0 +1,10 @@
+placeholder:
+  - text.hint: 報價明細（略）
+content:
+  - box: true
+    col:
+      - text.heading: 報價明細
+      - grid: [grow, fit]
+        items:
+          - text: "{{product}}"
+          - text.strong: "{{amount}}"

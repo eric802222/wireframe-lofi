@@ -1,0 +1,5 @@
+content:
+  - when: {state: pending}
+    alert: 已送出，等待主管核准
+  - when: {stage: approved}
+    status.strong: 已核准

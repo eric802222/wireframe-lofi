@@ -2,6 +2,9 @@
 
 從實作 `examples/expense-app/`（一份記帳 app 的 5 頁 wireframe）過程中發現的 bug、限制與 DX 缺口。按痛感排序。
 
+> 歷史設計筆記：原始個人範例未入庫；目前 `examples/expense-app/` 提供五頁可執行精簡版。
+> 下文的 `examples/x.wf.yaml`、錯誤行號與未入庫產品名稱是示意，現行語法與執行指令以 README／examples/README 為準。
+
 > **本文已對照 `DISCUSSION.md` 校準**：區分「真 bug」vs「設計未涵蓋的新需求」vs「與現有 TODO 對齊」；優先貼北極星②（語義優先、排版原語只此一形）。
 
 ---

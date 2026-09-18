@@ -1,0 +1,28 @@
+title: 報價審核
+group: 業務流程
+extends: layouts/detail-page
+with: {title: 報價審核 Q-001}
+routes:
+  - default: true
+    slots:
+      main:
+        - text: 草稿，確認後送出
+        - embed: components/quote-lines
+          with: {product: NAS, amount: "[金額]"}
+      actions:
+        - button: 送審
+          to: "#approving.pending"
+  - when: {stage: approving, state: pending}
+    slots:
+      main:
+        - embed: components/status-banner
+      actions:
+        - button: 核准
+          to: "#approved"
+  - when: {stage: approved}
+    slots:
+      main:
+        - embed: components/status-banner
+      actions:
+        - button: 返回詳情
+          to: deal-detail

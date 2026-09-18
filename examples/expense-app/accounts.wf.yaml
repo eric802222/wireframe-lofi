@@ -1,0 +1,12 @@
+title: 帳戶
+group: 記帳
+extends: layouts/mobile
+with: {title: 帳戶}
+slots:
+  main:
+    - widget:
+        is: 帳戶列表
+        can: [inspect]
+        body:
+          - row: [現金, "[金額]"]
+          - row: [銀行, "[金額]"]
