@@ -236,6 +236,37 @@ body:
         result = page.locator('.wf-box').evaluate('(n)=>({bg:getComputedStyle(n).backgroundColor,radius:getComputedStyle(n).borderRadius})')
         assert result == {'bg': 'rgb(255, 255, 255)', 'radius': '16px'}, result
         print('theme inverse background and semantic radius: OK')
+        # L3 component skins must apply to embed wrappers, including selected state,
+        # while collapsible menus retain native details/summary behavior without JS.
+        theme = out / 'theme-l3.yaml'
+        theme.write_text("""tokens:
+  color: {brand: {$value: '#123456'}, accent: '{color.brand}'}
+  space: {custom: 13px}
+  preset: {panel: {padding: '{space.custom}', color: '{color.accent}'}}
+components:
+  menu-item:
+    apply: [panel]
+    states: {selected: {background: '{color.brand}'}}
+""")
+        component = out / 'components/menu-item.wf.yaml'
+        component.parent.mkdir(exist_ok=True)
+        component.write_text('content: [{text: 選單列}]')
+        wf._load_theme(str(theme))
+        html = wf.compile_all("""body:
+  - embed: components/menu-item
+    ui-state: selected
+  - col: [{text: 收合內容}]
+    collapsible: 展開選單
+""", str(out), 'l3')[0][1]
+        dest = out / 'l3.html'
+        dest.write_text(html)
+        page.goto(dest.as_uri(), wait_until='load')
+        result = page.locator('.wf-role-menu-item').evaluate('(n)=>({bg:getComputedStyle(n).backgroundColor,padding:getComputedStyle(n).padding,color:getComputedStyle(n).color})')
+        assert result == {'bg': 'rgb(18, 52, 86)', 'padding': '13px', 'color': 'rgb(18, 52, 86)'}, result
+        assert not page.get_by_text('收合內容', exact=True).is_visible()
+        page.locator('summary').click()
+        assert page.get_by_text('收合內容', exact=True).is_visible()
+        print('L3 token references/preset, embed selected skin and native collapsible menu without JS: OK')
         browser.close()
 
 

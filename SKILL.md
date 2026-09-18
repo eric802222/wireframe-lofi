@@ -85,6 +85,13 @@ routes:                                    # (c) 路由多輸出（各產可定�
 `map:{label,markers:[飯店,車站],can:[pan,zoom,markers]}`（沿用 widget 的示意／能力宣告，無真實地圖互動）；
 `[x]`/`[ ]` checkbox、`(x)`/`( )` radio。text 值內行內 markdown：`**粗**` `*斜*` `~~刪除線~~` `[字](url)`。
 
+**顯示態**：`ui-state: selected|disabled|hover|focus|active`（cross-cutting metadata，可掛任意 leaf/容器）→
+`data-ui-state`，由 theme `components.<x>.states` 綁各態長相；與路由 `when.state` 區隔。
+（選單列這類「現有原語 + 語義身份」用 component（`embed`）+ theme 綁其 `wf-role-<名>`，不新增 leaf type。）
+
+**可收合**：`collapsible: <摘要>`（或 `collapsible: true` + `summary:`）掛容器 + `expanded: true`
+→ 原生 `<details>/<summary>`（零 JS 可展開）。通用（FAQ/設定分組/明細皆可），非選單專屬。
+
 文字含 `[ ] , : #` 時建議整個值加引號，尤其 flow sequence，避免解析失敗或內容被拆項／截斷。
 `[金額]`／`[旅伴]` 會顯示為灰階虛線底線未定值；Markdown link/task-list 不誤判。
 lint 按來源出現次數統計（引用來源只計一次，含 with 文字參數、不按展開倍增），只輸出 info、不影響 exit code。
@@ -102,6 +109,11 @@ title/group 不渲染產品 UI、不改 id；to 仍用檔名，route 子連結�
 **複用**：`embed: components/x` + `with:{...}` + `as: placeholder`（降階佔位）/ `as: {stage,state}`（pin 變體）。
 
 **色彩**：wireframe 全灰階，無節點顏色屬性（`tone` 已移除）。產品色走 `--mockup <theme.yaml>`；評審聚焦走標註面。
+
+**mockup theme（三層 token 化）**：`tokens:`（值層，`{family.name}` 引用、`$value` DTCG 相容、`tokens.preset` composite
+＝一組 property 被 `apply:` 組合）→ `components:`（元件皮，`base`/`variants`/`states`，值引用 token/preset）→
+`bindings:`（綁 `name:`/role 的專案微調）→ `base:`（chrome/link-marker/scrollbar 模式開關）。
+優先序：tokens < base < components < bindings。舊扁平 `bindings` 格式續相容。
 
 theme 的 `tokens.radius.lg: 16px` 定義物理 CSS 值，`bindings.box.radius: lg` 引用語義名，勿在 bindings 寫 16px。
 `background: inverse`／`text: inverse` 共用 `tokens.color.inverse`（fallback 白色）；完整範例在 `examples/themes/inverse.yaml`。

@@ -17,7 +17,7 @@ class RegressionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.directory = Path(self.tmp.name)
-        wf._THEME, wf._THEME_BASE, wf._THEME_TOKENS = {}, {}, {}
+        wf._load_theme(None)
         wf._TOKENS, wf._BUNDLE, wf._DEBUG, wf._STORY = {}, False, False, None
 
     def tearDown(self):
@@ -301,6 +301,71 @@ flow:
         self.assertEqual(result.returncode, 1)
         for text in ('bindings.box.radius', 'tokens.radius.lg', '16px', str(theme)):
             self.assertIn(text, result.stderr)
+
+    def test_theme_l3_refs_presets_components_and_legacy_aliases(self):
+        theme = self.write('l3.yaml', """tokens:
+  color:
+    brand: {$value: '#123456'}
+    accent: '{color.brand}'
+  space: {custom: 13px}
+  preset:
+    panel: {color: '{color.accent}', padding: '{space.custom}'}
+components:
+  box:
+    apply: [panel]
+    states: {selected: {background: '{color.brand}'}, hover: {opacity: 0.8}}
+bindings:
+  chosen: {text: '{color.brand}', radius: '{space.custom}', padding: 17px}
+""")
+        wf._load_theme(str(theme))
+        css = wf._theme_css()
+        for value in ('--wf-brand:#123456', 'padding:var(--wf-space-custom, 13px)',
+                      'color:var(--wf-brand, #123456)', 'border-radius:var(--wf-space-custom, 13px)',
+                      'padding:17px', '[data-ui-state="selected"]', '[data-ui-state="hover"]'):
+            self.assertIn(value, css)
+        self.assertNotIn('--wf-preset', css)
+        wf._load_theme(None)
+        self.assertEqual(wf._theme_css(), '')
+
+    def test_theme_l3_reference_errors(self):
+        for tokens in ('color: {a: "{color.b}", b: "{color.a}"}', 'color: {a: "{color.missing}"}'):
+            theme = self.write('bad-theme.yaml', 'tokens: {' + tokens + '}')
+            with self.assertRaises(ValueError):
+                wf._load_theme(str(theme))
+
+    def test_collapsible_ui_state_and_grid_links_in_both_modes(self):
+        from html.parser import HTMLParser
+
+        class Links(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.links = []
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if 'wf-blocklink-a' in attrs.get('class', ''):
+                    self.links.append(attrs)
+
+        a = self.write('menu.wf.yaml', """body:
+  - col: [{text: 可收合內容}]
+    collapsible: 選單
+    expanded: true
+    ui-state: selected
+  - grid: [grow, grow]
+    items:
+      - col: [{text: 跨欄卡片}]
+        span: 2
+        to: next
+""")
+        b = self.write('next.wf.yaml', 'body: [{text: Next}]')
+        self.assertEqual(self.lint(a), (0, 0))
+        for mode in (False, True):
+            html = wf.bundle([str(a), str(b)], standalone=mode)
+            self.assertIn('<details class="wf-collapsible" open', html)
+            self.assertIn('data-ui-state="selected"', html)
+            parser = Links()
+            parser.feed(html)
+            self.assertEqual(parser.links[0]['style'], 'grid-column:span 2')
 
     def test_avatar_group_counts_overflow_and_all_boundaries(self):
         for members, visible, overflow in (([], 0, None), (['我'], 1, None), (['我', '伴', '友'], 3, None), (['我', '伴', '友', '家', '同'], 4, '+2')):

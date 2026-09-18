@@ -307,15 +307,22 @@ _THEME_BINDABLE = {
                       })),
 }
 
-_THEME = {}          # 當前載入的 theme（binding 表）；空 dict = wireframe 模式
-_THEME_BASE = {}     # theme 的 base: 模式開關（chrome/link-marker）
+_THEME = {}          # 當前載入的 theme bindings（綁 name/role 的專案微調）；空 dict = wireframe 模式
+_THEME_BASE = {}     # theme 的 base: 模式開關（chrome/link-marker/scrollbar）
 _THEME_TOKENS = {}   # theme 的 tokens: 值層（Tier-1 design token，FE 可直接接手）
+_THEME_PRESETS = {}  # tokens.preset: composite token（一組 property，被 apply: 組合，不渲染）
+_THEME_COMPONENTS = {}  # components: 元件皮（Tier-2，base/variants/states + apply）
+_THEME_FLATVALS = {}    # {"family.name": 已展開純值}（供 {ref} 的 var() fallback）
 
-# theme 綁定也可指向「內建元件 role」（wf-* 契約）——同一套 bindable 詞彙換元件皮，
-# 不用另發明語彙；未列者走 component role / name: 語義身份。
+
+def _theme_active():
+    return bool(_THEME or _THEME_BASE or _THEME_TOKENS or _THEME_COMPONENTS)
+
+
+# bindings 綁「內建元件 role」→ selector（同一套詞彙換元件皮，不另發明語彙）。
 _THEME_ELEMENT_SELECTORS = {
     'button':        '.wf-btn',
-    'button-link':   'a.wf-btn.wf-link',    # 帶 to: 的按鈕（主要動作/導航）
+    'button-link':   ':is(a,label.wf-radio-link).wf-btn.wf-link',    # 帶 to: 的按鈕（主要動作/導航）
     'input':         '.wf-input',
     'select':        '.wf-select',
     'status':        '.wf-tag',
@@ -325,9 +332,17 @@ _THEME_ELEMENT_SELECTORS = {
     'box':           '.wf-box',
 }
 
-# theme 的 `tokens:` 值層 —— Tier-1 design token（細顆粒、純資料、可直接交付 FE）。
-# 工具只擁有「token 名 → CSS var 名」對照表；**值全部來自 theme 檔**（物理綁定層），
-# 沒定義的 token 用 bindings resolver 的 var() fallback（可攜地板）。改值不改工具。
+# components: 元件名 → base selector。內建元件走既有 wf-* class；
+# 未列者（= 專案 component / embed 名）預設 `.wf-role-<name>`（embed 展開時已蓋此指紋）。
+_THEME_COMPONENT_SELECTORS = {
+    **_THEME_ELEMENT_SELECTORS,
+    'card':  '.wf-box',
+    'alert': '.wf-warn',
+    'tabs':  '.wf-tabs',
+}
+
+# 舊版固定 token 家族 → 既有 CSS var 名（保住 wf.css / clean 皮讀得到；向後相容）。
+# 新增家族/名字則自動走 `--wf-<family>-<name>`（開放命名）。
 _THEME_TOKEN_VARS = {
     'font':   {'body': '--wf-font', 'size': '--wf-font-size',
                'h1': '--wf-h1', 'h2': '--wf-h2', 'h3': '--wf-h3'},
@@ -345,8 +360,20 @@ _THEME_TOKEN_VARS = {
     'page':   {'pad': '--wf-page-pad'},
 }
 
-# base: 只剩「模式開關」（非值）：chrome 版面架構、link-marker 動線記號、scrollbar 捲軸示意顯隱。
-# 值類（字體/間距/色/圓角）一律走 tokens: ——避免 preset 表把值寫回工具。
+# CSS property 白名單（components / preset / raw binding 用）——未知 property fail-fast。
+_CSS_PROP_ALLOW = {
+    'background', 'background-color', 'background-image', 'color',
+    'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
+    'border-color', 'border-width', 'border-style', 'border-radius',
+    'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+    'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+    'gap', 'box-shadow', 'opacity', 'font', 'font-family', 'font-size', 'font-weight',
+    'line-height', 'letter-spacing', 'text-transform', 'text-decoration', 'text-align',
+    'height', 'min-height', 'max-height', 'width', 'min-width', 'max-width',
+    'display', 'align-items', 'justify-content', 'transition', 'cursor',
+    'outline', 'outline-offset', 'fill',
+}
+
 _THEME_BASE_KEYS = {'chrome', 'link-marker', 'scrollbar'}
 _THEME_CHROME = {
     'flat': '',
@@ -356,27 +383,122 @@ _THEME_CHROME = {
 }
 
 
+def _theme_slug(s):
+    return re.sub(r'[^a-z0-9-]', '-', str(s).lower())
+
+
+def _theme_var_name(family, name):
+    """token 路徑 → CSS var 名。舊家族/名走既有 var（相容），其餘走 `--wf-<family>-<name>`。"""
+    fam = _THEME_TOKEN_VARS.get(family)
+    if fam and str(name) in fam:
+        return fam[str(name)]
+    return f'--wf-{_theme_slug(family)}-{_theme_slug(name)}'
+
+
+def _token_scalar(entry):
+    """token 值：scalar 直用；dict 需 `$value`（DTCG）；其餘（composite 無 $value）報錯。"""
+    if isinstance(entry, dict):
+        if '$value' in entry:
+            return str(entry['$value'])
+        raise ValueError(f"theme token 值為 dict 但缺 $value（收到 keys={sorted(entry)}）；"
+                         f"一組 property 請放 tokens.preset")
+    return str(entry)
+
+
+def _flatten_tokens(tokens):
+    """建 {"family.name": 純值}；展開巢狀 {ref}（含循環偵測）。preset 家族不進此表。"""
+    raw = {}
+    for family, entries in tokens.items():
+        if family == 'preset':
+            continue
+        if not isinstance(entries, dict):
+            raise ValueError(f"theme.tokens.{family} 必須是 dict（收到 {type(entries).__name__}）")
+        for name, entry in entries.items():
+            raw[f'{family}.{name}'] = _token_scalar(entry)
+    resolved = {}
+
+    def resolve(key, stack):
+        if key in resolved:
+            return resolved[key]
+        if key not in raw:
+            sugg = _suggest_key(key, set(raw))
+            hint = f"（是不是「{sugg}」？）" if sugg else ""
+            raise ValueError(f"theme token 參照 {{{key}}} 未定義{hint}")
+        if key in stack:
+            raise ValueError(f"theme token 參照循環：{' → '.join(list(stack) + [key])}")
+        out = re.sub(r'\{([^}]+)\}', lambda m: resolve(m.group(1).strip(), stack + (key,)), raw[key])
+        resolved[key] = out
+        return out
+
+    for k in raw:
+        resolve(k, ())
+    return resolved
+
+
+def _resolve_value(val):
+    """把值裡的 {family.name} 換成 var(--wf-…, 純值 fallback)；其餘原樣透傳。"""
+    def sub(m):
+        key = m.group(1).strip()
+        fb = _THEME_FLATVALS.get(key)
+        if fb is None:
+            sugg = _suggest_key(key, set(_THEME_FLATVALS))
+            hint = f"（是不是「{sugg}」？）" if sugg else ""
+            raise ValueError(f"theme 參照未定義 token {{{key}}}{hint}")
+        fam, _, nm = key.partition('.')
+        return f'var({_theme_var_name(fam, nm)}, {fb})'
+    out = re.sub(r'\{([^}]+)\}', sub, str(val))
+    if re.search(r'[;{}]', out):
+        raise ValueError(f"theme 值含非法字元或未解析 ref（收到 {val!r}）")
+    return out
+
+
+def _expand_props(rules, where=''):
+    """dict（可含 apply: [preset…]）→ 展開後的 {prop: 解析值}。優先序：preset < 明寫。"""
+    if not isinstance(rules, dict):
+        raise ValueError(f"theme {where} 必須是 dict（收到 {type(rules).__name__}）")
+    merged = {}
+    for pname in (rules.get('apply') or []):
+        preset = _THEME_PRESETS.get(pname)
+        if preset is None:
+            sugg = _suggest_key(pname, set(_THEME_PRESETS))
+            hint = f"（是不是「{sugg}」？）" if sugg else ""
+            raise ValueError(f"theme {where} apply 未定義 preset `{pname}`{hint}")
+        merged.update(preset)
+    for k, v in rules.items():
+        if k == 'apply':
+            continue
+        merged[k] = v
+    final = {}
+    for p, v in merged.items():
+        if p not in _CSS_PROP_ALLOW:
+            sugg = _suggest_key(p, _CSS_PROP_ALLOW)
+            hint = f"（是不是「{sugg}」？）" if sugg else f"合法：{sorted(_CSS_PROP_ALLOW)}"
+            raise ValueError(f"theme {where} 未知 CSS property `{p}` {hint}")
+        final[p] = _resolve_value(v)
+    return final
+
+
+def _props_str(props):
+    return ';'.join(f'{p}:{v}' for p, v in props.items())
+
+
 def _theme_tokens_css(tokens):
-    """theme `tokens:` → `:root{--wf-*:值}`。名字驗證（fail-fast）、值透傳（物理層本就收原始值）。"""
+    """theme `tokens:` → `:root{--wf-*:值}`（preset 不進 :root）。"""
     if not tokens:
         return ''
     decls = []
     for family, entries in tokens.items():
-        if family not in _THEME_TOKEN_VARS:
-            raise ValueError(f"theme.tokens 未知家族 `{family}`（合法：{sorted(_THEME_TOKEN_VARS)}）")
-        if not isinstance(entries, dict):
-            raise ValueError(f"theme.tokens.{family} 必須是 dict（收到 {type(entries).__name__}）")
-        for name, val in entries.items():
-            var = _THEME_TOKEN_VARS[family].get(str(name))
-            if not var:
-                raise ValueError(f"theme.tokens.{family} 未知 token `{name}`"
-                                 f"（合法：{sorted(_THEME_TOKEN_VARS[family])}）")
-            v = str(val)
-            if re.search(r'[;{}]', v):
-                raise ValueError(f"theme.tokens.{family}.{name} 值含非法字元（收到 {v!r}）")
-            decls.append(f'{var}:{v}')
-    css = [f':root{{{";".join(decls)}}}']
-    if 'font' in tokens and 'body' in tokens['font']:
+        if family == 'preset':
+            continue
+        for name, entry in entries.items():
+            decls.append(f'{_theme_var_name(family, name)}:{_resolve_value(_token_scalar(entry))}')
+    css = [f':root{{{";".join(decls)}}}'] if decls else []
+    # 全頁背景：定義了 page 背景 token（--wf-page-bg）就套到 .wf-root（= viewport / app 視窗本體，
+    # 非 body 外圍留白），與 chrome 模式解耦。chrome: flat → root 顯示此底、面板浮其上；
+    # chrome: card 之後另覆寫 root 為白卡（base 在 tokens 之後輸出，故 card 勝出）。
+    if any(d.startswith('--wf-page-bg:') for d in decls):
+        css.append('.wf-root{background:var(--wf-page-bg);}')
+    if 'font' in tokens:
         # 標註面維持 wireframe 字體（meta 非產品，不受 theme）——機制守衛，非樣式
         css.append(".wf-gutter,.wf-mnote,.wf-spotlabel,.wf-step"
                    "{font-family:'Sarasa Mono TC','SarasaMono','Courier New',monospace;}")
@@ -409,21 +531,90 @@ def _theme_base_css(base):
     return '\n'.join(css)
 
 
+def _state_selector(sel, sname):
+    """狀態 selector：hover/focus 走真 pseudo（.html 互動可見）；其餘走 [data-ui-state]。"""
+    if sname in ('hover', 'focus'):
+        pseudo = ':focus-within' if sname == 'focus' else ':hover'
+        return f'{sel}:is({pseudo},[data-ui-state="{sname}"])'
+    return f'{sel}[data-ui-state="{_theme_slug(sname)}"]'
+
+
+def _theme_components_css(components):
+    """components: 元件皮 → CSS（base / variants / states，含 apply preset）。"""
+    lines = []
+    for cname, spec in components.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"theme.components.{cname} 必須是 dict（收到 {type(spec).__name__}）")
+        sel = _THEME_COMPONENT_SELECTORS.get(cname) or f'.wf-role-{_theme_slug(cname)}'
+        base = {k: v for k, v in spec.items() if k not in ('variants', 'states')}
+        if base:
+            props = _expand_props(base, f'components.{cname}')
+            if props:
+                lines.append(f'{sel}{{{_props_str(props)}}}')
+        for vname, vrules in (spec.get('variants') or {}).items():
+            props = _expand_props(vrules, f'components.{cname}.variants.{vname}')
+            lines.append(f'{sel}[data-variant="{_theme_slug(vname)}"]{{{_props_str(props)}}}')
+        for sname, srules in (spec.get('states') or {}).items():
+            props = _expand_props(srules, f'components.{cname}.states.{sname}')
+            lines.append(f'{_state_selector(sel, sname)}{{{_props_str(props)}}}')
+    return '\n'.join(lines)
+
+
+def _theme_bindings_css(bindings):
+    """bindings: 綁 name:/role 的專案微調。相容舊 enum（surface/subtle/md…），並吃 {ref} / raw property。"""
+    lines = []
+    for role, rules in bindings.items():
+        decls = []
+        merged = {}
+        for pname in (rules.get('apply') or []):          # bindings 也支援 apply preset
+            preset = _THEME_PRESETS.get(pname)
+            if preset is None:
+                sugg = _suggest_key(pname, set(_THEME_PRESETS))
+                hint = f"（是不是「{sugg}」？）" if sugg else ""
+                raise ValueError(f"theme.bindings.{role} apply 未定義 preset `{pname}`{hint}")
+            merged.update(preset)
+        merged.update({k: v for k, v in rules.items() if k != 'apply'})
+        for k, v in merged.items():
+            use_enum = k in _THEME_BINDABLE and not (isinstance(v, str) and '{' in v)
+            if k in ('padding', 'margin', 'gap') and str(v) not in GAP and str(v) not in (_TOKENS.get('gap') or {}):
+                use_enum = False
+            if use_enum:
+                try:
+                    css_prop, resolver = _THEME_BINDABLE[k]
+                    decls.append(f'{css_prop}:{resolver(v)}')
+                    continue
+                except ValueError:
+                    pass   # 非 enum 值 → 落到 raw property 路徑
+            css_prop = _THEME_BINDABLE[k][0] if k in _THEME_BINDABLE else k
+            if css_prop not in _CSS_PROP_ALLOW:
+                sugg = _suggest_key(k, _CSS_PROP_ALLOW | set(_THEME_BINDABLE))
+                hint = f"（是不是「{sugg}」？）" if sugg else ""
+                raise ValueError(f"theme.bindings.{role}.{k}: 未知綁定屬性/CSS property{hint}")
+            decls.append(f'{css_prop}:{_resolve_value(v)}')
+        r = esc_attr(role)
+        # 優先序：語義身份（role/name）selector 三疊拉高 specificity，贏過元件皮。
+        sel = _THEME_ELEMENT_SELECTORS.get(role) or \
+            (f'.wf-role-{r}.wf-role-{r}.wf-role-{r}, '
+             f'[data-name="{r}"][data-name="{r}"][data-name="{r}"]')
+        lines.append(f'{sel}{{{";".join(decls)}}}')
+    return '\n'.join(lines)
+
+
 def _load_theme(path):
-    """載入 theme YAML；驗證 tokens + base + bindings 結構 + 消費規則 lint（P7）。"""
-    global _THEME, _THEME_BASE, _THEME_TOKENS
+    """載入 theme YAML；驗證 tokens / preset / base / components / bindings（fail-fast）。"""
+    global _THEME, _THEME_BASE, _THEME_TOKENS, _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS
     if not path:
         _THEME, _THEME_BASE, _THEME_TOKENS = {}, {}, {}
+        _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS = {}, {}, {}
         return {}
     if not os.path.exists(path):
         raise ValueError(f"--mockup 找不到 theme 檔：{path}")
     data = _read_yaml(path)
     if not isinstance(data, dict):
         raise AuthorError('theme 頂層必須是 dict', path, '<root>')
-    # 消費規則：theme 檔頂層只有 `tokens:` + `base:` + `bindings:`（禁 embed / body / components 反查）
-    unknown = set(data.keys()) - {'tokens', 'base', 'bindings'}
+    unknown = set(data.keys()) - {'tokens', 'base', 'bindings', 'components'}
     if unknown:
-        raise ValueError(f"theme 檔頂層 key 只允許 `tokens:` / `base:` / `bindings:`（收到多餘 keys: {sorted(unknown)}）")
+        raise ValueError(f"theme 檔頂層 key 只允許 tokens/base/bindings/components（收到多餘: {sorted(unknown)}）")
     tokens = data.get('tokens') or {}
     if not isinstance(tokens, dict):
         raise ValueError(f"theme.tokens 必須是 dict（收到 {type(tokens).__name__}）")
@@ -433,57 +624,52 @@ def _load_theme(path):
     unk_base = set(base) - set(_THEME_BASE_KEYS)
     if unk_base:
         raise ValueError(f"theme.base 未知 key {sorted(unk_base)}（合法：{sorted(_THEME_BASE_KEYS)}；"
-                         f"值類設定（字體/間距/色/圓角）歸 tokens:）")
+                         f"值類設定歸 tokens:）")
     bindings = data.get('bindings') or {}
     if not isinstance(bindings, dict):
         raise ValueError(f"theme.bindings 必須是 dict（收到 {type(bindings).__name__}）")
-    # 驗證每組 role 綁定的 key 都在 _THEME_BINDABLE 內
     for role, rules in bindings.items():
         if not isinstance(rules, dict):
-            raise ValueError(f"theme.bindings.{role} 必須是 dict（收到 {type(rules).__name__}）")
-        for k in rules:
-            if k not in _THEME_BINDABLE:
-                sugg = _suggest_key(k, set(_THEME_BINDABLE))
-                hint = f"（是不是「{sugg}」？）" if sugg else ""
-                raise ValueError(
-                    f"theme.bindings.{role}.{k}: 未知綁定屬性 {hint}\n"
-                    f"合法：{sorted(_THEME_BINDABLE)}"
-                )
-        for k, v in rules.items():
-            if k == 'radius' and str(v) not in ('none', 'sm', 'md', 'lg', 'pill', 'full'):
-                raise AuthorError(
-                    f'bindings.{role}.radius 收語義名，不接受 {v!r}。\n'
-                    '合法：none / sm / md / lg / pill / full。\n'
-                    f'請在 tokens.radius.lg 定義 {v!r}，並使用 bindings.{role}.radius: lg。',
-                    path, f'bindings.{role}.radius')
-            try:
-                _THEME_BINDABLE[k][1](v)
-            except ValueError as e:
-                raise AuthorError(str(e), path, f'bindings.{role}.{k}') from e
-    _theme_tokens_css(tokens)   # 先驗證（fail-fast：未知家族/名/非法值在載入時就炸）
-    _THEME, _THEME_BASE, _THEME_TOKENS = bindings, base, tokens
+            raise AuthorError(f'theme.bindings.{role} 必須是 dict', path, f'bindings.{role}')
+        radius = rules.get('radius')
+        if radius is not None and '{' not in str(radius) and str(radius) not in ('none', 'sm', 'md', 'lg', 'pill', 'full'):
+            raise AuthorError(
+                f'bindings.{role}.radius 收語義名，不接受 {radius!r}。\n'
+                f'請在 tokens.radius.lg 定義 {radius!r}，並使用 bindings.{role}.radius: lg；'
+                '原始 CSS 屬性使用 border-radius。', path, f'bindings.{role}.radius')
+    components = data.get('components') or {}
+    if not isinstance(components, dict):
+        raise ValueError(f"theme.components 必須是 dict（收到 {type(components).__name__}）")
+
+    # 值層先展開（fail-fast：未定義 ref / 循環在此炸）
+    _THEME_FLATVALS = _flatten_tokens(tokens)
+    presets = (tokens.get('preset') or {})
+    if not isinstance(presets, dict):
+        raise ValueError(f"theme.tokens.preset 必須是 dict（收到 {type(presets).__name__}）")
+    # preset 不可 apply 另一個 preset（一層攤平）
+    for pn, pr in presets.items():
+        if isinstance(pr, dict) and 'apply' in pr:
+            raise ValueError(f"theme.tokens.preset.{pn} 不可 apply 另一個 preset（一層攤平；共用值請用 {{token.ref}}）")
+    _THEME_PRESETS = presets
+    for pn, pr in presets.items():        # 驗證 preset 內 property + ref
+        _expand_props(pr, f'tokens.preset.{pn}')
+    _THEME, _THEME_BASE, _THEME_TOKENS, _THEME_COMPONENTS = bindings, base, tokens, components
+    # 全部先編一次觸發驗證（property 白名單 / enum / ref）
+    _theme_tokens_css(tokens)
+    _theme_components_css(components)
+    _theme_bindings_css(bindings)
     return bindings
 
 
 def _theme_css():
-    """把當前 theme（base + bindings）編成 CSS。一切樣式由 theme YAML 宣告驅動——
-    工具不硬編任何 mockup 長相（theme 是資料，可跨平台翻譯；style 解耦原則）。"""
-    if not _THEME and not _THEME_BASE and not _THEME_TOKENS:
+    """把當前 theme（tokens + base + components + bindings）編成 CSS。
+    工具不硬編任何 mockup 長相（theme 是資料，可跨平台翻譯；style 解耦原則）。
+    輸出順序即 specificity：tokens(:root) → base → components → bindings（最後最高）。"""
+    if not _theme_active():
         return ''
-    lines = [_theme_tokens_css(_THEME_TOKENS), _theme_base_css(_THEME_BASE)]
-    for role, rules in _THEME.items():
-        decls = []
-        for k, v in rules.items():
-            css_prop, resolver = _THEME_BINDABLE[k]
-            decls.append(f'{css_prop}:{resolver(v)}')
-        # 綁定優先序（specificity 表達）：語義身份（role/name，最具體的意圖）> 元件皮 > 基底。
-        # role/name selector 三疊拉高 specificity，確保「這顆按鈕」贏過「所有按鈕」。
-        r = esc_attr(role)
-        sel = _THEME_ELEMENT_SELECTORS.get(role) or \
-            (f'.wf-role-{r}.wf-role-{r}.wf-role-{r}, '
-             f'[data-name="{r}"][data-name="{r}"][data-name="{r}"]')
-        lines.append(f'{sel}{{{";".join(decls)}}}')
-    return '\n'.join(lines)
+    lines = [_theme_tokens_css(_THEME_TOKENS), _theme_base_css(_THEME_BASE),
+             _theme_components_css(_THEME_COMPONENTS), _theme_bindings_css(_THEME)]
+    return '\n'.join(x for x in lines if x)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -687,6 +873,7 @@ LEAF_ROLES = ['text.title', 'text.heading', 'text.label', 'text.strong', 'text.h
               'progress', 'avatar', 'avatars', 'map']
 TEXT_CLASS = {'text': 'wf-label', 'text.title': 'wf-h wf-h1', 'text.heading': 'wf-h wf-h2',
               'text.label': 'wf-label wf-fieldlabel', 'text.strong': 'wf-b', 'text.hint': 'wf-hint'}
+_UI_STATES = {'selected', 'disabled', 'hover', 'focus', 'active'}   # 顯示態（→ data-ui-state；theme states 綁）
 
 _NOTES = []   # Layer2 note → 右側 gutter（供 render.sh 量測對齊（位置烤進 DOM））
 _NCOUNT = 0
@@ -718,6 +905,11 @@ CSS_EXTRA = r"""
                    linear-gradient(-45deg,transparent 47%,#d1d5db 48%,#d1d5db 52%,transparent 53%); }
 .wf-fieldlabel { color:#6b7280; font-size:.9em; }
 .wf-hyperlink { color:#2563eb; text-decoration:underline; text-underline-offset:2px; }
+/* collapsible：通用可收合區塊（原生 details/summary；零 JS 可展開）。視覺細節走 --mockup theme */
+.wf-collapsible > .wf-summary { cursor:pointer; list-style:revert; user-select:none; }
+.wf-collapsible > .wf-node { margin-top:var(--wf-space-sm,.4rem); }
+/* 通用顯示態：disabled 去互動（其餘態長相由 theme components states 決定） */
+[data-ui-state="disabled"] { opacity:.5; cursor:default; pointer-events:none; }
 /* Layer2 spotlight（明顯是註記、非 UI；可剝離：.wf-clean 全部隱藏）*/
 .wf-spot { position:relative; }
 .wf-spot-focus  { background:rgba(253,224,71,.4); box-shadow:0 0 0 3px rgba(253,224,71,.4); border-radius:var(--wf-radius); }
@@ -1281,6 +1473,15 @@ def _render_container(d, xcls, xattr, src=None, base=''):
     if isinstance(d.get('span'), int):
         style.append(f'grid-column:span {d["span"]}')
     st = f' style="{";".join(style)}"' if style else ''
+    # collapsible：通用可收合區塊（原生 <details>/<summary>，零 JS 可展開；非 nav 專屬）。
+    # `collapsible: <摘要文字>` 或 `collapsible: true` + `summary:`；`expanded: true` → open。
+    if 'collapsible' in d:
+        cv = d.get('collapsible')
+        summ = d.get('summary') if d.get('summary') is not None else (cv if isinstance(cv, str) else '')
+        openattr = ' open' if d.get('expanded') else ''
+        inner = f'<div class="{" ".join(cls)}"{st}>{body}</div>'
+        return (f'<details class="wf-collapsible"{openattr}{_attrs(xattr)}>'
+                f'<summary class="wf-summary">{inline(summ)}</summary>{inner}</details>')
     return f'<div class="{" ".join(cls)}"{st}{_attrs(xattr)}>{body}</div>'
 
 
@@ -1406,8 +1607,15 @@ def _render_item(it, src=None, path=None):
     pin = d.pop('pin', None)          # 浮層：錨點(center/邊/角)
     modal = d.pop('modal', None)      # 浮層：擋後面(scrim + inert)
     layer = d.pop('layer', None)      # 浮層：z 帶(base/overlay/notify/top)
+    ui_state = d.pop('ui-state', None)  # 顯示態（selected/disabled/hover/focus）→ data-ui-state（theme states 綁）
+    if isinstance(ui_state, str) and ('{{' in ui_state or ui_state == ''):
+        ui_state = None                 # 未解析的 {{參數}}/空值 = 未指定（component 參數化顯示態）
+    if ui_state is not None and ui_state not in _UI_STATES:
+        raise ValueError(f"ui-state 只接 {sorted(_UI_STATES)}（收到 {ui_state!r}）")
 
     xcls, xattr = [], {}
+    if ui_state:
+        xattr['data-ui-state'] = ui_state
     if _role:                          # 語義 token 展開後保留角色指紋：可區分/針對 styling、產物語義可讀（drawer ≠ 一般 box）
         xcls.append('wf-role-' + esc_attr(_role))
         xattr['data-wf-role'] = _role
@@ -1431,7 +1639,9 @@ def _render_item(it, src=None, path=None):
         core = render_leaf(d, xcls, xattr)
 
     if block_to:
-        core = _wire_link(block_to, core, "wf-blocklink-a wf-link")
+        # Grid span belongs on the direct child link in either navigation mode.
+        sp = f' style="grid-column:span {span}"' if isinstance(span, int) else ''
+        core = _wire_link(block_to, core, "wf-blocklink-a wf-link", sp)
     if story_badge or story_steps:    # SAC：貼紙 + flow 序號徽章（絕對定位疊在元素角落；story 的 to 掛徽章上）
         extra = ''
         if story_badge:
@@ -1562,17 +1772,19 @@ def expand(items, basedir, ctx, stack=()):
                 child_ctx = as_ if isinstance(as_, dict) else ctx
             content = _subst(content, params)
             content = expand(content, cdir, child_ctx, stack + (path,))
-            ann = {k: it[k] for k in ('note', 'spotlight', 'name', 'to') if k in it}
+            ann = {k: it[k] for k in ('note', 'spotlight', 'name', 'to', 'ui-state') if k in it}
             # P7 theme 綁定：embed 的 component 名帶為 wf-role 指紋（讓 theme 可 target）
             # basename 從 `components/tx-item` 或 `layouts/mobile` 取 `tx-item` / `mobile`
             embed_role = os.path.basename(str(name))
-            if ann or _THEME:
+            if ann or _theme_active():
                 for pk in ('__src', '__path'):
                     if pk in it:
                         ann[pk] = it[pk]
-                # 用 `col: content` 的 transparent 容器承載；`__embed_role` 讓 render_item 加 wf-role class
+                # 用 `col: content` 的 transparent 容器承載；`__embed_role` 讓 render_item 加 wf-role class。
+                # 不寫死 padding（col 預設本就無內距）→ theme components.<role> 的 padding 才能生效
+                # （inline style 會蓋過 class；padding 交給 theme，gap 仍歸零避免多項間距）。
                 out.append({**ann, '__embed_role': embed_role,
-                            'col': content, 'gap': 'none', 'padding': 'none'})
+                            'col': content, 'gap': 'none'})
             else:
                 out.extend(content)
         elif isinstance(it, dict):
@@ -1726,7 +1938,9 @@ def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=N
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + (DEBUG_CSS if debug else '')
                          + _style_css() + _tokens_css() + _theme_css()
                          + _width_css('.wf-root', w, h, notes))
-    page_attr = f' data-wf-page="{esc(_PAGE_BASE)}"' if debug else ''
+    # debug：root 也帶 data-wf-src/path → viewport 本身可被點選標記（畫布級建議：背景/尺寸/整體）
+    page_attr = (f' data-wf-page="{esc(_PAGE_BASE)}" data-wf-src="{esc(_PAGE_BASE)}"'
+                 f' data-wf-path="viewport"') if debug else ''
     head = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><style>{css}</style>'
             f'</head><body><div class="wf-root"{page_attr}>')
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
@@ -1792,7 +2006,8 @@ def bundle(files, debug=False, title='prototype', style=None, story=None, standa
                                                  (label if routes else None), labels)
             pid = _pgid(base, rid)
             pids.append(pid)
-            secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root">{content}</div></section>')
+            root_attr = f' data-wf-src="{esc(base)}" data-wf-path="viewport"' if debug else ''
+            secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root"{root_attr}>{content}</div></section>')
             overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
             navitems.append(_wire_link('', esc(label if routes else doc.get("title", base)),
                                        attrs=f' id="nav-{pid}"', page_id=pid, nav=True,
@@ -1828,7 +2043,8 @@ def bundle(files, debug=False, title='prototype', style=None, story=None, standa
             _STORY = None
         pid = f'wf-pg-story-{sid}'
         pids.append(pid)
-        secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root">{content}</div></section>')
+        root_attr = f' data-wf-src="{esc(sbase)}" data-wf-path="viewport"' if debug else ''
+        secs.append(f'<section class="wf-pg" id="{pid}"><div class="wf-root"{root_attr}>{content}</div></section>')
         overrides.append(_width_css(f'#{pid} .wf-root', w, h, notes))
         navs.append(f'<div class="wf-navgrp"><b>📖 {esc(str(sdata["story"]))}</b>'
                     + _wire_link('', esc(sbase) + '（故事版）', attrs=f' id="nav-{pid}"',
@@ -1896,6 +2112,7 @@ _ENUMS = {
             'top-left', 'top-right', 'bottom-left', 'bottom-right',
             'top-center', 'bottom-center', 'left-center', 'right-center'},
     'layer': {'base', 'overlay', 'notify', 'top'},
+    'ui-state': _UI_STATES,
 }
 # 已知頂層 grammar keys（未知 → warn typo）
 # body: 主要內容區；content/placeholder: component 檔頂層（完整/降階佔位）
@@ -1905,7 +2122,8 @@ _GRAMMAR_KEYS = {'viewport', 'title', 'group', 'body', 'extends', 'with', 'slots
 _CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'box', 'gap', 'padding',
                     'justify', 'align', 'span', 'grow', 'scroll', 'scroll-x',
                     'name', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
-                    'embed', 'with', 'slot', 'as', 'when'}
+                    'embed', 'with', 'slot', 'as', 'when', 'ui-state',
+                    'collapsible', 'expanded', 'summary'}
 _DIRECTION_KEYS = {'row', 'col', 'grid'}
 _STRUCTURE_UNITS = {'page', 'layout', 'component', 'widget'}
 _OVERLAY_SUGARS = {'dialog', 'drawer', 'sheet', 'toast', 'loading'}
