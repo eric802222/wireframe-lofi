@@ -206,6 +206,74 @@ class RegressionTests(unittest.TestCase):
         html = wf.compile_all(p.read_text(), str(self.directory), 'page')[0][1]
         self.assertIn('href="next.html"', html)
 
+    def test_standalone_all_internal_link_forms_and_external_links(self):
+        from html.parser import HTMLParser
+
+        class Elements(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.tags = []
+
+            def handle_starttag(self, tag, attrs):
+                self.tags.append((tag, dict(attrs)))
+
+        a = self.write('a.wf.yaml', """title: 首頁
+group: App
+body:
+  - button: 按鈕
+    to: b
+  - row: [{text: 卡片}]
+    to: b
+  - text: '[文字動線](to:b) · [真連結](https://example.com)'
+  - link: {text: 外部, to: 'https://example.org'}
+""")
+        b = self.write('b.wf.yaml', 'body: [{text: B}]')
+        html = wf.bundle([str(a), str(b)], standalone=True)
+        elements = Elements()
+        elements.feed(html)
+        anchors = [attr for tag, attr in elements.tags if tag == 'a']
+        self.assertEqual({a['href'] for a in anchors}, {'https://example.com', 'https://example.org'})
+        radios = [a for t, a in elements.tags if t == 'input' and a.get('name') == 'wfpg']
+        self.assertEqual(len(radios), 5)
+        self.assertEqual(len({r['id'] for r in radios}), 5)
+        self.assertEqual([r['value'] for r in radios if 'checked' in r], ['wf-pg-a'])
+        self.assertTrue(all(r['type'] == 'radio' and r['aria-controls'] == r['value'] for r in radios))
+        self.assertNotIn('<script>', html)
+        # Switching output mode in the same process must not retain radio links.
+        normal = wf.bundle([str(a), str(b)])
+        self.assertIn('href="#wf-pg-b"', normal)
+        self.assertNotIn('name="wfpg"', normal)
+        single = wf.compile_all(a.read_text(), str(self.directory), 'a')[0][1]
+        self.assertIn('href="b.html"', single)
+
+    def test_standalone_cli_implies_bundle_and_accepts_debug(self):
+        a = self.write('a.wf.yaml', 'body: [{button: Next, to: b}]')
+        b = self.write('b.wf.yaml', 'body: [{text: B}]')
+        out = self.directory / 'standalone.html'
+        for flags in (('--bundle-standalone',), ('--bundle', '--bundle-standalone', '--debug')):
+            result = self.cli(*flags, '-o', out, a, b)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            html = out.read_text()
+            self.assertIn('wf-radio-nav', html)
+            self.assertNotIn('href="#wf-pg-', html)
+            self.assertEqual('<script>' in html, '--debug' in flags)
+
+    def test_standalone_story_nav_and_flow(self):
+        a = self.write('a.wf.yaml', 'body: [{button: Next, name: next, to: b}]')
+        b = self.write('b.wf.yaml', 'body: [{text: B}]')
+        story = self.write('review.story.yaml', """story: review
+page: a
+flow:
+  - step: 1
+    target: next
+    desc: 前往下一頁
+    to: b
+""")
+        html = wf.bundle([str(a), str(b)], story=str(story), standalone=True)
+        self.assertIn('id="nav-wf-pg-story-review"', html)
+        self.assertIn('class="wf-story-step wf-story-step-pin wf-radio-link"', html)
+        self.assertNotIn('href="#wf-pg-', html)
+
     def test_metadata_validation(self):
         for key in ('title', 'group'):
             p = self.write('bad.wf.yaml', f'{key}: [not, text]\nbody: []')

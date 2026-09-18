@@ -72,6 +72,21 @@ WF_TRACEBACK=1 ./render.sh bad.wf.yaml
 `--bundle` 把多張畫面（含各 routes）併成單一 `prototype.html`：左側 nav 分組 + `:target` 切頁（**零 JS**），
 `to:` 連結自動改寫成頁內錨點 → 點著走完整動線。交付時只給一個 `.html` 即可跨平台點擊探索。
 
+若預覽宿主（例如 artifact iframe）攔截同文件錨點，可改用 radio／label 導覽：
+
+```bash
+./render.sh --bundle-standalone examples/*.wf.yaml
+python3 wfyaml.py --bundle-standalone --debug examples/*.wf.yaml
+```
+
+`--bundle-standalone` 已包含 bundle，不必再加 `--bundle`。頁籤和頁內 `to:` 使用原生 radio，
+切頁不改 URL、一般產物仍零 JS；真正外部連結保持 `<a>`。Tab 聚焦選頁控制項，方向鍵或 Space 選頁，
+焦點和目前頁面會顯示在頁籤上。這個模式不支援 URL hash deep link，也不把切頁記入瀏覽器上一頁／下一頁歷史；
+需要 deep link 時使用預設 `--bundle`。`--debug` 的評審功能仍使用 JavaScript。
+
+兩種模式在 860px 以下都改為頂部可橫向捲動頁籤；畫布置中，固定 viewport 不縮小，
+比螢幕寬時可在畫布區橫向捲動。
+
 頁面可用 render metadata 控制 nav 顯示與分組，與 `viewport` 同層，不會產生 UI 節點：
 
 ```yaml
