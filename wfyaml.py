@@ -997,6 +997,28 @@ DEBUG_CSS = r"""
   border-radius:var(--wf-radius);padding:14px;box-shadow:0 10px 40px rgba(0,0,0,.35);font:13px sans-serif;color:#111;}
 #wf-dbg-export textarea{display:block;width:100%;height:62vh;font:12px monospace;margin:8px 0;}
 #wf-dbg-export button{cursor:pointer;padding:4px 12px;margin-right:8px;}
+#wf-dbg-list,#wf-dbg-list-toggle{display:none;}
+.wf-annotate #wf-dbg-list{display:flex;position:fixed;right:8px;top:var(--wf-dbg-bar-clearance,74px);bottom:8px;
+  width:320px;z-index:99998;flex-direction:column;background:#fff;color:#111;border:1px solid #6366f1;
+  border-radius:var(--wf-radius);padding:12px;box-shadow:0 6px 20px rgba(0,0,0,.2);font:13px/1.4 sans-serif;}
+#wf-dbg-list .wf-dbg-list-head{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+#wf-dbg-list h2{font-size:16px;margin:0 0 8px;}
+#wf-dbg-list h3{font-size:13px;overflow-wrap:anywhere;margin:8px 0;}
+#wf-dbg-list .wf-dbg-list-head button{display:none;}
+#wf-dbg-list .wf-dbg-entries{flex:1;min-height:0;overflow:auto;}
+#wf-dbg-list .wf-dbg-note{padding:8px 0;border-bottom:1px solid #e5e7eb;overflow-wrap:anywhere;}
+#wf-dbg-list button{cursor:pointer;padding:4px 8px;margin:2px;border-radius:var(--wf-radius);}
+#wf-dbg-list .wf-dbg-note-edit{display:block;width:100%;text-align:left;background:#fafafa;border:1px solid #e5e7eb;}
+#wf-dbg-list .wf-dbg-note-edit p{white-space:pre-wrap;margin:6px 0;}
+#wf-dbg-list small{display:block;color:#6b7280;}
+#wf-dbg-list textarea{display:block;width:100%;min-height:70px;max-height:120px;font:14px/1.4 sans-serif;margin:4px 0;}
+#wf-dbg-list .wf-dbg-page-form{flex-shrink:0;border-top:1px solid #e5e7eb;padding-top:8px;}
+#wf-dbg-list .wf-dbg-page-form label{display:block;overflow-wrap:anywhere;}
+@media(min-width:861px){
+  body.wf-annotate #wf-main{padding-right:344px;}
+  body.wf-annotate:not(.wf-bundle){padding-right:344px;}
+}
+
 @media(max-width:860px){
   body.wf-debug{padding-bottom:calc(var(--wf-dbg-bar-clearance,74px) + env(safe-area-inset-bottom));}
   body.wf-debug #wf-main{padding-bottom:calc(var(--wf-dbg-bar-clearance,74px) + env(safe-area-inset-bottom));}
@@ -1013,22 +1035,43 @@ DEBUG_CSS = r"""
     display:flex;flex-direction:column;overflow:auto;}
   #wf-dbg-export textarea{height:auto;min-height:0;flex:1;font-size:16px;}
   #wf-dbg-export button{min-height:40px;min-width:56px;}
+
+  .wf-annotate #wf-dbg-list{display:none;top:auto;left:8px;right:8px;width:auto;
+    bottom:calc(var(--wf-dbg-bar-clearance,74px) + var(--wf-dbg-lift,0px) + env(safe-area-inset-bottom));
+    max-height:calc(var(--wf-dbg-vh,100dvh) * .65);overflow:auto;}
+  .wf-annotate.wf-dbg-drawer-open #wf-dbg-list{display:flex;}
+  #wf-dbg-list .wf-dbg-list-head button{display:block;}
+  #wf-dbg-list button,#wf-dbg-list-toggle{min-height:40px;min-width:56px;}
+  #wf-dbg-list textarea{font-size:16px;}
+  .wf-annotate #wf-dbg-list-toggle{display:block;position:fixed;right:10px;z-index:99999;
+    bottom:calc(var(--wf-dbg-bar-clearance,74px) + var(--wf-dbg-lift,0px) + env(safe-area-inset-bottom));
+    background:#6366f1;color:#fff;border:0;border-radius:var(--wf-radius-pill);padding:8px 14px;cursor:pointer;}
+  .wf-dbg-drawer-open #wf-dbg-list-toggle{display:none;}
+  body:has(#wf-dbg-pop) #wf-dbg-list-toggle{display:none;}
   body:has(#wf-dbg-export) #wf-dbg{visibility:hidden;}
 }
+
+body:has(#wf-dbg-export) :is(#wf-dbg-list,#wf-dbg-list-toggle){display:none;}
 
 """
 
 DEBUG_JS = r"""
 (function(){
   var KEY='wfdbg:'+location.pathname.split('/').pop();
-  var store=JSON.parse(localStorage.getItem(KEY)||'{}');   // key = src|path
+  var store=JSON.parse(localStorage.getItem(KEY)||'{}'); // Existing src|path records, unchanged.
+  var pop=null,anchor=null,ann=false,editor=null,pageDrafts=Object.create(null);
+  var narrow=window.matchMedia('(max-width:860px)');
+  function node(tag,cls,text){var n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
+  function button(text,fn){var b=node('button','',text);b.type='button';b.onclick=fn;return b;}
   function role(el){return ((''+el.className).match(/wf-[a-z0-9-]+/g)||[]).join(' ');}
   function snap(el){return (el.textContent||'').replace(/\s+/g,' ').trim().slice(0,48);}
   function keyOf(el){return (el.getAttribute('data-wf-src')||'')+'|'+(el.getAttribute('data-wf-path')||'');}
   function mark(){document.querySelectorAll('[data-wf-path]').forEach(function(el){el.classList.toggle('wf-dbg-has',!!store[keyOf(el)]);});}
-  mark();
-  var pop=null,anchor=null;
-  var narrow=window.matchMedia('(max-width:860px)');
+  function currentSource(){
+    var root=Array.from(document.querySelectorAll('.wf-root[data-wf-src]')).find(function(n){return n.getClientRects().length;});
+    return root?root.getAttribute('data-wf-src'):'';
+  }
+  function persist(){localStorage.setItem(KEY,JSON.stringify(store));mark();renderList();}
   function position(){
     var vv=window.visualViewport,root=document.documentElement;
     root.style.setProperty('--wf-dbg-vh',(vv?vv.height:innerHeight)+'px');
@@ -1042,52 +1085,121 @@ DEBUG_JS = r"""
     }
   }
   function close(){if(pop){pop.remove();pop=null;}anchor=null;}
-  function open(el){
-    close();var k=keyOf(el),src=el.getAttribute('data-wf-src')||'',path=el.getAttribute('data-wf-path')||'';
-    pop=document.createElement('div');pop.id='wf-dbg-pop';anchor=el;
-    pop.innerHTML='<div class="h">'+src+' → '+path+'</div>';
-    var ta=document.createElement('textarea');ta.value=(store[k]&&store[k].note)||'';ta.placeholder='修改建議…';
-    var s=document.createElement('button');s.textContent='存';
-    var d=document.createElement('button');d.textContent='刪';
-    pop.appendChild(ta);pop.appendChild(s);pop.appendChild(d);document.body.appendChild(pop);position();ta.focus();
-    s.onclick=function(){var v=ta.value.trim();
-      if(v)store[k]={src:src,path:path,role:role(el),text:snap(el),note:v};else delete store[k];
-      localStorage.setItem(KEY,JSON.stringify(store));mark();close();};
-    d.onclick=function(){delete store[k];localStorage.setItem(KEY,JSON.stringify(store));mark();close();};
+  function drawer(open,focus){
+    document.body.classList.toggle('wf-dbg-drawer-open',open);
+    toggle.setAttribute('aria-expanded',String(open));
+    if(focus)(open?listClose:toggle).focus();
   }
-  var ann=false;   // false=瀏覽(點擊可跳轉走動線)、true=註記(點擊開建議框)
+  function open(el){
+    close();drawer(false,false);
+    var k=keyOf(el),src=el.getAttribute('data-wf-src')||'',path=el.getAttribute('data-wf-path')||'';
+    pop=node('div');pop.id='wf-dbg-pop';anchor=el;
+    pop.appendChild(node('div','h',src+' → '+path));
+    var ta=node('textarea');ta.value=(store[k]&&store[k].note)||'';ta.placeholder='修改建議…';
+    ta.setAttribute('aria-label','元素註記');
+    var s=button('存',function(){var v=ta.value.trim();
+      if(v)store[k]={src:src,path:path,role:role(el),text:snap(el),note:v};else delete store[k];
+      persist();close();});
+    var d=button('刪',function(){delete store[k];persist();close();});
+    pop.appendChild(ta);pop.appendChild(s);pop.appendChild(d);document.body.appendChild(pop);position();ta.focus();
+  }
+  function renderList(){
+    if(!entries)return;
+    entries.replaceChildren();
+    var current=currentSource(),byFile=Object.create(null);
+    Object.keys(store).forEach(function(k){var s=store[k];(byFile[s.src]=byFile[s.src]||[]).push(k);});
+    Object.keys(byFile).sort(function(a,b){return a===current?-1:b===current?1:a.localeCompare(b);}).forEach(function(src){
+      var group=node('section','wf-dbg-group');group.dataset.src=src;
+      group.appendChild(node('h3','',src+'.wf.yaml'+(src===current?'（目前頁面）':'')));
+      byFile[src].forEach(function(k){
+        var record=store[k],row=node('article','wf-dbg-note');row.dataset.key=k;
+        if(editor&&editor.key===k){
+          row.appendChild(node('code','',record.path));
+          var ta=node('textarea');ta.value=editor.draft;ta.setAttribute('aria-label','編輯註記');
+          ta.oninput=function(){editor.draft=ta.value;};
+          row.appendChild(ta);
+          row.appendChild(button('儲存',function(){var value=ta.value.trim();
+            if(value)store[k]=Object.assign({},record,{note:value});else delete store[k];
+            editor=null;persist();}));
+          row.appendChild(button('取消',function(){editor=null;renderList();}));
+        }else{
+          var edit=button('',function(){editor={key:k,draft:record.note};renderList();entries.querySelector('textarea').focus();});
+          edit.className='wf-dbg-note-edit';
+          edit.appendChild(node('code','',record.path));
+          edit.appendChild(node('p','',record.note));
+          edit.appendChild(node('small','',record.text||''));row.appendChild(edit);
+        }
+        var del=button('刪除',function(){delete store[k];if(editor&&editor.key===k)editor=null;
+          if(record.path==='(整頁)')delete pageDrafts[record.src];persist();});
+        del.setAttribute('aria-label','刪除註記：'+record.path);row.appendChild(del);group.appendChild(row);
+      });entries.appendChild(group);
+    });
+    if(!Object.keys(store).length)entries.appendChild(node('p','','尚無註記'));
+    pageLabel.textContent='整頁註記：'+(current?current+'.wf.yaml':'未選擇頁面');
+    pageInput.value=Object.prototype.hasOwnProperty.call(pageDrafts,current)?pageDrafts[current]:((store[current+'|(整頁)']||{}).note||'');
+    pageInput.disabled=pageSave.disabled=!current;
+    pageInput.oninput=function(){pageDrafts[current]=pageInput.value;};
+    pageForm.onsubmit=function(e){e.preventDefault();var value=pageInput.value.trim(),k=current+'|(整頁)';
+      if(!current)return;
+      if(value)store[k]={src:current,path:'(整頁)',role:'',text:'',note:value};else delete store[k];
+      delete pageDrafts[current];persist();pageInput.focus();};
+    toggle.textContent='註記 '+Object.keys(store).length;
+  }
   document.addEventListener('click',function(e){
-    if(e.target.closest('#wf-dbg')||e.target.closest('#wf-dbg-pop')||e.target.closest('#wf-dbg-export'))return;
-    if(!ann){close();return;}                    // 瀏覽模式：放行（連結照常導覽）
+    if(e.target.closest('#wf-dbg,#wf-dbg-pop,#wf-dbg-export,#wf-dbg-list,#wf-dbg-list-toggle'))return;
+    if(!ann){close();return;}
     var el=e.target.closest('[data-wf-path]');
     if(el){e.preventDefault();e.stopPropagation();open(el);}else close();
   },true);
-  var bar=document.createElement('div');bar.id='wf-dbg';
+  var bar=node('div');bar.id='wf-dbg';
   bar.innerHTML='<b>DEBUG</b><button id="wf-dbg-mode">模式:瀏覽</button><button id="wf-dbg-exp">匯出</button><button id="wf-dbg-clr">清除</button>';
   document.body.appendChild(bar);document.body.classList.add('wf-debug');
+  var list=node('aside');list.id='wf-dbg-list';list.setAttribute('aria-label','註記清單');
+  var header=node('div','wf-dbg-list-head');header.appendChild(node('h2','','註記清單'));
+  var listClose=button('收合',function(){drawer(false,true);});header.appendChild(listClose);
+  var entries=node('div','wf-dbg-entries');
+  var pageForm=node('form','wf-dbg-page-form');
+  var pageLabel=node('label');pageLabel.htmlFor='wf-dbg-page-note';
+  var pageInput=node('textarea');pageInput.id='wf-dbg-page-note';pageInput.placeholder='這一頁的整體建議…';
+  var pageSave=node('button','','儲存整頁註記');pageSave.type='submit';
+  pageForm.appendChild(pageLabel);pageForm.appendChild(pageInput);pageForm.appendChild(pageSave);
+  list.appendChild(header);list.appendChild(entries);list.appendChild(pageForm);document.body.appendChild(list);
+  var toggle=button('註記 0',function(){close();drawer(!document.body.classList.contains('wf-dbg-drawer-open'),true);});
+  toggle.id='wf-dbg-list-toggle';toggle.setAttribute('aria-controls','wf-dbg-list');
+  toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-label','開啟註記清單');document.body.appendChild(toggle);
   window.addEventListener('resize',position);
   if(window.visualViewport){visualViewport.addEventListener('resize',position);visualViewport.addEventListener('scroll',position);}
-  position();
+  window.addEventListener('hashchange',function(){close();renderList();});
+  document.addEventListener('change',function(e){if(e.target.matches('.wf-r[name="wfpg"]')){close();renderList();}});
+  document.addEventListener('keydown',function(e){if(e.key!=='Escape')return;
+    var exportBox=document.getElementById('wf-dbg-export');
+    if(exportBox){exportBox.remove();document.getElementById('wf-dbg-exp').focus();}
+    else if(pop)close();else if(narrow.matches&&document.body.classList.contains('wf-dbg-drawer-open'))drawer(false,true);
+  });
   var mbtn=document.getElementById('wf-dbg-mode');
-  mbtn.onclick=function(){ann=!ann;mbtn.textContent='模式:'+(ann?'註記':'瀏覽');document.body.classList.toggle('wf-annotate',ann);if(!ann)close();};
-  document.getElementById('wf-dbg-clr').onclick=function(){if(confirm('清除本頁所有註記?')){store={};localStorage.removeItem(KEY);mark();}};
+  mbtn.onclick=function(){ann=!ann;mbtn.textContent='模式:'+(ann?'註記':'瀏覽');document.body.classList.toggle('wf-annotate',ann);
+    drawer(false,false);if(!ann)close();renderList();};
+  document.getElementById('wf-dbg-clr').onclick=function(){if(confirm('清除此原型所有註記?')){
+    store={};editor=null;pageDrafts=Object.create(null);localStorage.removeItem(KEY);mark();renderList();}};
   document.getElementById('wf-dbg-exp').onclick=function(){
-    close();var previous=document.getElementById('wf-dbg-export');if(previous)previous.remove();
-    var byFile={};Object.keys(store).forEach(function(k){var s=store[k];(byFile[s.src]=byFile[s.src]||[]).push(s);});
+    close();drawer(false,false);var previous=document.getElementById('wf-dbg-export');if(previous)previous.remove();
+    var byFile=Object.create(null);Object.keys(store).forEach(function(k){var s=store[k];(byFile[s.src]=byFile[s.src]||[]).push(s);});
     var L=['# debug 註記（貼給 LLM 改 YAML）'];
     Object.keys(byFile).sort().forEach(function(f){
       L.push('','## '+f+'.wf.yaml');
-      byFile[f].forEach(function(s){L.push('- ['+s.path+'] '+s.role+' "'+s.text+'" → '+s.note);});
+      byFile[f].sort(function(a,b){return (a.path==='(整頁)'?0:1)-(b.path==='(整頁)'?0:1);}).forEach(function(s){L.push(s.path==='(整頁)'?'- (整頁) → '+s.note:'- ['+s.path+'] '+s.role+' "'+s.text+'" → '+s.note);});
     });
     if(L.length===1)L.push('(無註記)');
-    var ov=document.createElement('div');ov.id='wf-dbg-export';
-    var ta=document.createElement('textarea');ta.readOnly=true;ta.value=L.join('\n');
-    var cp=document.createElement('button');cp.textContent='複製';cp.onclick=function(){ta.select();try{document.execCommand('copy');cp.textContent='已複製✓';}catch(e){}};
-    var cl=document.createElement('button');cl.textContent='關閉';cl.onclick=function(){ov.remove();};
-    var actions=document.createElement('div');actions.appendChild(cp);actions.appendChild(cl);
+    var ov=node('div');ov.id='wf-dbg-export';
+    var ta=node('textarea');ta.readOnly=true;ta.value=L.join('\n');
+    var cp=button('複製',function(){ta.select();try{document.execCommand('copy');cp.textContent='已複製✓';}catch(e){}});
+    var cl=button('關閉',function(){ov.remove();document.getElementById('wf-dbg-exp').focus();});
+    var actions=node('div');actions.appendChild(cp);actions.appendChild(cl);
     ov.appendChild(ta);ov.appendChild(actions);document.body.appendChild(ov);position();ta.select();
   };
+  mark();renderList();position();
 })();
+
 """
 
 
