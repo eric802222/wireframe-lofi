@@ -1,0 +1,7 @@
+tokens:
+  color: {inverse: "#ffffff", ink: "#1f2937", page: "#1f2937"}
+  radius: {lg: 16px}
+base: {chrome: card}
+bindings:
+  box: {background: inverse, text: ink, radius: lg}
+  input: {background: inverse, text: ink}

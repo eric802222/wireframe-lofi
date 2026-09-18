@@ -1,0 +1,10 @@
+title: 交易詳情
+group: 記帳
+extends: layouts/mobile
+with: {title: 交易詳情}
+slots:
+  main:
+    - text: 早餐
+    - text.strong: "[金額]"
+    - button: 返回列表
+      to: transactions

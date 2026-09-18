@@ -1,0 +1,15 @@
+viewport: 390x844
+body:
+  - text.heading: "{{title}}"
+  - col:
+      - slot: main
+    grow: true
+    scroll: true
+  - row: between
+    items:
+      - button: 總覽
+        to: home
+      - button: 記帳
+        to: new
+      - button: 帳戶
+        to: accounts

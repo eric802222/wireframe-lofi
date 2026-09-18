@@ -3,7 +3,7 @@
 #
 # 每個 .wf.yaml → .html（自帶 CSS、零 <script>）+ .png（JS 停用截圖）
 #                + .clean.png（剝離 Layer2 標註的乾淨 UI 版）
-# 畫布尺寸：YAML 內 canvas: 1100x / 1200x900 / x800
+# 畫布尺寸：YAML 內 viewport: 1100x / 1200x900 / x800
 # Layer2 邊註（note）對齊靠瀏覽器量測後烤進 DOM（零 JS 產物）。
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -14,6 +14,7 @@ while :; do case "$1" in
   --style) STYLE="$2"; shift 2;;  # 風格：clean(預設) / sketch(手繪框)。mockup 樣貌由 --mockup <theme.yaml> 決定，不進 --style。
   --mockup) MOCKUP="$2"; shift 2;;  # P7 theme binding：進 mockup 模式 + 該 theme 綁定
   --story) STORY="$2"; shift 2;;    # SAC：單獨生成故事版（無 --bundle）或渲進 bundle（有 --bundle）
+  --traceback) export WF_TRACEBACK=1; shift;;
   *) break;; esac; done
 if [ "$#" -eq 0 ]; then set -- "$DIR"/examples/*.wf.yaml; fi
 
@@ -40,7 +41,9 @@ PY=""
 for cand in "${WFYAML_PY:-}" python3 /usr/bin/python3 /opt/homebrew/bin/python3 python; do
   [ -n "$cand" ] || continue
   loc="$(command -v "$cand" 2>/dev/null)" || continue
-  if "$loc" -c "import playwright, yaml" 2>/dev/null; then PY="$loc"; break; fi
+  modules="yaml"
+  if [ "$BUNDLE" != 1 ] && [ "$DEBUG" != 1 ] && [ -z "$STORY" ]; then modules="playwright, yaml"; fi
+  if "$loc" -c "import $modules" 2>/dev/null; then PY="$loc"; break; fi
 done
 if [ -z "$PY" ]; then
   echo "  [error] 找不到裝了 playwright + pyyaml 的 python。pip3 install playwright pyyaml && python3 -m playwright install chromium；或設 WFYAML_PY=<路徑>" >&2
@@ -81,7 +84,7 @@ import wfyaml
 # 若 CLI 帶了 --mockup，於截圖管線也載入 theme（wfyaml module-level _THEME 生效）
 _mock = os.environ.get('WFYAML_MOCKUP')
 if _mock:
-    wfyaml._load_theme(_mock)
+    wfyaml.cli_entry(lambda: wfyaml._load_theme(_mock))
 from playwright.sync_api import sync_playwright
 
 PAD = 24
@@ -91,7 +94,12 @@ for a in sys.argv[2:]:
         a = a.rsplit('.', 1)[0]
         a = a + '.wf.yaml' if os.path.exists(a + '.wf.yaml') else a + '.yaml'
     g = sorted(glob.glob(a))
-    files.extend(g if g else ([a] if os.path.exists(a) else []))
+    files.extend(g if g else [a])
+
+errors = sum(wfyaml._lint_file(f)[0] for f in files)
+if errors:
+    print(f'lint 阻斷 render：共 {errors} error', file=sys.stderr)
+    sys.exit(2)
 
 # 量測 note 對齊：把 note 對到 [^N] 標記高度、遇疊往下推，位置烤進 DOM。
 ALIGN = r"""() => {
@@ -154,7 +162,8 @@ def shoot(page, png):
     return int(uw), int(ub - box['y'])
 
 with sync_playwright() as p:
-    browser = p.chromium.launch()
+    launch = {'executable_path': os.environ['WFYAML_CHROMIUM']} if os.environ.get('WFYAML_CHROMIUM') else {}
+    browser = p.chromium.launch(**launch)
     ctx = browser.new_context(java_script_enabled=True, viewport={'width': 1920, 'height': 700})
     page = ctx.new_page()
     # PNG/SVG 管線離線化：產物已全 data-URI 內嵌，外部請求（CDN 字體 @import）一律 abort，
@@ -166,7 +175,9 @@ with sync_playwright() as p:
         basedir = os.path.dirname(f) or '.'
         stem = _re.sub(r'\.(wf\.)?ya?ml$', '', f)
         base = os.path.basename(stem)
-        for rid, htmlout in wfyaml.compile_all(src, basedir, base, style=(os.environ.get('WFYAML_STYLE') or None)):   # 每路由各一份
+        results = wfyaml.cli_entry(lambda: wfyaml.compile_all(src, basedir, base,
+            style=(os.environ.get('WFYAML_STYLE') or None), source_name=f))
+        for rid, htmlout in results:   # 每路由各一份
             s2 = stem + (('.' + rid) if rid else '')
             html_path = s2 + '.html'
             open(html_path, 'w').write(htmlout)
