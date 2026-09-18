@@ -116,6 +116,43 @@ body: [ { text: 行程內容 } ]
 - 註記**不渲染、不進 YAML**（有別於 標註面 作者標註），純評審回饋。debug/bundle 注入 JS →
   **僅這些模式非零 JS，一般輸出（`.html`/`.png`）維持零 `<script>`**。
 
+#### 備份與可選 bridge
+
+「匯出」會附上 `wf-notes-json` JSON 備份區塊，可複製或下載 `.md`，再用「匯入」貼回完整內容。
+匯入按逐則版本合併，保留本機後續修改與刪除記錄；不明版本的舊備份只補缺少的註記。
+原有 `wfdbg:<檔名>` 記錄仍保留，另外保存完整 snapshot 與版本 metadata。
+儲存區不可用時仍可編輯、匯入與匯出，清單會顯示需備份的提示。一般模式不注入這些程式。
+
+```bash
+./render.sh --bundle-standalone --debug \
+  --debug-bridge examples/wf-claude-bridge.html examples/phone-*.wf.yaml
+```
+
+`--debug-bridge <file>` 必須搭配 `--debug`，將可信任的 HTML 片段插在 debug 本體之後、`</body>` 之前。
+compiler 不包含第三方 API。自訂 bridge 使用 `window.wfReview` 的共用狀態，避免另建快取造成清單與匯出不一致：
+
+| API | 用途 |
+| --- | --- |
+| `notes()` / `snapshot()` | 註記副本／含版本與刪除記錄的完整副本 |
+| `commit(notes)` / `clear()` | 儲存編輯／清空，建立新的本機版本 |
+| `merge(snapshot)` | 合併遠端 snapshot 或舊註記 map |
+| `subscribe(callback)` | 接收 edit、merge、clear 通知；回傳取消訂閱函式 |
+| `markdown()` / `importMarkdown(text)` | 匯出可還原 Markdown／原子驗證後合併 |
+| `download()` / `setDownloader(fn)` | Blob 下載／設定宿主下載能力，失敗回退 Blob |
+
+另外提供 `wf-review-change` window 事件。bridge 應透過 API 寫入，不直接修改 localStorage；
+本體、側欄、匯出都讀這份共用狀態。本機 storage 事件可合併其他分頁的 snapshot。
+
+[`wf-claude-bridge.html`](examples/wf-claude-bridge.html) 是依使用者提供的 artifact API 契約實作的選配範例，
+以 mock 驗證，尚未在實際 Claude artifact 宿主驗證。將片段 `<script data-project="">` 的 project 改成穩定、
+唯一的評審識別碼，避免不同專案的 `prototype.debug.html` 共用文件；跨裝置使用相同識別碼。
+有能力時讀取／合併 `drafts/<識別碼>`，600ms 去抖並序列寫回；失敗可「重試同步」，本機註記不丟失。
+「送出評審」只在使用者點按時寫入 reviews 並通知對話；通知失敗重試會沿用已寫入文件，相同內容不重送。
+沒有宿主能力時仍能用離線備份。宿主發佈的能力宣告為 `capabilities: {db: {}, comments: {}, downloads: true}`。
+
+版本採用裝置時間與本機遞增值。此範例使用遠端 snapshot 的 get/set，不提供多人即時協作或交易保證；
+同時在多裝置修改時仍可能由最後一份遠端寫入覆蓋，應保留 Markdown 備份。匯入備份不受遠端能力限制。
+
 ---
 
 ## 語法

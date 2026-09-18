@@ -1,0 +1,80 @@
+<!-- Optional adapter for the API contract supplied by the artifact host.
+     Set data-project to a stable, unique review ID across devices.
+     Host publication declares capabilities: {db: {}, comments: {}, downloads: true}.
+     No vendor API is assumed by the compiler or the shared state implementation. -->
+<script data-project="">
+(function(){
+  'use strict';
+  var review=window.wfReview;if(!review)return;
+  var project=document.currentScript.dataset.project||review.key;
+  var draft='drafts/'+encodeURIComponent(project),db=null,cm=null,canPing=false,ready=false;
+  var dirty=false,busy=false,timer=null,sending=false,pending=null,lastSig='',capabilitiesReady=false;
+  var adapterKey=review.key+':claude-send:'+project;
+  try{var cached=JSON.parse(localStorage.getItem(adapterKey)||'{}');pending=cached.pending||null;lastSig=cached.lastSig||'';}catch(e){}
+  function remember(){try{localStorage.setItem(adapterKey,JSON.stringify({pending:pending,lastSig:lastSig}));}catch(e){}}
+  var section=document.createElement('div');section.className='wf-review-bridge';
+  var status=document.createElement('p');status.id='wf-review-send-status';status.setAttribute('role','status');
+  var syncStatus=document.createElement('p');syncStatus.id='wf-review-sync-status';syncStatus.setAttribute('role','status');
+  var send=document.createElement('button');send.type='button';send.id='wf-review-send';send.textContent='送出評審';
+  var retry=document.createElement('button');retry.type='button';retry.textContent='重試同步';retry.id='wf-review-retry';
+  section.appendChild(syncStatus);section.appendChild(status);section.appendChild(send);section.appendChild(retry);
+  document.querySelector('#wf-dbg-list').appendChild(section);
+  function message(text){status.textContent=text;}
+  function syncMessage(text){syncStatus.textContent=text;}
+  function update(){send.disabled=!ready||!capabilitiesReady||sending||!Object.keys(review.notes()).length;retry.disabled=!db;}
+  function schedule(delay){dirty=true;clearTimeout(timer);if(ready)timer=setTimeout(flush,delay===undefined?600:delay);}
+  async function flush(){
+    if(!ready||busy||!dirty)return;
+    busy=true;dirty=false;var snapshot=review.snapshot();syncMessage('同步中…');
+    try{await db.doc(draft).set(snapshot);syncMessage(dirty?'有新變更待同步':'已同步');}
+    catch(e){dirty=true;syncMessage('尚未同步，請重試或匯出備份');busy=false;update();return;}
+    busy=false;if(dirty)schedule(0);update();
+  }
+  async function load(){
+    ready=false;update();syncMessage('讀取遠端註記…');
+    try{var snap=await db.doc(draft).get(),body=snap&&snap.exists&&typeof snap.data==='function'?snap.data():null;
+      if(body){if(body.format==='wf-review')review.merge(body);else if(body.notes)review.merge(body.notes);}
+      ready=true;schedule();syncMessage('遠端註記已合併');
+    }catch(e){syncMessage('遠端讀取失敗，請重試；目前註記保留在本機');}
+    update();
+  }
+  review.subscribe(function(){schedule();update();});
+  retry.onclick=function(){if(ready)schedule(0);else if(db)load();};
+  if(!(window.claude&&typeof window.claude.use==='function')){
+    syncMessage('此環境沒有 Claude bridge，請使用匯出／匯入');send.hidden=true;retry.hidden=true;return;
+  }
+  async function capability(name){try{return await window.claude.use(name);}catch(e){return null;}}
+  (async function(){
+    var capabilities=await Promise.all([capability('db'),capability('comments'),capability('downloads')]);
+    db=capabilities[0];cm=capabilities[1];var dl=capabilities[2];
+    if(dl&&typeof dl.save==='function')review.setDownloader(function(file){return dl.save(file);});
+    if(cm){try{canPing=(await cm.canSendToClaude())==='available';}catch(e){canPing=false;}}
+    capabilitiesReady=true;
+    if(!db){syncMessage('無遠端儲存能力，請使用匯出／匯入');send.hidden=true;retry.hidden=true;update();return;}
+    await load();
+  })();
+  function signature(items){return JSON.stringify(items.map(function(s){return [s.src,s.path,s.note];}).sort(function(a,b){return JSON.stringify(a).localeCompare(JSON.stringify(b));}));}
+  function summary(items,id){var lines=['評審註記 '+items.length+' 則；完整備份：'+id,''];
+    items.slice(0,12).forEach(function(s){lines.push('- ['+s.src+' → '+s.path+'] '+s.note);});
+    if(items.length>12)lines.push('其餘 '+(items.length-12)+' 則見完整備份。');return lines.join('\n').slice(0,3800);}
+  send.onclick=async function(){
+    if(sending||!ready||!db||!capabilitiesReady)return;
+    var snapshot=review.snapshot(),items=Object.values(snapshot.notes);if(!items.length)return;
+    var sig=signature(items);if(sig===lastSig){message('沒有新的變更');return;}
+    sending=true;update();
+    if(!pending||pending.sig!==sig){pending={sig:sig,id:'reviews/'+encodeURIComponent(project)+'-r'+Date.now()+'-'+Math.random().toString(36).slice(2),written:false};remember();}
+    try{
+      if(!pending.written){message('儲存評審中…');await db.doc(pending.id).set({at:new Date().toISOString(),count:items.length,items:items,snapshot:snapshot});pending.written=true;remember();}
+      if(cm&&canPing){message('通知對話中…');
+        var visible=Array.from(document.querySelectorAll('.wf-pg')).find(function(n){return n.getClientRects().length;});
+        var anchor=await cm.anchorFor(visible||document.querySelector('.wf-root')||document.body);
+        await cm.sendToClaude({anchor:anchor,text:summary(items,pending.id)});
+        message('已儲存並通知對話');
+      }else message('已儲存 '+pending.id+'；此環境無法通知對話，請匯出或回對話告知');
+      lastSig=sig;pending=null;remember();
+    }catch(e){message(pending&&pending.written?'已儲存，通知失敗；可重試送出':'送出失敗；可重試或匯出');}
+    finally{sending=false;update();}
+  };
+  update();
+})();
+</script>

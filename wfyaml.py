@@ -1014,6 +1014,9 @@ DEBUG_CSS = r"""
 #wf-dbg-list textarea{display:block;width:100%;min-height:70px;max-height:120px;font:14px/1.4 sans-serif;margin:4px 0;}
 #wf-dbg-list .wf-dbg-page-form{flex-shrink:0;border-top:1px solid #e5e7eb;padding-top:8px;}
 #wf-dbg-list .wf-dbg-page-form label{display:block;overflow-wrap:anywhere;}
+#wf-dbg-list .wf-dbg-status:empty{display:none;}
+#wf-dbg-list .wf-review-bridge p:empty{display:none;}
+#wf-dbg-list .wf-review-bridge{flex-shrink:0;border-top:1px solid #e5e7eb;margin-top:8px;}
 @media(min-width:861px){
   body.wf-annotate #wf-main{padding-right:344px;}
   body.wf-annotate:not(.wf-bundle){padding-right:344px;}
@@ -1043,6 +1046,7 @@ DEBUG_CSS = r"""
   #wf-dbg-list .wf-dbg-list-head button{display:block;}
   #wf-dbg-list button,#wf-dbg-list-toggle{min-height:40px;min-width:56px;}
   #wf-dbg-list textarea{font-size:16px;}
+  #wf-dbg-list .wf-dbg-entries{min-height:80px;}
   .wf-annotate #wf-dbg-list-toggle{display:block;position:fixed;right:10px;z-index:99999;
     bottom:calc(var(--wf-dbg-bar-clearance,74px) + var(--wf-dbg-lift,0px) + env(safe-area-inset-bottom));
     background:#6366f1;color:#fff;border:0;border-radius:var(--wf-radius-pill);padding:8px 14px;cursor:pointer;}
@@ -1057,8 +1061,7 @@ body:has(#wf-dbg-export) :is(#wf-dbg-list,#wf-dbg-list-toggle){display:none;}
 
 DEBUG_JS = r"""
 (function(){
-  var KEY='wfdbg:'+location.pathname.split('/').pop();
-  var store=JSON.parse(localStorage.getItem(KEY)||'{}'); // Existing src|path records, unchanged.
+  var review=window.wfReview,store=review.notes();
   var pop=null,anchor=null,ann=false,editor=null,pageDrafts=Object.create(null);
   var narrow=window.matchMedia('(max-width:860px)');
   function node(tag,cls,text){var n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
@@ -1071,7 +1074,7 @@ DEBUG_JS = r"""
     var root=Array.from(document.querySelectorAll('.wf-root[data-wf-src]')).find(function(n){return n.getClientRects().length;});
     return root?root.getAttribute('data-wf-src'):'';
   }
-  function persist(){localStorage.setItem(KEY,JSON.stringify(store));mark();renderList();}
+  function persist(){review.commit(store);}
   function position(){
     var vv=window.visualViewport,root=document.documentElement;
     root.style.setProperty('--wf-dbg-vh',(vv?vv.height:innerHeight)+'px');
@@ -1139,6 +1142,7 @@ DEBUG_JS = r"""
     pageInput.value=Object.prototype.hasOwnProperty.call(pageDrafts,current)?pageDrafts[current]:((store[current+'|(整頁)']||{}).note||'');
     pageInput.disabled=pageSave.disabled=!current;
     pageInput.oninput=function(){pageDrafts[current]=pageInput.value;};
+    storageStatus.textContent=review.storageStatus();
     pageForm.onsubmit=function(e){e.preventDefault();var value=pageInput.value.trim(),k=current+'|(整頁)';
       if(!current)return;
       if(value)store[k]={src:current,path:'(整頁)',role:'',text:'',note:value};else delete store[k];
@@ -1163,7 +1167,8 @@ DEBUG_JS = r"""
   var pageInput=node('textarea');pageInput.id='wf-dbg-page-note';pageInput.placeholder='這一頁的整體建議…';
   var pageSave=node('button','','儲存整頁註記');pageSave.type='submit';
   pageForm.appendChild(pageLabel);pageForm.appendChild(pageInput);pageForm.appendChild(pageSave);
-  list.appendChild(header);list.appendChild(entries);list.appendChild(pageForm);document.body.appendChild(list);
+  var storageStatus=node('p','wf-dbg-status');storageStatus.setAttribute('role','status');
+  list.appendChild(header);list.appendChild(entries);list.appendChild(pageForm);list.appendChild(storageStatus);document.body.appendChild(list);
   var toggle=button('註記 0',function(){close();drawer(!document.body.classList.contains('wf-dbg-drawer-open'),true);});
   toggle.id='wf-dbg-list-toggle';toggle.setAttribute('aria-controls','wf-dbg-list');
   toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-label','開啟註記清單');document.body.appendChild(toggle);
@@ -1180,23 +1185,32 @@ DEBUG_JS = r"""
   mbtn.onclick=function(){ann=!ann;mbtn.textContent='模式:'+(ann?'註記':'瀏覽');document.body.classList.toggle('wf-annotate',ann);
     drawer(false,false);if(!ann)close();renderList();};
   document.getElementById('wf-dbg-clr').onclick=function(){if(confirm('清除此原型所有註記?')){
-    store={};editor=null;pageDrafts=Object.create(null);localStorage.removeItem(KEY);mark();renderList();}};
+    editor=null;pageDrafts=Object.create(null);review.clear();}};
   document.getElementById('wf-dbg-exp').onclick=function(){
     close();drawer(false,false);var previous=document.getElementById('wf-dbg-export');if(previous)previous.remove();
-    var byFile=Object.create(null);Object.keys(store).forEach(function(k){var s=store[k];(byFile[s.src]=byFile[s.src]||[]).push(s);});
-    var L=['# debug 註記（貼給 LLM 改 YAML）'];
-    Object.keys(byFile).sort().forEach(function(f){
-      L.push('','## '+f+'.wf.yaml');
-      byFile[f].sort(function(a,b){return (a.path==='(整頁)'?0:1)-(b.path==='(整頁)'?0:1);}).forEach(function(s){L.push(s.path==='(整頁)'?'- (整頁) → '+s.note:'- ['+s.path+'] '+s.role+' "'+s.text+'" → '+s.note);});
-    });
-    if(L.length===1)L.push('(無註記)');
+    var output=review.markdown();
     var ov=node('div');ov.id='wf-dbg-export';
-    var ta=node('textarea');ta.readOnly=true;ta.value=L.join('\n');
-    var cp=button('複製',function(){ta.select();try{document.execCommand('copy');cp.textContent='已複製✓';}catch(e){}});
+    var ta=node('textarea');ta.readOnly=true;ta.value=output;
+    var cp=button('複製',async function(){ta.select();try{
+      if(navigator.clipboard)await navigator.clipboard.writeText(ta.value);
+      else if(!document.execCommand('copy'))throw new Error('copy');cp.textContent='已複製✓';
+    }catch(e){cp.textContent='請手動複製';}});
     var cl=button('關閉',function(){ov.remove();document.getElementById('wf-dbg-exp').focus();});
-    var actions=node('div');actions.appendChild(cp);actions.appendChild(cl);
+    var dl=button('下載 .md',function(){review.download().catch(function(){dl.textContent='下載失敗，請複製';});});
+    var actions=node('div');actions.appendChild(cp);actions.appendChild(dl);actions.appendChild(cl);
     ov.appendChild(ta);ov.appendChild(actions);document.body.appendChild(ov);position();ta.select();
   };
+  var importButton=button('匯入',function(){
+    close();drawer(false,false);var existing=document.getElementById('wf-dbg-export');if(existing)existing.remove();
+    var ov=node('div');ov.id='wf-dbg-export';ov.appendChild(node('h2','','匯入註記備份'));
+    var ta=node('textarea');ta.setAttribute('aria-label','註記備份');
+    var message=node('p');message.setAttribute('role','status');
+    var actions=node('div');actions.appendChild(button('匯入並合併',function(){
+      try{review.importMarkdown(ta.value);ov.remove();}catch(e){message.textContent=e.message;}
+    }));actions.appendChild(button('關閉',function(){ov.remove();importButton.focus();}));
+    ov.appendChild(ta);ov.appendChild(message);ov.appendChild(actions);document.body.appendChild(ov);position();ta.focus();
+  });importButton.id='wf-dbg-import';bar.appendChild(importButton);
+  review.subscribe(function(){store=review.notes();mark();renderList();});
   mark();renderList();position();
 })();
 
@@ -2080,7 +2094,17 @@ def _width_css(sel, w, h, has_notes):
     return o
 
 
-def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=None, debug=False):
+def _debug_tail(debug, bridge=''):
+    if bridge and not debug:
+        raise ValueError('--debug-bridge 必須搭配 --debug')
+    scripts = ''
+    if debug:
+        with open(os.path.join(os.path.dirname(__file__), 'assets', 'debug-review.js'), encoding='utf-8') as handle:
+            scripts = '<script>' + handle.read() + '</script><script>' + DEBUG_JS + '</script>' + bridge
+    return scripts + '</body></html>'
+
+
+def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=None, debug=False, debug_bridge=''):
     content, w, h, notes = _render_page(doc, provider, basedir, ctx, cur_label, all_labels)
     # theme CSS 疊最後 → 覆蓋 base/clean/tokens；只在 --mockup 載了 theme 才有內容
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + (DEBUG_CSS if debug else '')
@@ -2091,7 +2115,7 @@ def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=N
                  f' data-wf-path="viewport"') if debug else ''
     head = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>{css}</style>'
             f'</head><body><div class="wf-root"{page_attr}>')
-    tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
+    tail = _debug_tail(debug, debug_bridge)
     return head + content + '</div>' + tail
 
 
@@ -2127,7 +2151,7 @@ body:not(.wf-radio-nav):not(:has(.wf-pg:target)) .wf-pg:first-of-type{display:bl
 """
 
 
-def bundle(files, debug=False, title='prototype', style=None, story=None, standalone=False):
+def bundle(files, debug=False, title='prototype', style=None, story=None, standalone=False, debug_bridge=''):
     """把多個 .wf.yaml 併成單一可點擊 prototype.html（左 nav + :target 切頁 + 頁內 to: 錨點）。
     standalone=True → radio/label 切頁，不改 URL；debug=True → 疊評審回饋層。
     story=<path> → 附加故事疊加版 section（📖 nav 分組）。"""
@@ -2209,13 +2233,13 @@ def bundle(files, debug=False, title='prototype', style=None, story=None, standa
         overrides.append(sel + '{background:#0f766e;color:#fff;font-weight:600;}')
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + BUNDLE_CSS + (DEBUG_CSS if debug else '')
                          + _style_css() + _tokens_css() + _theme_css() + ''.join(overrides))
-    tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
+    tail = _debug_tail(debug, debug_bridge)
     return (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(title)}</title>'
             f'<style>{css}</style></head><body class="wf-bundle{" wf-radio-nav" if standalone else ""}">'
             f'<nav id="wf-nav">{"".join(navs)}</nav><div id="wf-main">{"".join(secs)}</div>{tail}')
 
 
-def compile_all(src, basedir='.', base='', debug=False, style=None, source_name=None):
+def compile_all(src, basedir='.', base='', debug=False, style=None, source_name=None, debug_bridge=''):
     """回傳 [(rid, html), ...]。無 routes → [('', html)]；有 routes → 每路由一份可定址輸出。
     debug=True → 注入 --debug 評審回饋層（JS+localStorage）；否則維持零 <script>。"""
     global _PAGE_BASE, _DEBUG, _STYLE, _BUNDLE
@@ -2229,10 +2253,10 @@ def compile_all(src, basedir='.', base='', debug=False, style=None, source_name=
     _stamp(doc, base if debug or _STORY else source)
     routes = doc.get('routes')
     if not routes:
-        return [('', _compile_page(doc, doc, basedir, debug=debug))]
+        return [('', _compile_page(doc, doc, basedir, debug=debug, debug_bridge=debug_bridge))]
     entries = [_route_entry(r) for r in routes]
     labels = [e[2] for e in entries]
-    return [(rid, _compile_page(doc, prov, basedir, ctx, label, labels, debug=debug))
+    return [(rid, _compile_page(doc, prov, basedir, ctx, label, labels, debug=debug, debug_bridge=debug_bridge))
             for rid, prov, label, ctx in entries]
 
 
@@ -2709,11 +2733,23 @@ def main():
     style = _argval('--style')
     mockup_theme = _argval('--mockup')
     story_path = _argval('--story')
+    debug_bridge = ''
+    if '--debug-bridge' in sys.argv:
+        bridge_path = _argval('--debug-bridge')
+        if not debug or not bridge_path or bridge_path.startswith('--'):
+            raise ValueError('--debug-bridge <file> 必須搭配 --debug')
+        try:
+            with open(bridge_path, encoding='utf-8') as handle:
+                debug_bridge = handle.read()
+        except OSError as e:
+            raise AuthorError(f'無法讀取 debug bridge：{e}', bridge_path) from e
+    else:
+        bridge_path = None
     skip = {'--debug', '--bundle', '--bundle-standalone', '--no-lint', '-o', out_path,
-            '--style', style, '--mockup', mockup_theme, '--story', story_path}
+            '--style', style, '--mockup', mockup_theme, '--story', story_path, '--debug-bridge', bridge_path}
     args = [a for a in sys.argv[1:] if a not in skip]
     if not args and not story_path:
-        print("usage: wfyaml.py [--debug] [--bundle|--bundle-standalone [-o out.html]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
+        print("usage: wfyaml.py [--debug [--debug-bridge <file>]] [--bundle|--bundle-standalone [-o out.html]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
         print("       wfyaml.py --story <x.story.yaml>                 # SAC 單獨生成：底圖+故事疊加 → <id>.story.html", file=sys.stderr)
         print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection", file=sys.stderr)
         print("       wfyaml.py lint <file.wf.yaml> [...]              # P0.7 schema validation", file=sys.stderr)
@@ -2745,7 +2781,7 @@ def main():
         sbase = re.sub(r'\.(wf\.)?ya?ml$', '', os.path.basename(spath))
         _STORY = sdata
         try:
-            results = compile_all(src, os.path.dirname(spath) or '.', sbase, debug=debug, style=style)
+            results = compile_all(src, os.path.dirname(spath) or '.', sbase, debug=debug, style=style, debug_bridge=debug_bridge)
         finally:
             _STORY = None
         # 有 routes 時取 fragment 指定的路由；無 fragment 取第一份（default）
@@ -2768,7 +2804,7 @@ def main():
     if do_bundle:
         out = out_path or os.path.join(os.path.dirname(args[0]) or '.',
                                        'prototype' + ('.debug' if debug else '') + '.html')
-        open(out, 'w').write(bundle(args, debug=debug, style=style, story=story_path, standalone=standalone))
+        open(out, 'w').write(bundle(args, debug=debug, style=style, story=story_path, standalone=standalone, debug_bridge=debug_bridge))
         extra = (' [style:' + style + ']' if style else '') + (f' [story:{os.path.basename(story_path)}]' if story_path else '')
         print(f"  bundled: {out} ({len(args)} 檔){extra}")
         return
@@ -2778,7 +2814,7 @@ def main():
         stem = re.sub(r'\.(wf\.)?ya?ml$', '', path)
         base = os.path.basename(stem)
         suffix = '.debug.html' if debug else '.html'
-        for rid, htmlout in compile_all(src, basedir, base, debug=debug, style=style, source_name=path):
+        for rid, htmlout in compile_all(src, basedir, base, debug=debug, style=style, source_name=path, debug_bridge=debug_bridge):
             out = stem + (('.' + rid) if rid else '') + suffix
             open(out, 'w').write(htmlout)
             print(f"  compiled: {out}")
