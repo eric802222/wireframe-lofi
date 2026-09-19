@@ -50,8 +50,9 @@ tokens: {color: {inverse: '#fff', brand: '#a11', soft: '#b22', surface: '#eee'}}
 ''',self.tmp.name,'p')[0][1]
         self.assertEqual(html.count('class="wf-check-control'), 2)
         self.assertEqual(html.count('class="wf-radio-control'), 2)
-        self.assertIn('aria-checked="true"',html)
-        self.assertIn('aria-checked="false"',html)
+        # 勾選狀態改由真的 <input checked> 承載（原生互動），視覺仍走 .wf-*-control
+        self.assertIn('type="checkbox" checked', html)
+        self.assertIn('type="radio"', html)
         self.assertNotIn('☑',html)
         self.assertNotIn('◉',html)
 if __name__=='__main__':unittest.main()

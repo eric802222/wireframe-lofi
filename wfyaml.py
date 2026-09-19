@@ -1251,7 +1251,12 @@ CSS_EXTRA = r"""
   background:#fff; border:2px solid #374151; line-height:1; }
 .wf-check-control { border-radius:calc(var(--wf-radius,6px) * .6); }
 .wf-radio-control { border-radius:50%; }
+.wf-choice-input { position:absolute; opacity:0; width:0; height:0; }
+.wf-choice-box { display:inline-flex; cursor:pointer; }
+.wf-choice-label { cursor:pointer; }
+.wf-choice-input:checked ~ .wf-choice-box > .wf-choice-control::after,
 .wf-choice-control.wf-choice-checked::after { content:'✓'; font-size:1.18em; font-weight:800; line-height:1; }
+.wf-choice-input:focus-visible ~ .wf-choice-box > .wf-choice-control { outline:2px solid currentColor; outline-offset:2px; }
 .wf-radio-control.wf-choice-checked::after { content:''; width:.7em; height:.7em; border-radius:50%; background:currentColor; }
 .wf-map { border:1px dashed #9ca3af; min-height:8rem; padding:var(--wf-space-md);
   display:flex; flex-wrap:wrap; align-content:center; justify-content:center; gap:var(--wf-space-md);
@@ -1591,14 +1596,39 @@ def render_string(s, xattr=None):
     return f'<span class="wf-label"{A}>{inline(s)}</span>'
 
 
-def _choice_html(kind, checked, label, attrs='', extra_class=''):
-    """Non-interactive wireframe choice with a separately themeable visual control."""
-    state = ' wf-choice-checked' if checked else ''
+_REVEAL_RULES = []        # 純 CSS 連動：(控制項 id, 要顯示的 name)
+_REVEAL_SEQ = [0]
+
+
+def _choice_html(kind, checked, label, attrs='', extra_class='', reveals=None, group=None):
+    """真的 checkbox / radio：勾選是瀏覽器原生行為，零 JS。
+
+    可主題化的視覺控制項仍是 span（外觀不變），真正的 <input> 藏在其後、
+    由 :checked 驅動樣式 —— 與 bundle 的 radio 導覽同一套機制。
+    `reveals` 指向某個 `name:`，勾了才顯示該節點（純 CSS `:has()`）。
+    """
     role = 'checkbox' if kind == 'checkbox' else 'radio'
     short = 'check' if kind == 'checkbox' else 'radio'
-    control = (f'<span class="wf-{short}-control wf-choice-control{state}" role="{role}" '
-               f'aria-checked="{str(bool(checked)).lower()}" aria-hidden="true"></span>')
-    return f'<span class="wf-choice wf-{short} {extra_class}"{attrs}>{control}<span class="wf-choice-label">{inline(label)}</span></span>'
+    _REVEAL_SEQ[0] += 1
+    cid = f'wf-c{_REVEAL_SEQ[0]}'
+    if reveals:
+        _REVEAL_RULES.append((cid, str(reveals)))
+    name_attr = f' name="{html.escape(str(group), quote=True)}"' if group and kind == 'radio' else ''
+    checked_attr = ' checked' if checked else ''
+    box = f'<input class="wf-choice-input" id="{cid}" type="{role}"{name_attr}{checked_attr}>'
+    control = f'<span class="wf-{short}-control wf-choice-control" aria-hidden="true"></span>'
+    return (f'<span class="wf-choice wf-{short} {extra_class}"{attrs}>{box}'
+            f'<label class="wf-choice-box" for="{cid}">{control}</label>'
+            f'<label class="wf-choice-label" for="{cid}">{inline(label)}</label></span>')
+
+
+def _reveal_css():
+    """勾選連動的 CSS：未勾時隱藏對應 name 的節點。"""
+    if not _REVEAL_RULES:
+        return ''
+    rules = [f'.wf-root:has(#{cid}:not(:checked)) [data-name="{html.escape(name, quote=True)}"]'
+             '{display:none;}' for cid, name in _REVEAL_RULES]
+    return '\n'.join(rules)
 
 
 def render_leaf(d, xcls, xattr):
@@ -1610,13 +1640,22 @@ def render_leaf(d, xcls, xattr):
     if role in TEXT_CLASS:
         return f'<div class="{cls(TEXT_CLASS[role])}"{A}>{inline(val)}</div>'
     if role == 'input':
+        # 真的 <input>：打字是瀏覽器原生行為，零 JS。value / placeholder 走屬性。
         ph = val.get('placeholder', '') if isinstance(val, dict) else val
         v = val.get('value') if isinstance(val, dict) else None
-        inner = _placeholder_html(v) if v else (_placeholder_html(ph) or '&nbsp;&nbsp;')
-        return f'<span class="{cls("wf-input")}"{A}>{inner}</span>'
+        attrs = f' value="{html.escape(str(v), quote=True)}"' if v else ''
+        if ph:
+            attrs += f' placeholder="{html.escape(str(ph), quote=True)}"'
+        return f'<input class="{cls("wf-input")}" type="text"{attrs}{A}>'
     if role == 'select':
-        txt = val.get('text', '') if isinstance(val, dict) else val
-        return f'<span class="{cls("wf-select")}"{A}>{inline(txt)}</span>'
+        # 真的 <select>：選單可展開。未宣告 options 時只放目前值一項。
+        if isinstance(val, dict):
+            txt, options = val.get('text', ''), val.get('options') or []
+        else:
+            txt, options = val, []
+        items = ([txt] + [o for o in options if o != txt]) if txt else list(options)
+        opts = ''.join(f'<option>{html.escape(str(o))}</option>' for o in items) or '<option></option>'
+        return f'<select class="{cls("wf-select")}"{A}>{opts}</select>'
     if role == 'button':
         if isinstance(val, dict):
             txt, to, ic = val.get('text', ''), val.get('to', d.get('to')), val.get('icon')
@@ -1643,9 +1682,15 @@ def render_leaf(d, xcls, xattr):
         to = val.get('to', '#') if isinstance(val, dict) else '#'
         return f'<a class="{cls("wf-hyperlink")}" href="{esc(to)}"{A}>{inline(txt)}</a>'
     if role in ('checkbox', 'radio'):
-        label = val.get('label', '') if isinstance(val, dict) else val
-        checked = val.get('checked') if isinstance(val, dict) else False
-        return _choice_html(role, checked, label, A, ' '.join(xcls))
+        if isinstance(val, dict):
+            unknown = {k for k in val if not str(k).startswith('__')} - {'label', 'checked', 'reveals', 'group'}
+            if unknown:
+                raise ValueError(f'{role} 只接 label/checked/reveals/group（收到多餘 {sorted(unknown)}）')
+            label, checked = val.get('label', ''), val.get('checked')
+            reveals, group = val.get('reveals'), val.get('group')
+        else:
+            label, checked, reveals, group = val, False, None, None
+        return _choice_html(role, checked, label, A, ' '.join(xcls), reveals, group)
     if role == 'image':
         if isinstance(val, dict) and ('src' in val or 'bg' in val):
             raise ValueError('image 禁 src/bg；素材路徑只可放 theme.assets')
@@ -2528,11 +2573,12 @@ def _width_css(sel, w, h, has_notes):
 
 
 def _compile_page(doc, provider, basedir, ctx=None, cur_label=None, all_labels=None, debug=False):
+    _REVEAL_RULES.clear()
     content, w, h, notes = _render_page(doc, provider, basedir, ctx, cur_label, all_labels)
     # theme CSS 疊最後 → 覆蓋 base/clean/tokens；只在 --mockup 載了 theme 才有內容
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + (DEBUG_CSS if debug else '')
                          + _style_css() + _tokens_css() + _theme_css()
-                         + _width_css('.wf-root', w, h, notes))
+                         + _width_css('.wf-root', w, h, notes) + _reveal_css())
     # debug：root 也帶 data-wf-src/path → viewport 本身可被點選標記（畫布級建議：背景/尺寸/整體）
     page_attr = (f' data-wf-page="{esc(_PAGE_BASE)}" data-wf-src="{esc(_PAGE_BASE)}"'
                  f' data-wf-path="viewport"') if debug else ''
@@ -2659,7 +2705,7 @@ def bundle(files, debug=False, title='prototype', style=None, story=None, standa
             sel += f',body:not(:has(.wf-pg:target)) #nav-{pids[0]}'
         overrides.append(sel + '{background:#0f766e;color:#fff;font-weight:600;}')
     css = _hoist_imports(_BASE_CSS + CSS_EXTRA + BUNDLE_CSS + (DEBUG_CSS if debug else '')
-                         + _style_css() + _tokens_css() + _theme_css() + ''.join(overrides))
+                         + _style_css() + _tokens_css() + _theme_css() + ''.join(overrides) + _reveal_css())
     tail = ('<script>' + DEBUG_JS + '</script>' if debug else '') + '</body></html>'
     result = (f'<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(title)}</title>'
             f'<style>{css}</style></head><body class="wf-bundle{" wf-radio-nav" if standalone else ""}">'
