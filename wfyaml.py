@@ -3295,6 +3295,17 @@ def _walk_lint(node, path, diag, basedir='.', stack=(), anchored=True):
                   '要貼在這一層，請在父容器加 `box: true`；要貼在整個畫面，請用 modal 或 '
                   'dialog / drawer / sheet / toast / loading')
 
+    # 2d. `to:` 只有容器 / widget / canvas / button 吃得到（render 端 block_to 的條件）。
+    #     寫在 text、image 這類葉子上會被靜默丟掉，但 flowmap 照算一條動線 —— 動線圖上有、
+    #     產物裡點不到,跟 `link:` 的誤用正好是反方向的同一種謊報。
+    if 'to' in keys and not (has_direction or is_widget or 'canvas' in keys or 'button' in keys
+                             or keys & {'items', 'body'} or is_embed or has_overlay_sugar):
+        leaf = next((r for r in has_leaf_role), None)
+        if leaf:
+            diag.warn(f'{path}.to', f'`to:` 掛在 `{leaf}` 上不會產出連結（只有容器與 button 吃得到）',
+                      '包一層 `row:` / `col:` 並把 `to:` 放在容器上，或改用 '
+                      '`button: {{ text: …, to: … }}`')
+
     # 3. container 恰一個 direction key
     if len(has_direction) > 1:
         diag.error(path, f"container 恰能有一個方向 key（收到 {sorted(has_direction)}）",
@@ -3344,7 +3355,10 @@ def _walk_lint(node, path, diag, basedir='.', stack=(), anchored=True):
     #    sibling 屬性（grow / pin / name / to …）沒有人管，打錯字會靜默消失在產出裡。
     #    widget / overlay sugar / slot / embed / spacer 的 key 集合由各自路徑驗證，跳過。
     if not is_widget and not has_overlay_sugar and not is_slot_marker and not is_embed and not is_spacer:
-        known = _CONTAINER_ATTRS | _GRAMMAR_KEYS | set(LEAF_ROLES) | _OVERLAY_SUGARS | {'widget', 'is', 'can'}
+        # _ANNOTATION_KEYS 要在裡面：max-lines / wrap 只掛在葉子上（容器用會報錯），
+        # 不含進來的話，合法用法會被這個 typo 檢查當成未知 key。
+        known = (_CONTAINER_ATTRS | _GRAMMAR_KEYS | set(LEAF_ROLES) | _OVERLAY_SUGARS
+                 | _ANNOTATION_KEYS | {'widget', 'is', 'can'})
         for k in keys:
             if k in known or k in ('placeholder', 'content', 'default'):
                 continue

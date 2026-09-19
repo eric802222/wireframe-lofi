@@ -41,3 +41,20 @@ class TextTruncation(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TruncationPassesTypoCheck(unittest.TestCase):
+    """合法的 max-lines / wrap 不該被未知 key 檢查誤殺。
+
+    #57 把它們從容器白名單拿掉（容器用會拆版面），#58 又讓葉子開始做 typo 檢查 ——
+    兩個各自正確，合起來讓合法用法變成 warning。是在重做 IG demo 時踩出來的。
+    """
+
+    def test_truncation_on_leaf_is_not_an_unknown_key(self):
+        import os, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'p.wf.yaml')
+            open(p, 'w', encoding='utf-8').write(
+                'viewport: 390x600\nbody:\n  - text: 很長的說明\n    max-lines: 2\n'
+                '  - text: 單行預覽\n    wrap: false\n')
+            self.assertEqual(wf._lint_file(p), (0, 0))

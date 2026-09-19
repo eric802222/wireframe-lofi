@@ -571,8 +571,15 @@ class LeafSiblingKeyTypos(unittest.TestCase):
         self.assertGreaterEqual(warn, 1, '`gorw` 會被靜默丟掉，必須出聲')
 
     def test_real_sibling_attributes_stay_silent(self):
-        err, warn = self._lint('  - text: 內容\n    grow: true\n    name: 標題\n    to: other\n')
+        err, warn = self._lint('  - text: 內容\n    grow: true\n    name: 標題\n    max-lines: 2\n')
         self.assertEqual((err, warn), (0, 0), '合法 sibling 不該誤報')
+
+    def test_to_on_a_text_leaf_warns(self):
+        # 這個測試原本把 `to:` 列進「合法 sibling」—— 但 render 只讓容器與 button 吃 to:，
+        # 掛在 text 上會被靜默丟掉，flowmap 卻照算一條動線。測試不該替這種行為背書。
+        err, warn = self._lint('  - text: 內容\n    to: other\n')
+        self.assertEqual(err, 0)
+        self.assertGreaterEqual(warn, 1)
 
 class TokenNameCollision(unittest.TestCase):
     """兩個 token 名塌成同一個 CSS var → 後者靜默覆蓋前者，綁不同 token 的角色拿到同一個值。"""

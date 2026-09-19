@@ -216,7 +216,9 @@ def spec_export(paths, fmt, kit_path=None):
 # 指出源碼哪裡有洞，修法就在源碼本身。
 #
 # 全部是 info 級別、exit 0：只有單一狀態有時是刻意的，不該擋 CI。
-_INPUT_ROLES = ('input', 'select', 'checkbox', 'radio')
+# 只查自由輸入與選擇：checkbox / radio 是二元開關，標籤本身就是規格，
+# 每個都要求 note: 只會製造雜訊（拿 IG 十個畫面實測出來的）。
+_INPUT_ROLES = ('input', 'select')
 
 
 def _expanded_body(doc, path):
