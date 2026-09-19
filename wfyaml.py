@@ -532,6 +532,28 @@ def _theme_slug(s):
     return re.sub(r'[^a-z0-9-]', '-', str(s).lower())
 
 
+def _check_token_name_collisions(tokens):
+    """兩個不同的 token 名不能塌成同一個 CSS var。
+
+    var 名走 _theme_slug，非 ASCII 一律變成 `-`：`color.主色` 與 `color.次色` 都會變成
+    `--wf-color---`，後者覆蓋前者，兩個綁不同 token 的角色拿到同一個值，而且完全無聲。
+    ASCII 也會撞（`a.b` 與 `a-b` 同樣塌成 `a-b`），所以這裡查的是「撞了沒」而不是「是不是中文」。
+    """
+    seen = {}
+    for family, entries in (tokens or {}).items():
+        if family == 'preset' or not isinstance(entries, dict):
+            continue
+        for name in entries:
+            var = _theme_var_name(family, name)
+            path = f'{family}.{name}'
+            if var in seen and seen[var] != path:
+                raise ValueError(
+                    f'theme.tokens.{path} 與 {seen[var]} 會產生同一個 CSS var `{var}`，'
+                    f'後者會靜默覆蓋前者。token 名請用 kebab-case 的 ASCII 語義名'
+                    f'（中文語義請寫在畫面的 `name:` 或 bindings 的目標上）')
+            seen[var] = path
+
+
 # DTCG 複合型別（gradient / typography）：wfexport 已經在輸出 DTCG，這兩個是同一批規格裡
 # 還沒補的部分。命名哲學抄 Material 3：type scale 依用途命名、每個 scale 是一組
 # family + size + weight + line-height + letter-spacing 的 token。
@@ -1074,6 +1096,7 @@ def _load_theme(path):
             raise AuthorError(f'canvas `{cname}` 使用未定義素材 {asset_name!r}', path,
                               f'components.{cname}.base.asset')
     # 全部先編一次觸發驗證（property 白名單 / enum / ref）
+    _check_token_name_collisions(tokens)
     _theme_tokens_css(tokens)
     _theme_components_css(components)
     _theme_bindings_css(bindings)

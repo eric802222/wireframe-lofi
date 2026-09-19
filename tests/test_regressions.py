@@ -554,3 +554,28 @@ components:
             html = open(os.path.join(d, 'p.html'), encoding='utf-8').read()
             self.assertIn('待處理', html)
             self.assertIn('data-wf-role="metric-card"', html)
+
+
+class TokenNameCollision(unittest.TestCase):
+    """兩個 token 名塌成同一個 CSS var → 後者靜默覆蓋前者，綁不同 token 的角色拿到同一個值。"""
+
+    def _load(self, body):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'theme.yaml')
+            open(p, 'w', encoding='utf-8').write(body)
+            return wf._load_theme(p)
+
+    def tearDown(self):
+        wf._load_theme(None)
+
+    def test_non_ascii_names_collide_and_are_rejected(self):
+        with self.assertRaises(Exception):
+            self._load("tokens:\n  color:\n    主色: '#111111'\n    次色: '#C00000'\n")
+
+    def test_ascii_names_that_slug_alike_are_rejected(self):
+        # 不是「中文才擋」：a.b 與 a-b 同樣塌成 --wf-color-a-b
+        with self.assertRaises(Exception):
+            self._load("tokens:\n  color:\n    a.b: '#111111'\n    a-b: '#C00000'\n")
+
+    def test_distinct_names_still_load(self):
+        self._load("tokens:\n  color:\n    ink: '#111111'\n    warn: '#C00000'\n")
