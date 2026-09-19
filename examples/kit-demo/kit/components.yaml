@@ -1,0 +1,12 @@
+components:
+  jumbo-button:
+    of: button
+  stamp-card:
+    props: [place, time]
+    states: [done, next, todo]
+    content:
+      - col:
+          - {icon: star}
+          - "text.hint: {{time}}"
+          - "text.strong: {{place}}"
+        box: true

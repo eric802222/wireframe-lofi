@@ -317,10 +317,78 @@ _THEME_TOKENS = {}   # theme 的 tokens: 值層（Tier-1 design token，FE 可�
 _THEME_PRESETS = {}  # tokens.preset: composite token（一組 property，被 apply: 組合，不渲染）
 _THEME_COMPONENTS = {}  # components: 元件皮（Tier-2，base/variants/states + apply）
 _THEME_FLATVALS = {}    # {"family.name": 已展開純值}（供 {ref} 的 var() fallback）
+_KIT_COMPONENTS = {}    # 專案型別詞彙；render/lint 共用同一份 schema
+_KIT_PATH = None
+_KIT_EXPLICIT = False
+_STRICT_KIT = False
 
 
 def _theme_active():
     return bool(_THEME or _THEME_BASE or _THEME_TOKENS or _THEME_COMPONENTS)
+
+
+def _load_kit(path=None, explicit=False):
+    """Load a deliberately non-programmable component kit."""
+    global _KIT_COMPONENTS, _KIT_PATH, _KIT_EXPLICIT
+    _KIT_COMPONENTS, _KIT_PATH, _KIT_EXPLICIT = {}, path, explicit
+    if not path:
+        return {}
+    if not os.path.isfile(path):
+        raise AuthorError(f'找不到 kit：{path}', path, '<root>')
+    data = _read_yaml(path)
+    if not isinstance(data, dict) or set(data) != {'components'} or not isinstance(data['components'], dict):
+        raise AuthorError('kit 頂層只能是 components: dict', path, '<root>')
+    allowed = {'of', 'props', 'states', 'content'}
+    for name, spec in data['components'].items():
+        here = f'components.{name}'
+        if not isinstance(name, str) or not re.fullmatch(r'[a-z][a-z0-9-]*', name):
+            raise AuthorError('kit 型別名只接小寫 kebab-case', path, here)
+        if name in LEAF_ROLES or name in CONTAINER_KEYS or name in _OVERLAY_SUGARS:
+            raise AuthorError(f'kit 型別 `{name}` 與內建詞彙衝突', path, here)
+        if not isinstance(spec, dict):
+            raise AuthorError('kit 元件定義必須是 dict', path, here)
+        unknown = set(spec) - allowed
+        if unknown:
+            raise AuthorError(f'kit 元件不接受 {sorted(unknown)}；只允許 {sorted(allowed)}', path, here)
+        of, content = spec.get('of'), spec.get('content')
+        if bool(of) == (content is not None):
+            raise AuthorError('元件必須二選一：of（leaf 特化）或 content（純組合）', path, here)
+        if of and of not in LEAF_ROLES:
+            raise AuthorError(f'of 只能指向既有 leaf（收到 `{of}`）', path, f'{here}.of')
+        if content is not None and not isinstance(content, list):
+            raise AuthorError('content 必須是 list', path, f'{here}.content')
+        props = spec.get('props', [])
+        if not isinstance(props, list) or any(not isinstance(x, str) or not re.fullmatch(r'[a-zA-Z][\w-]*', x) for x in props) or len(props) != len(set(props)):
+            raise AuthorError('props 必須是不重複的名稱 list', path, f'{here}.props')
+        states = spec.get('states', [])
+        if not isinstance(states, list) or any(not isinstance(x, str) or not re.fullmatch(r'[a-z][a-z0-9-]*', x) for x in states) or len(states) != len(set(states)):
+            raise AuthorError('states 必須是不重複的小寫名稱 list', path, f'{here}.states')
+    _KIT_COMPONENTS = data['components']
+    _kit_css()  # fail fast on CSS properties and token references
+    # Validate composition structure once; parameter placeholders are deliberately allowed.
+    check = _Diag(path, allow_parameters=True)
+    for name, spec in _KIT_COMPONENTS.items():
+        if 'content' in spec:
+            _walk_lint(spec['content'], f'components.{name}.content', check, os.path.dirname(path) or '.')
+    if check.errors:
+        _src, at, message, _hint = check.errors[0]
+        raise AuthorError(message, path, at)
+    return _KIT_COMPONENTS
+
+
+def _ensure_kit(basedir):
+    if _KIT_EXPLICIT:
+        return
+    candidate = os.path.join(basedir, 'kit', 'components.yaml')
+    if os.path.isfile(candidate):
+        _load_kit(candidate)
+    elif _KIT_PATH:
+        _load_kit(None)
+
+
+def _kit_css():
+    """A kit declares vocabulary only. All visual CSS belongs to the theme."""
+    return ''
 
 
 # bindings 綁「內建元件 role」→ selector（同一套詞彙換元件皮，不另發明語彙）。
@@ -462,7 +530,10 @@ def _resolve_value(val):
         if fb is None:
             sugg = _suggest_key(key, set(_THEME_FLATVALS))
             hint = f"（是不是「{sugg}」？）" if sugg else ""
-            raise ValueError(f"theme 參照未定義 token {{{key}}}{hint}")
+            family = key.partition('.')[0]
+            available = sorted(k.partition('.')[2] for k in _THEME_FLATVALS if k.startswith(family + '.'))
+            choices = f"；{family} 可用：{available}" if available else ''
+            raise ValueError(f"theme 參照未定義 token {{{key}}}{hint}{choices}")
         fam, _, nm = key.partition('.')
         return f'var({_theme_var_name(fam, nm)}, {fb})'
     out = re.sub(r'\{([^}]+)\}', sub, str(val))
@@ -495,6 +566,31 @@ def _expand_props(rules, where=''):
             raise ValueError(f"theme {where} 未知 CSS property `{p}` {hint}")
         final[p] = _resolve_value(v)
     return final
+
+
+_THEME_STRUCTURAL_VALUES = {'0', 'none', 'transparent', 'inherit', 'currentColor', 'auto'}
+
+
+def _require_token_value(value, where):
+    """Reject design literals outside tokens while allowing zero-like structure."""
+    text = str(value).strip()
+    refs = re.findall(r'\{[^}]+\}', text)
+    rest = re.sub(r'\{[^}]+\}', '', text)
+    if text in _THEME_STRUCTURAL_VALUES:
+        return
+    if re.search(r'#[0-9a-fA-F]{3,8}\b|(?<![\w.])[-+]?(?:[1-9]\d*|0?\.\d+)(?:px|rem|em|vh|vw|%|s|ms|deg)?\b', rest):
+        raise ValueError(f'theme {where} 不接受字面設計值 `{value}`；請先在 tokens: 定義級距，再用 {{family.name}} 引用')
+    if not refs:
+        raise ValueError(f'theme {where} 必須使用 token 參照（收到 `{value}`）')
+
+
+def _require_token_rules(rules, where):
+    if not isinstance(rules, dict):
+        raise ValueError(f'theme {where} 必須是 dict')
+    for key, value in rules.items():
+        if key == 'apply':
+            continue
+        _require_token_value(value, f'{where}.{key}')
 
 
 def _props_str(props):
@@ -564,18 +660,36 @@ def _theme_components_css(components):
     for cname, spec in components.items():
         if not isinstance(spec, dict):
             raise ValueError(f"theme.components.{cname} 必須是 dict（收到 {type(spec).__name__}）")
+        if _KIT_COMPONENTS and cname not in _KIT_COMPONENTS and cname not in _THEME_COMPONENT_SELECTORS:
+            raise ValueError(f'theme.components.{cname} 未在 kit 宣告；可用型別：{sorted(_KIT_COMPONENTS)}')
         sel = _THEME_COMPONENT_SELECTORS.get(cname) or f'.wf-role-{_theme_slug(cname)}'
-        base = {k: v for k, v in spec.items() if k not in ('variants', 'states')}
+        state_flat = {k[6:]: v for k, v in spec.items() if k.startswith('state.')}
+        base = {k: v for k, v in spec.items() if k not in ('variants', 'states') and not k.startswith('state.')}
         if base:
+            _require_token_rules(base, f'components.{cname}')
             props = _expand_props(base, f'components.{cname}')
             if props:
                 lines.append(f'{sel}{{{_props_str(props)}}}')
         for vname, vrules in (spec.get('variants') or {}).items():
+            if cname in _KIT_COMPONENTS:
+                raise ValueError(f'theme.components.{cname}.variants 尚未由 kit 宣告／實作')
+            _require_token_rules(vrules, f'components.{cname}.variants.{vname}')
             props = _expand_props(vrules, f'components.{cname}.variants.{vname}')
             lines.append(f'{sel}[data-variant="{_theme_slug(vname)}"]{{{_props_str(props)}}}')
         for sname, srules in (spec.get('states') or {}).items():
+            allowed = (_KIT_COMPONENTS.get(cname) or {}).get('states', [])
+            if cname in _KIT_COMPONENTS and sname not in allowed:
+                raise ValueError(f'theme.components.{cname}.states.{sname} 未在 kit states 宣告（合法：{allowed}）')
+            _require_token_rules(srules, f'components.{cname}.states.{sname}')
             props = _expand_props(srules, f'components.{cname}.states.{sname}')
             lines.append(f'{_state_selector(sel, sname)}{{{_props_str(props)}}}')
+        for sname, srules in state_flat.items():
+            allowed = (_KIT_COMPONENTS.get(cname) or {}).get('states', [])
+            if cname in _KIT_COMPONENTS and sname not in allowed:
+                raise ValueError(f'theme.components.{cname}.state.{sname} 未在 kit states 宣告（合法：{allowed}）')
+            _require_token_rules(srules, f'components.{cname}.state.{sname}')
+            props = _expand_props(srules, f'components.{cname}.state.{sname}')
+            lines.append(f'{sel}[data-kit-state="{_theme_slug(sname)}"]{{{_props_str(props)}}}')
     return '\n'.join(lines)
 
 
@@ -611,6 +725,7 @@ def _theme_bindings_css(bindings):
                 sugg = _suggest_key(k, _CSS_PROP_ALLOW | set(_THEME_BINDABLE))
                 hint = f"（是不是「{sugg}」？）" if sugg else ""
                 raise ValueError(f"theme.bindings.{role}.{k}: 未知綁定屬性/CSS property{hint}")
+            _require_token_value(v, f'bindings.{role}.{k}')
             decls.append(f'{css_prop}:{_resolve_value(v)}')
         r = esc_attr(role)
         named = json.dumps(str(role), ensure_ascii=False).replace('<', r'\3c ')
@@ -1750,6 +1865,8 @@ def _render_item(it, src=None, path=None):
     epath = d.pop('__path', None)
     epath = epath if epath is not None else path
     embed_role = d.pop('__embed_role', None)  # P7 theme 綁定：embed 展開時蓋 component 名為 wf-role
+    kit_role = d.pop('__kit_role', None)
+    kit_state = d.pop('__kit_state', None)
     story_badge = d.pop('__story_badge', None)   # SAC：故事貼紙 / flow 序號徽章
     story_steps = d.pop('__story_steps', None)
 
@@ -1795,6 +1912,11 @@ def _render_item(it, src=None, path=None):
     if embed_role:                     # P7 embed 指紋：component 名 → wf-role class（theme 可綁）
         xcls.append('wf-role-' + esc_attr(embed_role))
         xattr.setdefault('data-wf-role', embed_role)
+    if kit_role:
+        xcls.append('wf-role-' + esc_attr(kit_role))
+        xattr['data-wf-role'] = kit_role
+        if kit_state:
+            xattr['data-kit-state'] = kit_state
     if name:
         xattr['data-name'] = name
     xattr.update(_dbg_attrs(esrc, epath))
@@ -1899,6 +2021,64 @@ def _subst(node, params):
     return node
 
 
+def _kit_use(it):
+    """Return (type, spec) for one kit invocation, rejecting ambiguous nodes."""
+    hits = [k for k in _ckeys(it) if k in _KIT_COMPONENTS]
+    if len(hits) > 1:
+        raise ValueError(f'一個節點只能使用一個 kit 型別（收到 {sorted(hits)}）')
+    return (hits[0], _KIT_COMPONENTS[hits[0]]) if hits else (None, None)
+
+
+def _kit_params(name, spec, raw):
+    props = spec.get('props') or []
+    if isinstance(raw, dict):
+        raw = {k: v for k, v in raw.items() if k not in ('__src', '__path')}
+    if spec.get('of') and not props:
+        # Leaf specializations inherit the leaf's own closed value shape.
+        if isinstance(raw, dict):
+            state = raw.get('state')
+            if state is not None and state not in (spec.get('states') or []):
+                raise ValueError(f'kit 型別 `{name}` state `{state}` 不合法（合法：{spec.get("states") or []}）')
+        return dict(raw) if isinstance(raw, dict) else raw
+    if not isinstance(raw, dict):
+        raise ValueError(f'kit 型別 `{name}` 需要 props dict（合法：{props}）')
+    state = raw.get('state')
+    allowed_states = spec.get('states') or []
+    if state is not None and state not in allowed_states:
+        raise ValueError(f'kit 型別 `{name}` state `{state}` 不合法（合法：{allowed_states}）')
+    unknown = set(raw) - set(props) - {'state'}
+    missing = set(props) - set(raw)
+    if unknown or missing:
+        parts = []
+        if unknown: parts.append(f'未知 props {sorted(unknown)}')
+        if missing: parts.append(f'缺少 props {sorted(missing)}')
+        raise ValueError(f'kit 型別 `{name}`：' + '；'.join(parts) + f'（合法：{props}）')
+    return dict(raw)
+
+
+def _expand_kit_node(it, basedir, ctx, stack):
+    name, spec = _kit_use(it)
+    if not name:
+        return None
+    marker = f'kit:{name}'
+    if marker in stack:
+        raise ValueError(f'kit 元件循環引用：{" -> ".join(stack + (marker,))}')
+    params = _kit_params(name, spec, it[name])
+    kit_state = params.pop('state', None) if isinstance(params, dict) else None
+    ann_keys = {'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state'}
+    unknown = _ckeys(it) - {name} - ann_keys
+    if unknown:
+        raise ValueError(f'kit 型別 `{name}` 不接受 sibling {sorted(unknown)}')
+    ann = {k: it[k] for k in ann_keys if k in it}
+    for internal in ('__src', '__path'):
+        if internal in it: ann[internal] = it[internal]
+    if spec.get('of'):
+        value = params
+        return [{**ann, '__kit_role': name, '__kit_state': kit_state, spec['of']: value}]
+    content = expand(_subst(spec['content'], params), basedir, ctx, stack + (marker,))
+    return [{**ann, '__kit_role': name, '__kit_state': kit_state, 'col': content, 'gap': 'none'}]
+
+
 def _auto_stub(name):
     return [{'box': True, 'items': [{'text.hint': f'▧ {os.path.basename(name)}（略）'}]}]
 
@@ -1924,7 +2104,10 @@ def expand(items, basedir, ctx, stack=()):
             if not _match(it['when'], ctx):
                 continue
             it = {k: v for k, v in it.items() if k != 'when'}
-        if isinstance(it, dict) and 'embed' in it:
+        kit_nodes = _expand_kit_node(it, basedir, ctx, stack) if isinstance(it, dict) else None
+        if kit_nodes is not None:
+            out.extend(kit_nodes)
+        elif isinstance(it, dict) and 'embed' in it:
             name = it['embed']
             params = it.get('with', {}) or {}
             as_ = it.get('as')
@@ -2161,6 +2344,8 @@ def bundle(files, debug=False, title='prototype', style=None, story=None, standa
     global _PAGE_BASE, _DEBUG, _BUNDLE, _STYLE, _STORY, _RADIO_NAV, _LINK_SERIAL
     _DEBUG, _BUNDLE, _STYLE = debug, True, style
     _RADIO_NAV, _LINK_SERIAL = standalone, 0
+    if files:
+        _ensure_kit(os.path.dirname(files[0]) or '.')
     _load_tokens(os.path.dirname(files[0]) if files else '.')   # 專案 semantic token（探首檔所在夾）
     secs, navs, overrides, pids = [], [], [], []
     nav_groups = {}
@@ -2250,6 +2435,7 @@ def compile_all(src, basedir='.', base='', debug=False, style=None, source_name=
     global _PAGE_BASE, _DEBUG, _STYLE, _BUNDLE
     _PAGE_BASE, _DEBUG, _STYLE = base, debug, style
     _BUNDLE = False
+    _ensure_kit(basedir)
     _load_tokens(basedir)              # 探測選配的 wf.tokens.yaml（專案 semantic token）
     source = source_name or (os.path.join(basedir, base + '.wf.yaml') if base else '<input>')
     doc = _yaml_load(src, source)
@@ -2373,6 +2559,26 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
         return
 
     keys = set(node.keys()) - {'__src', '__path'}
+    kit_hits = keys & set(_KIT_COMPONENTS)
+    if len(kit_hits) > 1:
+        diag.error(path, f'一個節點只能使用一個 kit 型別（收到 {sorted(kit_hits)}）')
+        return
+    if kit_hits:
+        name = next(iter(kit_hits))
+        try:
+            spec = _KIT_COMPONENTS[name]
+            params = _kit_params(name, spec, node[name])
+            if spec.get('of'):
+                value = dict(params) if isinstance(params, dict) else params
+                if isinstance(value, dict): value.pop('state', None)
+                render_leaf({spec['of']: value}, [], {})
+            allowed = {name, 'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state'}
+            extra = keys - allowed
+            if extra:
+                raise ValueError(f'kit 型別 `{name}` 不接受 sibling {sorted(extra)}')
+        except ValueError as e:
+            diag.error(path, str(e))
+        return
 
     # 判斷節點類型
     has_direction = keys & _DIRECTION_KEYS
@@ -2383,6 +2589,11 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
     is_embed = 'embed' in keys
     # overlay 角色 = 內建 sugar ∪ 專案 token（wf.tokens.yaml overlay: 自定角色，與 render _overlay_tokens 同源）
     has_overlay_sugar = keys & (_OVERLAY_SUGARS | set(_TOKENS.get('overlay') or {}))
+    if _STRICT_KIT and not diag.allow_parameters:
+        if has_leaf_role or is_widget:
+            diag.error(path, 'strict-kit：畫面 leaf/widget 必須包成 kit 型別')
+        if node.get('box'):
+            diag.error(path, 'strict-kit：不允許裸露 box；請抽成 kit 組合元件')
     for key, expected in (('with', dict), ('slots', dict)):
         if key in node and not isinstance(node[key], expected):
             diag.error(f'{path}.{key}', f'{key} 必須是 {expected.__name__}')
@@ -2408,7 +2619,11 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
             try:
                 render_leaf(node, [], {})
             except ValueError as e:
-                diag.error(path, str(e))
+                if _KIT_COMPONENTS and not has_leaf_role:
+                    candidates = keys - _CONTAINER_ATTRS - _GRAMMAR_KEYS
+                    diag.error(path, f'kit 未定義型別 {sorted(candidates)}；此 kit 可用：{sorted(_KIT_COMPONENTS)}')
+                else:
+                    diag.error(path, str(e))
 
     # 3. container 恰一個 direction key
     if len(has_direction) > 1:
@@ -2499,6 +2714,7 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
 
 def _lint_file(path):
     """對單一檔案跑 lint。回傳 (error_count, warning_count)。story 檔走 story schema 驗證。"""
+    _ensure_kit(os.path.dirname(path) or '.')
     try:
         doc = _read_yaml(path)
     except AuthorError as e:
@@ -2601,6 +2817,53 @@ def _declared_placeholders(node):
     return count
 
 
+def _structure_occurrences(node, source, path='<root>', out=None):
+    """Collect content-agnostic container shapes for cross-page extraction hints."""
+    out = out if out is not None else {}
+    if isinstance(node, list):
+        for i, child in enumerate(node):
+            _structure_occurrences(child, source, f'{path}[{i}]', out)
+        return out
+    if not isinstance(node, dict):
+        return out
+    keys = _ckeys(node)
+    if keys & set(_KIT_COMPONENTS):
+        return out
+    direction = next((x for x in ('row', 'col', 'grid') if x in keys), None)
+    if direction or node.get('box'):
+        child_key = direction if direction in ('row', 'col') and isinstance(node.get(direction), list) else 'items'
+        children = node.get(child_key) if isinstance(node.get(child_key), list) else []
+        child_roles = []
+        for child in children:
+            if isinstance(child, dict):
+                role = next((r for r in LEAF_ROLES if r in child), None)
+                nested = next((d for d in ('row', 'col', 'grid') if d in child), None)
+                child_roles.append(role or nested or ('box' if child.get('box') else 'node'))
+            else:
+                child_roles.append('text')
+        signature = json.dumps([direction or 'col', bool(node.get('box')), child_roles], ensure_ascii=False)
+        if node.get('box') or len(children) >= 2:
+            out.setdefault(signature, []).append((source, path))
+    for key in ('body', 'content', 'items', 'row', 'col'):
+        if key in node:
+            _structure_occurrences(node[key], source, f'{path}.{key}', out)
+    return out
+
+
+def _duplicate_structure_info(files):
+    found = {}
+    for source in files:
+        try:
+            _structure_occurrences(_read_yaml(source), source, '<root>', found)
+        except ValueError:
+            continue
+    for occurrences in found.values():
+        pages = sorted({src for src, _ in occurrences})
+        if len(pages) >= 3:
+            sample = ', '.join(f'{os.path.basename(src)}:{path}' for src, path in occurrences[:3])
+            print(f'info: 重複結構出現在 {len(pages)} 個畫面（{sample}）— 這看起來是一個元件，考慮抽進 kit', file=sys.stderr)
+
+
 def _lint_document(doc, path, diag, stack, load_tokens=True):
     basedir = os.path.dirname(path) or '.'
     if load_tokens:
@@ -2664,6 +2927,7 @@ def _lint_document(doc, path, diag, stack, load_tokens=True):
 
 
 def main():
+    global _STRICT_KIT
     debug = '--debug' in sys.argv
     standalone = '--bundle-standalone' in sys.argv
     do_bundle = '--bundle' in sys.argv or standalone
@@ -2722,41 +2986,58 @@ def main():
 
     # ---- lint 子命令：P0.7 Schema Validation + Fail-Fast ----
     if len(sys.argv) >= 2 and sys.argv[1] == 'lint':
+        kit_path = _argval('--kit')
+        _STRICT_KIT = '--strict-kit' in sys.argv
+        if kit_path:
+            _load_kit(kit_path, explicit=True)
         theme = _argval('--mockup')
+        files = [a for a in sys.argv[2:] if not a.startswith('-') and a not in (theme, kit_path)]
+        if not kit_path and files:
+            _ensure_kit(os.path.dirname(files[0]) or '.')
+        if _STRICT_KIT and not _KIT_COMPONENTS:
+            raise ValueError('--strict-kit 需要 --kit <file> 或專案 kit/components.yaml')
         if '--mockup' in sys.argv and not theme:
             raise ValueError('--mockup 需要 theme 檔')
         if theme:
             _load_theme(theme)
-        files = [a for a in sys.argv[2:] if not a.startswith('-') and a != theme]
         if not files:
-            print("usage: wfyaml.py lint <file.wf.yaml> [...]", file=sys.stderr)
+            print("usage: wfyaml.py lint [--kit <kit.yaml> [--strict-kit]] [--mockup <theme.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
             sys.exit(1)
         total_err, total_warn = 0, len(_THEME_ASSET_WARNINGS)
         for f in files:
             e, w = _lint_file(f)
             total_err += e
             total_warn += w
+        _duplicate_structure_info(files)
         print(f"\n═══ 總計：{total_err} error / {total_warn} warning ═══", file=sys.stderr)
         sys.exit(2 if total_err else (1 if total_warn else 0))
 
     out_path = _argval('-o')
     style = _argval('--style')
     mockup_theme = _argval('--mockup')
+    kit_path = _argval('--kit')
+    _STRICT_KIT = '--strict-kit' in sys.argv
     story_path = _argval('--story')
-    skip = {'--debug', '--bundle', '--bundle-standalone', '--no-lint', '-o', out_path,
-            '--style', style, '--mockup', mockup_theme, '--story', story_path}
+    skip = {'--debug', '--bundle', '--bundle-standalone', '--no-lint', '--strict-kit', '-o', out_path,
+            '--style', style, '--mockup', mockup_theme, '--kit', kit_path, '--story', story_path}
     args = [a for a in sys.argv[1:] if a not in skip]
     if not args and not story_path:
-        print("usage: wfyaml.py [--debug] [--bundle|--bundle-standalone [-o out.html]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
+        print("usage: wfyaml.py [--debug] [--bundle|--bundle-standalone [-o out.html]] [--kit <kit.yaml> [--strict-kit]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
         print("       wfyaml.py --story <x.story.yaml>                 # SAC 單獨生成：底圖+故事疊加 → <id>.story.html", file=sys.stderr)
         print("       wfyaml.py list [--ring 0|1] [--basedir <dir>]   # introspection", file=sys.stderr)
-        print("       wfyaml.py lint <file.wf.yaml> [...]              # P0.7 schema validation", file=sys.stderr)
+        print("       wfyaml.py lint [--kit <kit.yaml> [--strict-kit]] <file.wf.yaml> [...] # schema validation", file=sys.stderr)
         sys.exit(1)
     # --style sketch × --mockup 互斥（低保真美學 vs 高保真綁定，語義衝突）
     if style == 'sketch' and mockup_theme:
         print("[error] --style sketch 與 --mockup 互斥（低保真美學 vs 高保真綁定）", file=sys.stderr)
         sys.exit(1)
-    # 有 --mockup <theme> → 載入 theme（fail-fast：檔案不存在或 schema 錯直接拋）
+    if kit_path:
+        _load_kit(kit_path, explicit=True)
+    elif args:
+        _ensure_kit(os.path.dirname(args[0]) or '.')
+    if _STRICT_KIT and not _KIT_COMPONENTS:
+        raise ValueError('--strict-kit 需要 --kit <file> 或專案 kit/components.yaml')
+    # 有 --mockup <theme> → 載入 theme（kit 必須先載入，theme 不得自行新增型別）
     if mockup_theme:
         _load_theme(mockup_theme)
 

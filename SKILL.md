@@ -40,6 +40,8 @@ python3 wfyaml.py list [--ring 0|1]            # introspection：動筆前列全
 python3 wfyaml.py lint <file.wf.yaml> [...]    # schema validation（exit 0/1/2 = clean/warn/error，可掛 CI）
 ./render.sh --style sketch <file>              # 手繪風（與 --mockup 互斥）
 ./render.sh --mockup themes/x.yaml <files>     # mockup 模式：theme binding 上色（無此旗標=永遠低保真）
+./render.sh --kit kit/components.yaml <files>  # 專案型別詞彙（預設亦會探測 kit/components.yaml）
+./render.sh --kit kit/components.yaml --strict-kit <files> # 禁止裸 leaf/widget/box
 python3 wfyaml.py --story stories/x.story.yaml # SAC 故事疊加（底圖+spotlight/badge/flow 序號）
 ```
 需 `python3 + pyyaml + playwright`（截圖）；動線圖需 `graphviz dot`。bundle/debug 不需截圖。
@@ -107,6 +109,11 @@ title/group 不渲染產品 UI、不改 id；to 仍用檔名，route 子連結�
 句中詞可點用 `[字](to:page)`（無 `to:` 前綴=字面外連）。
 
 **複用**：`embed: components/x` + `with:{...}` + `as: placeholder`（降階佔位）/ `as: {stage,state}`（pin 變體）。
+
+**kit 元件型別**：`kit/components.yaml` 的 `components:` 可用 `of: <既有 leaf>` 特化，或用
+`props` / `states` / `content` 組合新型別。kit 只宣告型別與結構，禁止任何 style；樣式放 theme
+`components.<型別>`，值必須引用 token。畫面以 `{stamp-card: {place: ..., state: next}}` 使用。
+不要加入 if / each / 運算；大量資料由外部產生 YAML。`--strict-kit` 用於成熟專案強制復用。
 
 **色彩**：wireframe 全灰階，無節點顏色屬性（`tone` 已移除）。產品色走 `--mockup <theme.yaml>`；評審聚焦走標註面。
 
