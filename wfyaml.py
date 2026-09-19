@@ -22,7 +22,7 @@ wireframe-lofi compiler
 - `wfyaml.py list [--ring 0|1] [--basedir <dir>]` introspection
 - `wfyaml.py lint <files>` schema validation + fail-fast diagnostics
 """
-import sys, os, re, html, gzip, json, base64, glob, yaml
+import sys, os, re, html, gzip, json, base64, glob, collections, yaml
 import xml.etree.ElementTree as ET
 
 
@@ -441,40 +441,80 @@ def _kit_css():
     return ''
 
 
-# bindings 綁「內建元件 role」→ selector（同一套詞彙換元件皮，不另發明語彙）。
-_THEME_ELEMENT_SELECTORS = {
-    # 文字家族：語義角色依用途命名（Material 3 的 type scale 同一哲學），theme 綁得到才有契約可言
-    'text':          '.wf-label:not(.wf-fieldlabel)',
-    'text.title':    '.wf-h1',
-    'text.heading':  '.wf-h2',
-    'text.label':    '.wf-fieldlabel',
-    'text.strong':   '.wf-b',
-    'text.hint':     '.wf-hint',
-    'button':        '.wf-btn',
+# ── 角色註冊表：一個葉子角色的所有面向只在這裡宣告一次 ──────────────────
+# 過去「角色」被拆散在 LEAF_ROLES / TEXT_CLASS / _THEME_ELEMENT_SELECTORS 三張平行表裡，
+# 沒有任何機制強迫它們同步 —— text 家族有前兩張、獨缺第三張，於是 theme 綁上去靜默失效（#48）。
+# 現在三張表都由這裡導出，缺欄位在載入期就炸，不必等執行期警告。
+#
+# selector=None 必須附理由：那是「這個角色目前綁不到」的明確宣告，不是忘了填。
+_RoleSpec = collections.namedtuple('_RoleSpec', 'text_class selector unthemable_reason')
+
+
+def _role(text_class=None, selector=None, unthemable_reason=None):
+    return _RoleSpec(text_class, selector, unthemable_reason)
+
+
+# 順序即比對順序：長前綴必須排在短的前面（text.title 先於 text），
+# render_leaf / lint 都靠 `next(r for r in LEAF_ROLES if r in node)` 挑角色。
+_ROLE_SPECS = collections.OrderedDict([
+    ('text.title',    _role('wf-h wf-h1', '.wf-h1')),
+    ('text.heading',  _role('wf-h wf-h2', '.wf-h2')),
+    ('text.label',    _role('wf-label wf-fieldlabel', '.wf-fieldlabel')),
+    ('text.strong',   _role('wf-b', '.wf-b')),
+    ('text.hint',     _role('wf-hint', '.wf-hint')),
+    ('text',          _role('wf-label', '.wf-label:not(.wf-fieldlabel)')),
+    ('input',         _role(selector='.wf-input')),
+    ('select',        _role(selector='.wf-select')),
+    ('button',        _role(selector='.wf-btn')),
+    ('status.badge',  _role(selector='.wf-badge')),
+    ('status.muted',  _role(selector='.wf-tag-muted')),
+    ('status.strong', _role(selector='.wf-tag-strong')),
+    ('status',        _role(selector='.wf-tag')),
+    ('alert',         _role(unthemable_reason='alert 是容器型輸出（圖示＋文字），沒有單一元素可綁；'
+                                              '要改外觀請綁 status / text 家族')),
+    ('icon',          _role(selector='.wf-icon')),
+    ('divider',       _role(selector='.wf-hr')),
+    ('tabs',          _role(unthemable_reason='tabs 渲染成一組 .wf-tab，綁單一 tab 請用 tab / tab.active')),
+    ('image',         _role(selector='.wf-image')),
+    ('checkbox',      _role(selector='.wf-check-control')),   # 綁畫出來的控制項，不含旁邊的文字
+    ('radio',         _role(selector='.wf-radio-control')),
+    ('link',          _role(selector='.wf-hyperlink')),
+    ('progress',      _role(selector='.wf-progress')),
+    ('avatar',        _role(selector='.wf-avatar')),
+    ('avatars',       _role(selector='.wf-avatars')),
+    ('map',           _role(unthemable_reason='map 是佔位示意，產品階段會被真地圖取代，綁它沒有意義')),
+])
+
+# 非葉子的綁定目標：容器、元件的組成部件、以及帶 to: 的按鈕變體。
+_NON_LEAF_SELECTORS = {
     'button-link':   ':is(a,label.wf-radio-link).wf-btn.wf-link',    # 帶 to: 的按鈕（主要動作/導航）
-    'input':         '.wf-input',
-    'select':        '.wf-select',
-    'status':        '.wf-tag',
-    'status.muted':  '.wf-tag-muted',
-    'status.strong': '.wf-tag-strong',
-    'status.badge':  '.wf-badge',
     'box':           '.wf-box',
-    # Leaf / composite parts: themes keep the same role vocabulary as YAML.
-    # checkbox/radio bind the drawn control, never the accompanying label.
-    'checkbox':      '.wf-check-control',
-    'radio':         '.wf-radio-control',
-    'progress':      '.wf-progress',
     'progress.fill': '.wf-progress-fill',
-    'avatar':        '.wf-avatar',
-    'avatars':       '.wf-avatars',
-    'icon':          '.wf-icon',
-    'image':         '.wf-image',
-    'divider':       '.wf-hr',
     'widget':        '.wf-widget',
     'tab':           '.wf-tab',
     'tab.active':    '.wf-tab-active',
-    'link':          '.wf-hyperlink',
 }
+
+
+def _check_role_registry():
+    """每個角色要嘛綁得到，要嘛明講為什麼綁不到 —— 不接受「忘了填」。"""
+    for name, spec in _ROLE_SPECS.items():
+        if not spec.selector and not spec.unthemable_reason:
+            raise AssertionError(f'角色 `{name}` 既沒有 theme 選擇器也沒有說明為什麼綁不到')
+        if spec.selector and spec.unthemable_reason:
+            raise AssertionError(f'角色 `{name}` 同時宣告了選擇器與「綁不到」的理由')
+
+
+_check_role_registry()
+
+LEAF_ROLES = list(_ROLE_SPECS)
+TEXT_CLASS = {n: s.text_class for n, s in _ROLE_SPECS.items() if s.text_class}
+UNTHEMABLE_ROLES = {n: s.unthemable_reason for n, s in _ROLE_SPECS.items() if s.unthemable_reason}
+
+# bindings 綁「內建元件 role」→ selector（同一套詞彙換元件皮，不另發明語彙）。
+# 由角色註冊表導出：新增角色時不可能忘記補這張表（忘了就是 _check_role_registry 報錯）。
+_THEME_ELEMENT_SELECTORS = {n: sp.selector for n, sp in _ROLE_SPECS.items() if sp.selector}
+_THEME_ELEMENT_SELECTORS.update(_NON_LEAF_SELECTORS)
 
 # components: 元件名 → base selector。內建元件走既有 wf-* class；
 # 未列者（= 專案 component / embed 名）預設 `.wf-role-<name>`（embed 展開時已蓋此指紋）。
@@ -946,6 +986,12 @@ def _warn_unbindable_target(role):
     if role in _KIT_COMPONENTS:
         return
     bindable = sorted(_THEME_ELEMENT_SELECTORS)
+    if role in UNTHEMABLE_ROLES:
+        # 註冊表裡講明了為什麼綁不到 —— 警告要講得出原因，不是只說「不行」
+        msg = f'bindings.{role} 綁不到任何元素，這條不會生效：{UNTHEMABLE_ROLES[role]}'
+        if msg not in _THEME_WARNINGS:
+            _THEME_WARNINGS.append(msg)
+        return
     if role in LEAF_ROLES or role in TEXT_CLASS:
         msg = (f'bindings.{role} 是 DSL 葉子角色，但目前沒有對應的 theme 選擇器，'
                f'這條綁定不會生效（`wfyaml.py list` 可看可綁的角色）')
@@ -1320,12 +1366,6 @@ ALIGN = {'center': 'center', 'top': 'flex-start', 'bottom': 'flex-end',
          'baseline': 'baseline', 'stretch': 'stretch'}
 SCROLL_SCALE = {'sm': '8rem', 'md': '16rem', 'lg': '32rem', 'xl': '48rem'}  # P0.5 純語義級距
 CONTAINER_KEYS = {'row', 'col', 'grid', 'items', 'embed', 'slot'}
-LEAF_ROLES = ['text.title', 'text.heading', 'text.label', 'text.strong', 'text.hint', 'text',
-              'input', 'select', 'button', 'status.badge', 'status.muted', 'status.strong', 'status',
-              'alert', 'icon', 'divider', 'tabs', 'image', 'checkbox', 'radio', 'link',
-              'progress', 'avatar', 'avatars', 'map']
-TEXT_CLASS = {'text': 'wf-label', 'text.title': 'wf-h wf-h1', 'text.heading': 'wf-h wf-h2',
-              'text.label': 'wf-label wf-fieldlabel', 'text.strong': 'wf-b', 'text.hint': 'wf-hint'}
 _UI_STATES = {'selected', 'disabled', 'hover', 'focus', 'active'}   # 顯示態（→ data-ui-state；theme states 綁）
 
 _NOTES = []   # Layer2 note → 右側 gutter（供 render.sh 量測對齊（位置烤進 DOM））
@@ -2505,6 +2545,12 @@ def _kit_params(name, spec, raw):
     return dict(raw)
 
 
+# 節點級標註：可以掛在任何節點旁邊的 sibling 屬性（kit 型別、葉子、容器共用）。
+# 曾經有三份手抄複本散在 expand / canvas / lint 三處，加一個屬性要記得改三個地方，
+# 漏一個就是「某條路徑接受、另一條拒絕」的靜默不一致。
+_ANNOTATION_KEYS = frozenset({'name', 'to', 'note', 'spotlight', 'span', 'grow',
+                              'pin', 'modal', 'layer', 'ui-state', 'max-lines', 'wrap'})
+
 def _expand_kit_node(it, basedir, ctx, stack):
     name, spec = _kit_use(it)
     if not name:
@@ -2514,8 +2560,7 @@ def _expand_kit_node(it, basedir, ctx, stack):
         raise ValueError(f'kit 元件循環引用：{" -> ".join(stack + (marker,))}')
     params = _kit_params(name, spec, it[name])
     if spec.get('of') == 'canvas':
-        ann_keys = {'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state',
-                'max-lines', 'wrap'}
+        ann_keys = _ANNOTATION_KEYS
         unknown = _ckeys(it) - {name} - ann_keys
         if unknown:
             raise ValueError(f'kit 型別 `{name}` 不接受 sibling {sorted(unknown)}')
@@ -2540,8 +2585,7 @@ def _expand_kit_node(it, basedir, ctx, stack):
                   'link_points': [point_by_identity[id(item)] for item in params['link_items']]}
         return [{**ann, '__kit_role': name, '__canvas': canvas}]
     kit_state = params.pop('state', None) if isinstance(params, dict) else None
-    ann_keys = {'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state',
-                'max-lines', 'wrap'}
+    ann_keys = _ANNOTATION_KEYS
     unknown = _ckeys(it) - {name} - ann_keys
     if unknown:
         raise ValueError(f'kit 型別 `{name}` 不接受 sibling {sorted(unknown)}')
@@ -3051,8 +3095,7 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
                 value = dict(params) if isinstance(params, dict) else params
                 if isinstance(value, dict): value.pop('state', None)
                 render_leaf({spec['of']: value}, [], {})
-            allowed = {name, 'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state',
-                       'max-lines', 'wrap'}
+            allowed = {name} | _ANNOTATION_KEYS
             extra = keys - allowed
             if extra:
                 raise ValueError(f'kit 型別 `{name}` 不接受 sibling {sorted(extra)}')
