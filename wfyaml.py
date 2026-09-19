@@ -3082,6 +3082,16 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
                 else:
                     diag.error(path, str(e))
 
+    # 2b. link: 的 to: 是站外真連結，render 原樣輸出 href（不補 .html、bundle 不改成頁內錨點）。
+    #     拿它寫站內導航 → `href="feed"` 這種死連結，點下去沒反應而且全程無聲。
+    #     站內導航請用 button / 帶 to: 的節點（那條路才會經過 _href 改寫）。
+    link_spec = node.get('link')
+    if isinstance(link_spec, dict):
+        tgt = link_spec.get('to')
+        if isinstance(tgt, str) and '://' not in tgt and not tgt.startswith(('#', 'mailto:', 'tel:')):
+            diag.warn(f'{path}.link.to', f'`link:` 的 to: 會原樣輸出成 href（`{tgt}`），不是站內導航',
+                      '站內跳頁請用 `button:` 或帶 `to:` 的節點；站外連結請寫完整 URL')
+
     # 3. container 恰一個 direction key
     if len(has_direction) > 1:
         diag.error(path, f"container 恰能有一個方向 key（收到 {sorted(has_direction)}）",
