@@ -339,7 +339,7 @@ def _load_kit(path=None, explicit=False):
     if not isinstance(data, dict) or set(data) != {'components'} or not isinstance(data['components'], dict):
         raise AuthorError('kit 頂層只能是 components: dict', path, '<root>')
     allowed = {'of', 'props', 'states', 'content'}
-    canvas_allowed = {'of', 'base', 'item', 'link', 'states'}
+    canvas_allowed = {'of', 'base', 'item', 'node', 'link', 'edge', 'states'}
     for name, spec in data['components'].items():
         here = f'components.{name}'
         if not isinstance(name, str) or not re.fullmatch(r'[a-z][a-z0-9-]*', name):
@@ -367,6 +367,10 @@ def _load_kit(path=None, explicit=False):
         if not isinstance(states, list) or any(not isinstance(x, str) or not re.fullmatch(r'[a-z][a-z0-9-]*', x) for x in states) or len(states) != len(set(states)):
             raise AuthorError('states 必須是不重複的小寫名稱 list', path, f'{here}.states')
         if is_canvas:
+            if 'node' in spec:                      # nodes/edges 為正名（React Flow / 圖論通用）
+                spec['item'] = spec.pop('node')
+            if 'edge' in spec:
+                spec['link'] = spec.pop('edge')
             base, item, link = spec.get('base'), spec.get('item'), spec.get('link')
             if not isinstance(base, dict) or set(base) - {'asset', 'grid', 'blank', 'anchors', 'ratio'}:
                 raise AuthorError('canvas.base 必須是 {asset|grid|blank, anchors?, ratio?}', path, f'{here}.base')
@@ -2239,9 +2243,14 @@ def _kit_params(name, spec, raw):
         if not isinstance(raw, dict):
             raise ValueError(f'kit canvas `{name}` 需要 {{items: [...]}}')
         clean = {k: v for k, v in raw.items() if k not in ('__src', '__path')}
+        # nodes / edges 是正名（與 React Flow、D3、圖論一致）；items / link 為相容別名
+        if 'nodes' in clean:
+            clean['items'] = clean.pop('nodes')
+        if 'edges' in clean:
+            clean['link'] = clean.pop('edges')
         unknown = set(clean) - {'items', 'link'}
         if unknown or not isinstance(clean.get('items'), list):
-            raise ValueError(f'kit canvas `{name}` 只接 items: list 與 link: list（多餘：{sorted(unknown)}）')
+            raise ValueError(f'kit canvas `{name}` 只接 nodes: list 與 edges: list（多餘：{sorted(unknown)}）')
         anchors = spec['base'].get('anchors') or {}
         item_name = spec['item']['use']
         item_spec = _KIT_COMPONENTS[item_name]
