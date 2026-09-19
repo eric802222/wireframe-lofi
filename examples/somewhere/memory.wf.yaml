@@ -1,0 +1,22 @@
+title: 留下記憶
+group: Somewhere
+extends: layouts/app
+with: {title: 留下記憶}
+slots:
+  main:
+    - memory-card: {place: "昭和布丁店", date: "SEP 19 · TAIPEI", note: "NEW MEMORY", state: fresh}
+    - text.heading: "你想怎麼記住這裡？"
+    - input: "寫下一句只有你會記得的話…"
+    - row:
+        - button: "＋ 照片"
+          grow: true
+        - button: "＋ 聲音"
+          grow: true
+        - button: "＋ 一起的人"
+          grow: true
+    - text.label: MOOD
+    - row:
+        - status.badge: "☂ 雨"
+        - status.badge: "☺ 驚喜"
+        - status.badge: "◌ 安靜"
+    - primary-action: {text: "封存這段記憶", to: journal}
