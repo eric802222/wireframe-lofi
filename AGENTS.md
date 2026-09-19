@@ -150,6 +150,22 @@ python3 wfyaml.py --kit kit/components.yaml <改過的檔>        # 真的編得
 不另外寫規格文件。HTML 帶著 `data-name` / `data-wf-role` / `data-ui-state`，
 和 YAML 用同一套名字對得起來 —— 一份是規格，一份是它編出來的樣子。
 
+### ⚠️ 不要整份讀產出的 HTML
+
+**規格讀 YAML，HTML 只在需要驗證某一點時用 grep 取局部。**
+
+套了 `--mockup` 之後素材以 base64 內嵌，實測一份 10 畫面的 bundle：
+**3.39 MB，其中 97% 是 base64**（約 85 萬 token，真正的內容只有 2.5 萬）。
+而且那些位元組對你毫無用處 —— 你看不到圖。
+
+```bash
+grep -o 'data-name="[^"]*"' chat.html | sort -u    # 要對照語義身份
+grep -c 'wf-clamp' chat.html                       # 要確認某條規則有生效
+python3 wfyaml.py lint / wfcheck.py flow / gaps    # 要驗證正確性
+```
+
+需要整份讀的時候，用**不帶 `--mockup`** 的版本（同樣的結構，沒有素材）。
+
 **DSL 表達不了的約束寫在 `note:` 裡**，不要另開檔案、也不要塞進畫面文字：
 
 ```yaml

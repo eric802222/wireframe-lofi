@@ -1769,6 +1769,28 @@ def _pgid(page, frag=''):
     return 'wf-pg-' + _slug(page) + (('-' + _slug(frag)) if frag else '')
 
 
+
+def _asset_weight_note(path):
+    """產出檔裡 base64 素材的佔比。
+
+    套了 --mockup 之後素材以 base64 內嵌，一份 10 畫面的 bundle 實測 3.39 MB、
+    97% 是 base64（約 85 萬 token）。人看不出差別，但 AI agent 一旦整份讀進去就
+    燒掉整個 context，而且那些位元組對它毫無用處 —— 它看不到圖。
+
+    所以編完就講一聲，並指出便宜的替代做法。門檻取 512 KB：低於這個量整份讀還好。
+    """
+    try:
+        raw = open(path, encoding='utf-8').read()
+    except OSError:
+        return ''
+    inlined = sum(len(m) for m in re.findall(r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+', raw))
+    if len(raw) < 512 * 1024 or not inlined:
+        return ''
+    return (f"\n  note: {len(raw)/1048576:.1f} MB，其中 {inlined/len(raw)*100:.0f}% 是內嵌素材"
+            f"（約 {len(raw)//4//10000} 萬 token）。人與瀏覽器沒差，但 AI 不要整份讀 ——\n"
+            f"        規格看 .wf.yaml，要驗證用 lint / wfcheck，要對照語義用 grep data-name。")
+
+
 def _href(target):
     # 純 wireframe 動線解析器：只收「已宣告為動線」的目標（block `to:` / inline `to:` 前綴）。
     # 外部/真連結由 link: 與無前綴 inline 走字面輸出，永不流經此處 → 不需在這裡嗅探 URL 長相。
@@ -3716,7 +3738,7 @@ def main():
                                        'prototype' + ('.debug' if debug else '') + '.html')
         open(out, 'w').write(bundle(args, debug=debug, style=style, story=story_path, standalone=standalone))
         extra = (' [style:' + style + ']' if style else '') + (f' [story:{os.path.basename(story_path)}]' if story_path else '')
-        print(f"  bundled: {out} ({len(args)} 檔){extra}")
+        print(f"  bundled: {out} ({len(args)} 檔){extra}{_asset_weight_note(out)}")
         return
     for path in args:
         src = open(path).read()
