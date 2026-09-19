@@ -1,0 +1,29 @@
+title: 我的世界
+group: Somewhere
+extends: layouts/app
+with: {title: 我的世界}
+slots:
+  main:
+    - row:
+        - avatar: {label: YOU, size: lg}
+        - col:
+            - text.heading: "Urban Wanderer"
+            - text.hint: "Level 12 · Taipei"
+    - text.title: "你走過的地方，正在變成自己的世界。"
+    - grid: [grow, grow, grow]
+      items:
+        - box: true
+          col:
+            - text.strong: "18"
+            - text.hint: 記憶
+        - box: true
+          col:
+            - text.strong: "7"
+            - text.hint: 任務
+        - box: true
+          col:
+            - text.strong: "3"
+            - text.hint: 城市
+    - map: {label: "MY WORLD", markers: ["台北 18", "東京 9", "橫濱 4"], can: [pan, zoom, markers]}
+    - text.heading: "下一座城市"
+    - place-card: {eyebrow: "COMING SOON", title: "TAINAN · CHAPTER 01", meta: "一座適合迷路的城市", state: available}
