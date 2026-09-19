@@ -15,10 +15,19 @@ class TextTruncation(unittest.TestCase):
         self.assertNotIn('wf-clamp', html)
     def test_unset_changes_nothing(self):
         self.assertEqual(wf.render_item({'text': '原樣'}), wf.render_item({'text': '原樣', 'wrap': True}))
-    def test_max_lines_wins_over_wrap(self):
-        html = wf.render_item({'text': 'x', 'max-lines': 2, 'wrap': False})
-        self.assertIn('wf-clamp', html)
-        self.assertNotIn('wf-nowrap', html)
+    def test_max_lines_and_nowrap_conflict_is_an_error(self):
+        # 「最多兩行」與「不准換行」語義互斥。舊版靜默讓 max-lines 勝出 —— 規格寫了、
+        # 工具默默不做，正是 theme binding 警示要抓的那種錯，不該由測試背書。
+        with self.assertRaises(Exception):
+            wf.render_item({'text': 'x', 'max-lines': 2, 'wrap': False})
+
+    def test_truncation_rejected_on_containers(self):
+        # wf-clamp 帶 display:-webkit-box，套在容器上會蓋掉 flex：版面壞掉卻不報錯
+        for container in ({'col': ['text: a'], 'max-lines': 2},
+                          {'row': ['text: a'], 'wrap': False},
+                          {'grid': [1, 1], 'items': ['text: a'], 'max-lines': 3}):
+            with self.assertRaises(Exception):
+                wf.render_item(container)
     def test_rejects_non_semantic_values(self):
         for bad in (0, -1, '2', 1.5, True):
             with self.assertRaises(Exception):
