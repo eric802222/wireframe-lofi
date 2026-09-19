@@ -497,3 +497,29 @@ class InteractiveFormTests(unittest.TestCase):
     def test_choice_rejects_unknown_key(self):
         with self.assertRaises(ValueError):
             wf.render_leaf({'checkbox': {'label': 'x', 'onClick': 'doThing()'}}, [], {})
+
+
+class SectionTests(unittest.TestCase):
+    """section：帶語義的一段（SDUI 的 ViewLayout → Section → Component 中間層）。"""
+
+    def test_section_renders_as_named_container(self):
+        html = wf.render_item({'section': '今日路線', 'body': [{'text': '內容'}]})
+        self.assertIn('data-section="今日路線"', html)
+        self.assertIn('wf-section', html)
+        self.assertIn('data-name="今日路線"', html)      # 同時可被 theme 綁定
+        self.assertIn('內容', html)
+
+    def test_section_label_is_not_rendered_text(self):
+        """段名是語義標記，不自動變成畫面上的標題（要顯示就自己寫 text.heading）。"""
+        html = wf.render_item({'section': '快速紀錄', 'body': [{'text': '內容'}]})
+        self.assertNotIn('>快速紀錄<', html)
+
+    def test_collapsed_section_uses_native_details(self):
+        html = wf.render_item({'section': '快速紀錄', 'collapsed': True,
+                               'body': [{'text': '內容'}]})
+        self.assertIn('<details', html)                  # 零 JS 可展開
+        self.assertIn('<summary class="wf-summary">快速紀錄</summary>', html)
+
+    def test_section_requires_body_list(self):
+        with self.assertRaises(ValueError):
+            wf.render_item({'section': '沒有內容'})

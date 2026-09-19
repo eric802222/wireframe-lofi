@@ -2088,8 +2088,22 @@ def _render_item(it, src=None, path=None):
             d.setdefault('col', content)
         elif content not in (None, True):
             d.setdefault('col', [content])
+    # section：帶語義的一段（SDUI 的 ViewLayout → Section → Component 中間層）。
+    # 只是有名字的容器，不新增視覺能力；collapsed 時走既有的 details/summary（零 JS）。
+    if 'section' in d:
+        label = d.pop('section')
+        body = d.pop('body', None)
+        if not isinstance(body, list):
+            raise ValueError(f'section `{label}` 需要 body: list')
+        if d.pop('collapsed', False):
+            d.setdefault('collapsible', label)
+        d.setdefault('col', body)
+        d.setdefault('name', label)
+        d['__section'] = label
+
     if 'embed' in d:               # fail-fast：embed 應在 expand 階段展開完畢，走到這裡=結構走訪漏了
         raise ValueError(f"內部錯誤：embed 節點未展開（embed: {d.get('embed')!r}）——此節點藏在 expand 未走訪的結構裡，請回報")
+    section_label = d.pop('__section', None)
     name = d.pop('name', None)
     if 'tone' in d:                # tone 已移除（2026-07-08）：色彩=保真度的函數
         raise ValueError(
@@ -2126,6 +2140,9 @@ def _render_item(it, src=None, path=None):
             xattr['data-kit-state'] = kit_state
     if name:
         xattr['data-name'] = name
+    if section_label:                  # 段落語義：theme 可綁、debug 定位更好讀
+        xattr['data-section'] = section_label
+        xcls.append('wf-section')
     xattr.update(_dbg_attrs(esrc, epath))
     if isinstance(span, int):
         xattr['style'] = f'grid-column:span {span}'
@@ -2776,7 +2793,7 @@ _ENUMS = {
 _GRAMMAR_KEYS = {'viewport', 'title', 'group', 'body', 'extends', 'with', 'slots', 'routes',
                  'content', 'placeholder'}
 # 已知 container 屬性 keys（sibling 掛在容器 dict 上）
-_CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'box', 'gap', 'padding',
+_CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'section', 'collapsed', 'box', 'gap', 'padding',
                     'justify', 'align', 'span', 'grow', 'scroll', 'scroll-x',
                     'name', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
                     'embed', 'with', 'slot', 'as', 'when', 'ui-state',
