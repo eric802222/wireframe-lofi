@@ -1,0 +1,31 @@
+viewport: 390x844
+body:
+  - name: app-header
+    row: between
+    items:
+      - col:
+          - text.label: SOMEWHERE
+          - text.heading: "{{title}}"
+      - button: "◎"
+        to: profile
+  - divider:
+  - name: main
+    col:
+      - slot: main
+    grow: true
+    scroll: true
+  - divider:
+  - name: tabbar
+    row:
+      - button: 世界
+        to: home
+        grow: true
+      - button: 手帳
+        to: journal
+        grow: true
+      - button: 收藏
+        to: collection
+        grow: true
+      - button: 我的
+        to: profile
+        grow: true
