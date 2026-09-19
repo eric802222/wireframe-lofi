@@ -56,3 +56,27 @@ tokens: {color: {inverse: '#fff', brand: '#a11', soft: '#b22', surface: '#eee'}}
         self.assertNotIn('☑',html)
         self.assertNotIn('◉',html)
 if __name__=='__main__':unittest.main()
+
+class UnbindableTargetWarning(unittest.TestCase):
+    """綁不到的目標要出聲：死 CSS 靜默通過會讓 PM 以為改好了、RD 拿到騙人的規格。"""
+    def setUp(self): self.tmp=tempfile.TemporaryDirectory();wf._load_theme(None)
+    def tearDown(self): wf._load_theme(None);self.tmp.cleanup()
+    def _load(self, body):
+        p=Path(self.tmp.name)/'theme.yaml';p.write_text(body);wf._load_theme(str(p));return wf._THEME_WARNINGS
+    def test_leaf_role_without_selector_warns(self):
+        # 動態挑一個「還沒有選擇器」的葉子角色：補洞（#49 之類）之後這個測試不該假失敗
+        role = next((r for r in wf.LEAF_ROLES if r not in wf._THEME_ELEMENT_SELECTORS), None)
+        self.assertIsNotNone(role, '所有葉子角色都可綁了 —— 這個警示路徑要改成只保留錯字偵測')
+        warnings=self._load(f"bindings:\n  {role}: {{background: surface}}\n")
+        self.assertTrue(any(role in w and '不會生效' in w for w in warnings), warnings)
+    def test_typo_of_known_target_suggests(self):
+        warnings=self._load("bindings:\n  buton: {background: surface}\n")
+        self.assertTrue(any('button' in w for w in warnings))
+    def test_screen_name_target_stays_silent(self):
+        self.assertEqual(self._load("bindings:\n  照片1: {background: surface}\n"), [])
+    def test_kit_component_target_stays_silent(self):
+        wf._KIT_COMPONENTS['product-card']={'props':[]}
+        try:
+            self.assertEqual(self._load("bindings:\n  product-card: {background: surface}\n"), [])
+        finally:
+            wf._KIT_COMPONENTS.pop('product-card',None)
