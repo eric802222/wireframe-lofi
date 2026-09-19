@@ -310,6 +310,7 @@ _THEME_BINDABLE = {
 
 _THEME_ASSETS = {}
 _THEME_ASSET_WARNINGS = []
+_THEME_WARNINGS = []        # theme 本身的診斷（綁不到的目標等），與素材警示分開累積
 
 _THEME = {}          # 當前載入的 theme bindings（綁 name/role 的專案微調）；空 dict = wireframe 模式
 _THEME_BASE = {}     # theme 的 base: 模式開關（chrome/link-marker/scrollbar）
@@ -817,11 +818,33 @@ def _theme_bindings_css(bindings):
         r = esc_attr(role)
         named = json.dumps(str(role), ensure_ascii=False).replace('<', r'\3c ')
         # 優先序：語義身份（role/name）selector 三疊拉高 specificity，贏過元件皮。
-        sel = _THEME_ELEMENT_SELECTORS.get(role) or \
-            (f'.wf-role-{r}.wf-role-{r}.wf-role-{r}, '
-             f'[data-name={named}][data-name={named}][data-name={named}]')
+        sel = _THEME_ELEMENT_SELECTORS.get(role)
+        if sel is None:
+            _warn_unbindable_target(role)
+            sel = (f'.wf-role-{r}.wf-role-{r}.wf-role-{r}, '
+                   f'[data-name={named}][data-name={named}][data-name={named}]')
         lines.append(f'{sel}{{{";".join(decls)}}}')
     return '\n'.join(lines)
+
+
+def _warn_unbindable_target(role):
+    """bindings 的 fallback selector 是給 kit 元件角色與畫面 `name:` 用的正當路徑，
+    但打錯字或綁一個還沒有選擇器的 DSL 角色時，它會編出對不到任何元素的死 CSS 而靜默通過。
+    這裡只在「確定綁不到」的兩種情況出聲，name: 因為可能定義在本次範圍外的畫面，一律放行。"""
+    if role in _KIT_COMPONENTS:
+        return
+    bindable = sorted(_THEME_ELEMENT_SELECTORS)
+    if role in LEAF_ROLES or role in TEXT_CLASS:
+        msg = (f'bindings.{role} 是 DSL 葉子角色，但目前沒有對應的 theme 選擇器，'
+               f'這條綁定不會生效（可綁的角色：{bindable}）')
+    else:
+        sugg = _suggest_key(str(role), set(bindable))
+        if not sugg:
+            return          # 看起來是畫面的 name:，放行
+        msg = (f'bindings.{role} 不是已知的綁定目標，是不是「{sugg}」？'
+               f'（若這是畫面的 name:，可忽略這則警示）')
+    if msg not in _THEME_WARNINGS:
+        _THEME_WARNINGS.append(msg)
 
 
 def _safe_asset_svg(raw, recolor=False):
@@ -903,8 +926,8 @@ def _bound_asset(node, kind):
 
 def _load_theme(path):
     """載入 theme YAML；驗證 tokens / preset / base / components / bindings（fail-fast）。"""
-    global _THEME, _THEME_BASE, _THEME_TOKENS, _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS, _THEME_ASSETS, _THEME_ASSET_WARNINGS
-    _THEME_ASSETS, _THEME_ASSET_WARNINGS = {}, []
+    global _THEME, _THEME_BASE, _THEME_TOKENS, _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS, _THEME_ASSETS, _THEME_ASSET_WARNINGS, _THEME_WARNINGS
+    _THEME_ASSETS, _THEME_ASSET_WARNINGS, _THEME_WARNINGS = {}, [], []
     if not path:
         _THEME, _THEME_BASE, _THEME_TOKENS = {}, {}, {}
         _THEME_PRESETS, _THEME_COMPONENTS, _THEME_FLATVALS = {}, {}, {}
@@ -973,7 +996,7 @@ def _load_theme(path):
     _theme_tokens_css(tokens)
     _theme_components_css(components)
     _theme_bindings_css(bindings)
-    for warning in _THEME_ASSET_WARNINGS:
+    for warning in _THEME_ASSET_WARNINGS + _THEME_WARNINGS:
         print(f'warning: {path} → {warning}', file=sys.stderr)
     return bindings
 
@@ -3314,7 +3337,7 @@ def main():
         if not files:
             print("usage: wfyaml.py lint [--kit <kit.yaml> [--strict-kit]] [--mockup <theme.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
             sys.exit(1)
-        total_err, total_warn = 0, len(_THEME_ASSET_WARNINGS)
+        total_err, total_warn = 0, len(_THEME_ASSET_WARNINGS) + len(_THEME_WARNINGS)
         for f in files:
             e, w = _lint_file(f)
             total_err += e
