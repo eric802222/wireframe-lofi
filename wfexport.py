@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""匯出：把 theme 的 tokens 與 kit 的 props/states 交給工具鏈外的世界。
+"""匯出／匯入：把 theme 的 tokens 與 kit 的 props/states 接上工具鏈外的世界。
 
     python3 wfexport.py tokens <theme.yaml> [--format json|css|ts] [--kit <kit.yaml>]
     python3 wfexport.py types  <kit.yaml>   [--format ts|json] [--types-map <map.yaml>]
+    python3 wfexport.py import <tokens.json>                         # DTCG → theme 書寫形式
 
 設計立場：
 - **tokens** 輸出對齊 DTCG（designtokens.org）標準，可直接餵 Style Dictionary / Terrazzo。
   書寫層（theme.yaml）維持好寫好讀，標準只出現在輸出層。
+- **import** 是同一張對照表反過來走：外部工具的 token 進來，仍還原成一行式的書寫形式。
 - **types** 輸出的是「契約」而非實作：接上資料與行為是 RD 那一層的事。
 - 獨立模組，不改動 wfyaml.py 的任何行為；渲染與 lint 完全不受影響。
 """
@@ -17,7 +19,7 @@ import sys
 import wfyaml as wf
 
 
-# ── props 型別（階段 2：交付 RD 的是契約，不是實作）───────────────────────
+# ── props 型別（交付 RD 的是契約，不是實作）─────────────────────────────────
 # 刻意只給描述「值長什麼樣」的型別；沒有 shape/物件/泛型，那些屬於應用層。
 _PROP_TYPES = {'text', 'number', 'boolean', 'date', 'time', 'url'}
 _PROP_TS = {'text': 'string', 'number': 'number', 'boolean': 'boolean',
@@ -138,10 +140,126 @@ def _dtcg_duration(text):
     return {'value': int(num) if num == int(num) else num, 'unit': m.group(2)}
 
 
+# ── 複合型（DTCG §9）：border / shadow / strokeStyle ────────────────────────
+# 書寫層仍是一行 CSS 值（好寫好讀），輸出層才拆成標準的結構化 $value。
+_STROKE_STYLES = ('solid', 'dashed', 'dotted', 'double', 'groove', 'ridge', 'outset', 'inset')
+
+
+def _dtcg_color(text):
+    """色值：#hex 或 rgb()/rgba()/hsl() 原樣（穩定版允許字串）。不像色值則 None。"""
+    text = text.strip()
+    if re.fullmatch(r'#[0-9A-Fa-f]{3,8}', text) or re.match(r'(rgba?|hsla?)\(', text):
+        return text
+    return None
+
+
+def _split_css(text):
+    """依空白切 CSS 值，但不切開 rgb(...) 這類括號內的逗號與空白。"""
+    parts, depth, cur = [], 0, ''
+    for ch in str(text):
+        if ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+        if ch.isspace() and depth == 0:
+            if cur:
+                parts.append(cur)
+                cur = ''
+            continue
+        cur += ch
+    if cur:
+        parts.append(cur)
+    return parts
+
+
+def _dtcg_border(text):
+    """'2px solid #2B2A33' → DTCG border；順序不限，三者齊全才算。"""
+    width = style = color = None
+    for part in _split_css(text):
+        dim = _dtcg_dimension(part)
+        if dim and width is None:
+            width = dim
+            continue
+        if part in _STROKE_STYLES and style is None:
+            style = part
+            continue
+        col = _dtcg_color(part)
+        if col and color is None:
+            color = col
+            continue
+        return None
+    if width and style and color:
+        return {'width': width, 'style': style, 'color': color}
+    return None
+
+
+def _dtcg_shadow(text):
+    """'0 4px 0 #2B2A33'（x y blur [spread] color，可帶 inset）→ DTCG shadow。"""
+    parts = _split_css(text)
+    inset = False
+    if 'inset' in parts:
+        inset = True
+        parts = [p for p in parts if p != 'inset']
+    color = None
+    for part in list(parts):
+        col = _dtcg_color(part)
+        if col:
+            color = col
+            parts.remove(part)
+            break
+    dims = []
+    for part in parts:
+        dim = _dtcg_dimension(part) or (_dtcg_dimension(part + 'px')
+                                        if re.fullmatch(r'-?\d+(?:\.\d+)?', part) else None)
+        if not dim:
+            return None
+        dims.append(dim)
+    if color is None or not 2 <= len(dims) <= 4:
+        return None
+    zero = {'value': 0, 'unit': 'px'}
+    out = {'color': color, 'offsetX': dims[0], 'offsetY': dims[1],
+           'blur': dims[2] if len(dims) > 2 else zero,
+           'spread': dims[3] if len(dims) > 3 else zero}
+    if inset:
+        out['inset'] = True
+    return out
+
+
+def _dtcg_stroke_style(text):
+    """'4 10' 或 '4px 10px' → DTCG strokeStyle（dashArray）；關鍵字則原樣。"""
+    text = str(text).strip()
+    if text in _STROKE_STYLES:
+        return text
+    dims = []
+    for part in _split_css(text.replace(',', ' ')):
+        dim = _dtcg_dimension(part) or (_dtcg_dimension(part + 'px')
+                                        if re.fullmatch(r'-?\d+(?:\.\d+)?', part) else None)
+        if not dim:
+            return None
+        dims.append(dim)
+    if len(dims) < 2:
+        return None
+    return {'dashArray': dims, 'lineCap': 'butt'}
+
+
+def _dtcg_composite(family, name, text):
+    """家族語義決定複合型：shadow / border / stroke.dash。"""
+    if family == 'shadow':
+        got = _dtcg_shadow(text)
+        return ('shadow', got) if got else None
+    if family == 'border':
+        got = _dtcg_border(text)
+        return ('border', got) if got else None
+    if family == 'stroke' and 'dash' in str(name):
+        got = _dtcg_stroke_style(text)
+        return ('strokeStyle', got) if got else None
+    return None
+
+
 def _dtcg_token(family, name, value):
     """單一 token → (dtcg_type, dtcg_value)；無法對應標準型別時回 (None, 原因)。
 
-    優先序：別名 → 家族語義（color/font）→ 值的形狀。
+    優先序：別名 → 家族語義（複合型、color、font）→ 值的形狀。
     刻意不猜：對不上就不匯出並說明原因，而不是塞一個不合規的型別。
     """
     if isinstance(value, (list, tuple)):
@@ -157,6 +275,10 @@ def _dtcg_token(family, name, value):
     text = str(value).strip()
     if text.startswith('{') and text.endswith('}'):
         return 'alias', text                      # 型別由被參照的 token 決定（DTCG §5.2.2）
+
+    composite = _dtcg_composite(family, name, text)
+    if composite:
+        return composite
 
     if family == 'color':
         return 'color', text
@@ -292,6 +414,111 @@ def _tokens_export(theme_path, fmt, kit_path=None):
         print(f'warning: tokens.{path} 未匯出 —— {why}', file=sys.stderr)
 
 
+# ── 匯入：DTCG .tokens.json → theme 的書寫形式 ─────────────────────────────
+# 反向對照同一張表。目的是讓 Figma Variables 等工具匯出的 token 能直接變成 theme，
+# 而不是逼作者去讀 $value / $type。
+def _from_dimension(val, zero_bare=False):
+    """{'value': 14, 'unit': 'px'} → '14px'；零值在複合字串裡可省略單位（CSS 慣例）。"""
+    if isinstance(val, dict) and 'value' in val and 'unit' in val:
+        num = val['value']
+        num = int(num) if isinstance(num, float) and num == int(num) else num
+        if zero_bare and num == 0:
+            return '0'
+        return f"{num}{val['unit']}"
+    return None
+
+
+def _from_dtcg_value(kind, val):
+    """DTCG $value → theme 的一行寫法；無法還原時回 None。"""
+    if isinstance(val, str) and val.startswith('{') and val.endswith('}'):
+        return val                                   # 別名原樣保留
+    if kind in ('dimension', 'duration'):
+        return _from_dimension(val)
+    if kind in ('color', 'fontFamily', 'fontWeight', 'number'):
+        return val
+    if kind == 'cubicBezier':
+        return list(val) if isinstance(val, list) else None
+    if kind == 'border' and isinstance(val, dict):
+        width = _from_dimension(val.get('width'))
+        style, color = val.get('style'), val.get('color')
+        return f'{width} {style} {color}' if width and style and color else None
+    if kind == 'shadow' and isinstance(val, dict):
+        dims = [_from_dimension(val.get(k), zero_bare=True)
+                for k in ('offsetX', 'offsetY', 'blur', 'spread')]
+        if not all(dims[:3]) or not val.get('color'):
+            return None
+        parts = dims[:3] if dims[3] in (None, '0', '0px') else dims
+        text = ' '.join(parts + [val['color']])
+        return f'{text} inset' if val.get('inset') else text
+    if kind == 'strokeStyle':
+        if isinstance(val, str):
+            return val
+        if isinstance(val, dict) and isinstance(val.get('dashArray'), list):
+            dims = [_from_dimension(d) for d in val['dashArray']]
+            return ' '.join(d for d in dims if d) if all(dims) else None
+    return None
+
+
+def _dtcg_to_tokens(data, prefix=()):
+    """DTCG dict → ({family: {name: 值}}, 略過清單)。只支援兩層（family.name）。"""
+    out, skipped = {}, []
+    for key, node in (data or {}).items():
+        if key.startswith('$'):
+            continue
+        if not isinstance(node, dict):
+            skipped.append(('.'.join(prefix + (key,)), '不是 token 也不是群組'))
+            continue
+        if '$value' in node:
+            path = prefix + (key,)
+            if len(path) != 2:
+                skipped.append(('.'.join(path), 'theme 只支援 family.name 兩層，請先攤平'))
+                continue
+            kind = node.get('$type') or data.get('$type')
+            text = _from_dtcg_value(kind, node['$value'])
+            if text is None:
+                skipped.append(('.'.join(path), f'無法還原成一行寫法（$type={kind!r}）'))
+                continue
+            out.setdefault(path[0], {})[path[1]] = text
+            continue
+        nested, nested_skipped = _dtcg_to_tokens(
+            {'$type': node.get('$type', data.get('$type')),
+             **{k: v for k, v in node.items() if not k.startswith('$')}},
+            prefix + (key,))
+        for fam, entries in nested.items():
+            out.setdefault(fam, {}).update(entries)
+        skipped += nested_skipped
+    return out, skipped
+
+
+def _yaml_scalar(value):
+    """輸出好讀的 YAML 純量：色碼與含特殊字元的字串加引號，數字與陣列原樣。"""
+    if isinstance(value, list):
+        nums = [int(v) if isinstance(v, float) and v == int(v) else v for v in value]
+        return '[' + ', '.join(str(v) for v in nums) + ']'
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value)
+    if re.fullmatch(r'-?\d+(?:\.\d+)?(px|rem|ms|s)?', text):
+        return text
+    if "'" in text:                                  # 含單引號改用雙引號，不要疊成 ''
+        return '"' + text.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    return "'" + text + "'"
+
+
+def _tokens_import(json_path):
+    """`import`：DTCG JSON → theme 的 tokens 區塊（維持好寫好讀的形式）。"""
+    with open(json_path, encoding='utf-8') as fh:
+        data = json.load(fh)
+    tokens, skipped = _dtcg_to_tokens(data)
+    print('# generated by wfexport.py import, 貼進 theme 的 tokens: 區塊')
+    print('tokens:')
+    for family in sorted(tokens):
+        entries = ', '.join(f'{name}: {_yaml_scalar(val)}' for name, val in tokens[family].items())
+        print(f'  {family}: {{ {entries} }}')
+    for path, why in skipped:
+        print(f'warning: {path} 未匯入 —— {why}', file=sys.stderr)
+
+
 def _argval(flag, argv):
     if flag in argv:
         i = argv.index(flag)
@@ -302,7 +529,7 @@ def _argval(flag, argv):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv or argv[0] in ('-h', '--help') or argv[0] not in ('tokens', 'types'):
+    if not argv or argv[0] in ('-h', '--help') or argv[0] not in ('tokens', 'types', 'import'):
         print(__doc__.strip(), file=sys.stderr)
         return 1
     cmd, rest = argv[0], argv[1:]
@@ -316,7 +543,9 @@ def main(argv=None):
         print(f'usage: wfexport.py {cmd} <file.yaml> [--format ...]', file=sys.stderr)
         return 1
     try:
-        if cmd == 'tokens':
+        if cmd == 'import':
+            _tokens_import(paths[0])
+        elif cmd == 'tokens':
             if fmt not in ('json', 'css', 'ts'):
                 raise ValueError(f"tokens 的 --format 只接受 json / css / ts（收到 {fmt!r}）")
             _tokens_export(paths[0], fmt, kit)
