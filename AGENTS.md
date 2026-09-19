@@ -164,7 +164,13 @@ grep -c 'wf-clamp' chat.html                       # 要確認某條規則有生
 python3 wfyaml.py lint / wfcheck.py flow / gaps    # 要驗證正確性
 ```
 
-需要整份讀的時候，用**不帶 `--mockup`** 的版本（同樣的結構，沒有素材）。
+需要整份讀的時候，用 `--assets link`（素材留在 `*.assets/` 資料夾，產物只存相對路徑）
+或不帶 `--mockup` 的版本。IG 10 畫面實測：inline 3.6 MB → link 380 KB。
+
+| 模式 | 用在哪 |
+|---|---|
+| `--assets inline`（預設） | 要把單一檔案丟給別人開 —— `--bundle-standalone` 只能用這個 |
+| `--assets link` | 平常開發、CI、AI 讀 —— 產物小，但要連同 `*.assets/` 資料夾一起帶走 |
 
 **DSL 表達不了的約束寫在 `note:` 裡**，不要另開檔案、也不要塞進畫面文字：
 
