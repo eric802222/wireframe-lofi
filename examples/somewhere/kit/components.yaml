@@ -1,0 +1,40 @@
+components:
+  chapter-tag:
+    of: status
+  primary-action:
+    of: button
+  place-card:
+    props: [eyebrow, title, meta]
+    states: [hidden, available, discovered]
+    content:
+      - col:
+          - "text.label: {{eyebrow}}"
+          - "text.strong: {{title}}"
+          - "text.hint: {{meta}}"
+        box: true
+  quest-card:
+    props: [number, title, hint, reward]
+    states: [locked, available, active, done]
+    content:
+      - col:
+          - "text.label: MISSION {{number}}"
+          - "text.strong: {{title}}"
+          - "text: {{hint}}"
+          - "status.badge: {{reward}}"
+        box: true
+  memory-card:
+    props: [place, date, note]
+    states: [fresh, saved]
+    content:
+      - col:
+          - image: {label: "{{place}} 的記憶", ratio: 4/3}
+          - "text.label: MEMORY"
+          - "text.strong: {{place}}"
+          - "text.hint: {{date}} · {{note}}"
+        box: true
+  city-map:
+    of: canvas
+    base: {blank: true, ratio: 4/5}
+    item: {use: place-card}
+    link: {shape: smooth}
+    states: [hidden, available, discovered]
