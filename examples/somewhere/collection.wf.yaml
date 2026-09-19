@@ -1,0 +1,15 @@
+title: 收藏冊
+group: Somewhere
+extends: layouts/app
+with: {title: 收藏冊}
+slots:
+  main:
+    - text.title: "把城市，一張一張收進口袋。"
+    - progress: {value: 0.42, label: "TAIPEI · 18 / 43"}
+    - grid: [grow, grow]
+      items:
+        - memory-card: {place: "昭和布丁店", date: "FOOD · 04", note: "已發現", state: saved}
+        - memory-card: {place: "午後市場", date: "STREET · 02", note: "已發現", state: saved}
+        - place-card: {eyebrow: "???", title: "午夜以後的書店", meta: "尚未發現", state: hidden}
+        - place-card: {eyebrow: "???", title: "城市最高的早餐", meta: "尚未發現", state: hidden}
+    - alert: "再發現 2 個「夜晚」記憶，就會解鎖隱藏章節。"
