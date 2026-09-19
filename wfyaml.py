@@ -2115,6 +2115,15 @@ def _render_item(it, src=None, path=None):
     spot = d.pop('spotlight', None)
     note = d.pop('note', None)
     span = d.pop('span', None)
+    # 截斷是規格不是樣式：「這段最多兩行」PM 講得出來、RD 需要知道、AI 照著做得出來。
+    # 只開「幾行」與「要不要換行」，不開 overflow / text-overflow / white-space。
+    max_lines = d.pop('max-lines', None)
+    wrap = d.pop('wrap', None)
+    if max_lines is not None:
+        if not isinstance(max_lines, int) or isinstance(max_lines, bool) or max_lines < 1:
+            raise ValueError(f'max-lines 需要 >= 1 的整數（收到 {max_lines!r}）')
+    if wrap is not None and not isinstance(wrap, bool):
+        raise ValueError(f'wrap 只接 true/false（收到 {wrap!r}）')
     pin = d.pop('pin', None)          # 浮層：錨點(center/邊/角)
     modal = d.pop('modal', None)      # 浮層：擋後面(scrim + inert)
     layer = d.pop('layer', None)      # 浮層：z 帶(base/overlay/notify/top)
@@ -2144,8 +2153,16 @@ def _render_item(it, src=None, path=None):
         xattr['data-section'] = section_label
         xcls.append('wf-section')
     xattr.update(_dbg_attrs(esrc, epath))
+    styles = []
     if isinstance(span, int):
-        xattr['style'] = f'grid-column:span {span}'
+        styles.append(f'grid-column:span {span}')
+    if max_lines is not None:
+        xcls.append('wf-clamp')
+        styles.append(f'--wf-max-lines:{max_lines}')
+    elif wrap is False:
+        xcls.append('wf-nowrap')
+    if styles:
+        xattr['style'] = ';'.join(styles)
 
     if canvas is not None:
         core = render_canvas(canvas, xcls, xattr, esrc, epath)
@@ -2350,7 +2367,8 @@ def _expand_kit_node(it, basedir, ctx, stack):
         raise ValueError(f'kit 元件循環引用：{" -> ".join(stack + (marker,))}')
     params = _kit_params(name, spec, it[name])
     if spec.get('of') == 'canvas':
-        ann_keys = {'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state'}
+        ann_keys = {'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state',
+                'max-lines', 'wrap'}
         unknown = _ckeys(it) - {name} - ann_keys
         if unknown:
             raise ValueError(f'kit 型別 `{name}` 不接受 sibling {sorted(unknown)}')
@@ -2375,7 +2393,8 @@ def _expand_kit_node(it, basedir, ctx, stack):
                   'link_points': [point_by_identity[id(item)] for item in params['link_items']]}
         return [{**ann, '__kit_role': name, '__canvas': canvas}]
     kit_state = params.pop('state', None) if isinstance(params, dict) else None
-    ann_keys = {'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state'}
+    ann_keys = {'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state',
+                'max-lines', 'wrap'}
     unknown = _ckeys(it) - {name} - ann_keys
     if unknown:
         raise ValueError(f'kit 型別 `{name}` 不接受 sibling {sorted(unknown)}')
@@ -2795,6 +2814,7 @@ _GRAMMAR_KEYS = {'viewport', 'title', 'group', 'body', 'extends', 'with', 'slots
 # 已知 container 屬性 keys（sibling 掛在容器 dict 上）
 _CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'section', 'collapsed', 'box', 'gap', 'padding',
                     'justify', 'align', 'span', 'grow', 'scroll', 'scroll-x',
+                    'max-lines', 'wrap',
                     'name', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
                     'embed', 'with', 'slot', 'as', 'when', 'ui-state',
                     'collapsible', 'expanded', 'summary'}
@@ -2883,7 +2903,8 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
                 value = dict(params) if isinstance(params, dict) else params
                 if isinstance(value, dict): value.pop('state', None)
                 render_leaf({spec['of']: value}, [], {})
-            allowed = {name, 'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state'}
+            allowed = {name, 'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state',
+                       'max-lines', 'wrap'}
             extra = keys - allowed
             if extra:
                 raise ValueError(f'kit 型別 `{name}` 不接受 sibling {sorted(extra)}')
