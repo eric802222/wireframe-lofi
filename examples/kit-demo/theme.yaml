@@ -1,0 +1,13 @@
+tokens:
+  color: {surface: '#fffaf0', brand: '#7c3aed', brand-soft: '#ede9fe'}
+  border: {strong: '2px solid #7c3aed'}
+  space: {md: 14px, xl: 50px}
+  size: {jumbo: 88px}
+components:
+  jumbo-button:
+    padding: '{space.xl}'
+    min-height: '{size.jumbo}'
+  stamp-card:
+    background: '{color.surface}'
+    border: '{border.strong}'
+    state.next: {box-shadow: '0 0 0 {space.md} {color.brand-soft}'}

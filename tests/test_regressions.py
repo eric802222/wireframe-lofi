@@ -308,20 +308,21 @@ flow:
     brand: {$value: '#123456'}
     accent: '{color.brand}'
   space: {custom: 13px}
+  opacity: {hover: 0.8}
   preset:
     panel: {color: '{color.accent}', padding: '{space.custom}'}
 components:
   box:
     apply: [panel]
-    states: {selected: {background: '{color.brand}'}, hover: {opacity: 0.8}}
+    states: {selected: {background: '{color.brand}'}, hover: {opacity: '{opacity.hover}'}}
 bindings:
-  chosen: {text: '{color.brand}', radius: '{space.custom}', padding: 17px}
+  chosen: {text: '{color.brand}', radius: '{space.custom}', padding: '{space.custom}'}
 """)
         wf._load_theme(str(theme))
         css = wf._theme_css()
         for value in ('--wf-brand:#123456', 'padding:var(--wf-space-custom, 13px)',
                       'color:var(--wf-brand, #123456)', 'border-radius:var(--wf-space-custom, 13px)',
-                      'padding:17px', '[data-ui-state="selected"]', '[data-ui-state="hover"]'):
+                      'opacity:var(--wf-opacity-hover, 0.8)', '[data-ui-state="selected"]', '[data-ui-state="hover"]'):
             self.assertIn(value, css)
         self.assertNotIn('--wf-preset', css)
         wf._load_theme(None)

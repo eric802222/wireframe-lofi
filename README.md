@@ -519,5 +519,53 @@ python3 wfyaml.py lint --mockup examples/themes/gallery.yaml examples/gallery.wf
 python3 wfyaml.py --bundle-standalone --mockup examples/themes/gallery.yaml examples/gallery.wf.yaml
 ```
 
+### Kit：專案自己的元件型別
+
+`kit/components.yaml` 只宣告專案詞彙，不放樣式。工具會自動讀取頁面旁的這個路徑，也可用
+`--kit <file>` 明確選擇；因此換 kit 時，缺少的型別會在 lint 直接報錯。
+
+```yaml
+components:
+  jumbo-button: {of: button}
+  stamp-card:
+    props: [place, time]
+    states: [done, next, todo]
+    content:
+      - col: [{icon: star}, "text.hint: {{time}}", "text.strong: {{place}}"]
+        box: true
+```
+
+`of` 只能繼承內建 leaf；省略 `of` 時必須提供 `content`。組合只有有限的 `{{prop}}` 字串替換，
+沒有 if / each / 運算。畫面可在任何 items 位置使用型別：
+
+```yaml
+- jumbo-button: {text: 開始冒險, to: next}
+- stamp-card: {place: 渡月橋, time: "11:08", state: next}
+```
+
+樣式只放 theme 的 `components`，kit 內出現 style 等未知欄位會 error。theme 的 CSS 值必須引用
+tokens；字面尺寸、色碼與非零數字會 error。`0`、`none`、`transparent`、`inherit`、
+`currentColor`、`auto` 可作結構值。state 必須先由 kit 宣告：
+
+```yaml
+tokens:
+  color: {surface: '#fff', brand-soft: '#ede9fe'}
+  space: {md: 14px, xl: 50px}
+components:
+  jumbo-button: {padding: '{space.xl}'}
+  stamp-card:
+    background: '{color.surface}'
+    state.next: {box-shadow: '0 0 0 {space.md} {color.brand-soft}'}
+```
+
+不加 mockup 時，特化元件退回原 leaf 灰階外觀，組合元件使用灰階結構。兩者都輸出
+`data-wf-role`，debug 的 invocation path 維持穩定。`--strict-kit` 會禁止頁面直接使用 leaf、widget
+或裸露 `box`，只留下 kit 型別與 row/col/grid 等基本排版。lint 多檔時若相同容器結構出現在至少
+三個畫面，會輸出不影響 exit code 的抽取提示。
+
+```bash
+python3 wfyaml.py lint --kit kit/components.yaml --strict-kit pages/*.wf.yaml
+```
+
 > **Theming hook**：圓角/間距/字體走 `assets/wf.css` `:root` 的 CSS 變數——圓角 `--wf-radius`/`--wf-radius-pill`、間距 `--wf-space-sm/md/lg`、字體 `--wf-font`/`--wf-font-size`/`--wf-h1|h2|h3`、頁框 `--wf-page-border`/`--wf-page-pad`。改一處即全域生效；覆蓋 `:root` 即成一個 theme（產品色走 `--mockup <theme.yaml>` binding）。
 > 要更新視覺改 `assets/wf.css`；要更新圖庫用 Font Awesome / Lucide 來源重新打包後覆蓋 `assets/*.json.gz`。

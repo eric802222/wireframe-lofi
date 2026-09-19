@@ -1,0 +1,6 @@
+viewport: 390x844
+title: Kit 元件庫
+body:
+  - text.heading: 專案詞彙
+  - stamp-card: {place: 渡月橋, time: "11:08", state: next}
+  - jumbo-button: {text: 開始冒險, to: next}

@@ -20,3 +20,10 @@ HTML 限定 viewport 高度；PNG／SVG 的 show-all 模式會展開內容並畫
 
 `gallery.wf.yaml` 搭配 `themes/gallery.yaml` 展示具名封面、avatar 與 SVG 圖示。
 不加 `--mockup` 時仍是線框佔位；素材放在 `themes/gallery.assets/`，產物內嵌且可離線。
+
+`kit-demo/` 展示 kit 的 leaf 特化、組合元件、props/state 與 token-only theme：
+
+```bash
+python3 wfyaml.py lint --kit examples/kit-demo/kit/components.yaml --mockup examples/kit-demo/theme.yaml examples/kit-demo/page.wf.yaml
+python3 wfyaml.py --kit examples/kit-demo/kit/components.yaml --mockup examples/kit-demo/theme.yaml examples/kit-demo/page.wf.yaml
+```

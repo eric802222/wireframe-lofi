@@ -7,13 +7,15 @@
 # Layer2 邊註（note）對齊靠瀏覽器量測後烤進 DOM（零 JS 產物）。
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
-DEBUG=0; BUNDLE=0; STANDALONE=0; STYLE=""; MOCKUP=""; STORY=""
+DEBUG=0; BUNDLE=0; STANDALONE=0; STYLE=""; MOCKUP=""; STORY=""; KIT=""; STRICT_KIT=0
 while :; do case "$1" in
   --debug) DEBUG=1; shift;;   # 出 .debug.html（可點擊註記+匯出）
   --bundle-standalone) BUNDLE=1; STANDALONE=1; shift;;
   --bundle) BUNDLE=1; shift;; # 併成單檔 prototype.html（左 nav + 走動線）；可疊 --debug
   --style) STYLE="$2"; shift 2;;  # 風格：clean(預設) / sketch(手繪框)。mockup 樣貌由 --mockup <theme.yaml> 決定，不進 --style。
   --mockup) MOCKUP="$2"; shift 2;;  # P7 theme binding：進 mockup 模式 + 該 theme 綁定
+  --kit) KIT="$2"; shift 2;;        # 專案自訂元件型別
+  --strict-kit) STRICT_KIT=1; shift;; # 畫面只用 kit 型別 + 基本排版
   --story) STORY="$2"; shift 2;;    # SAC：單獨生成故事版（無 --bundle）或渲進 bundle（有 --bundle）
   --traceback) export WF_TRACEBACK=1; shift;;
   *) break;; esac; done
@@ -37,6 +39,13 @@ STORY_ARG=""
 if [ -n "$STORY" ]; then
   STORY_ARG="--story $STORY"
 fi
+KIT_ARG=""
+if [ -n "$KIT" ]; then
+  KIT_ARG="--kit $KIT"
+fi
+if [ "$STRICT_KIT" = 1 ]; then
+  KIT_ARG="$KIT_ARG --strict-kit"
+fi
 
 PY=""
 for cand in "${WFYAML_PY:-}" python3 /usr/bin/python3 /opt/homebrew/bin/python3 python; do
@@ -54,12 +63,12 @@ fi
 # bundle / debug：都在瀏覽器跑、不需截圖 → 直接用 compiler 產出後結束
 # SAC 單獨生成模式：--story 無 --bundle → 直接交給 compiler（產 <id>.story.html）
 if [ -n "$STORY" ] && [ "$BUNDLE" != 1 ]; then
-  "$PY" "$DIR/wfyaml.py" $STORY_ARG $MOCKUP_ARG
+  "$PY" "$DIR/wfyaml.py" $STORY_ARG $MOCKUP_ARG $KIT_ARG
   exit $?
 fi
 if [ "$BUNDLE" = 1 ]; then
   FLAGS="--bundle"; [ "$STANDALONE" = 1 ] && FLAGS="--bundle-standalone"; [ "$DEBUG" = 1 ] && FLAGS="$FLAGS --debug"; [ -n "$STYLE" ] && FLAGS="$FLAGS --style $STYLE"
-  FLAGS="$FLAGS $MOCKUP_ARG $STORY_ARG"
+  FLAGS="$FLAGS $MOCKUP_ARG $KIT_ARG $STORY_ARG"
   "$PY" "$DIR/wfyaml.py" $FLAGS "$@"
   if [ "$DEBUG" = 1 ]; then
     echo "  → 開 prototype.debug.html：左 nav 切頁走動線；切「模式:註記」點元素寫建議→「匯出」貼給我"
@@ -70,13 +79,15 @@ if [ "$BUNDLE" = 1 ]; then
 fi
 if [ "$DEBUG" = 1 ]; then
   SF=""; [ -n "$STYLE" ] && SF="--style $STYLE"
-  "$PY" "$DIR/wfyaml.py" --debug $SF $MOCKUP_ARG "$@"
+  "$PY" "$DIR/wfyaml.py" --debug $SF $MOCKUP_ARG $KIT_ARG "$@"
   echo "  → 用瀏覽器開 .debug.html：點元素寫建議，右上「匯出」複製後貼給我改 YAML"
   exit 0
 fi
 
 export WFYAML_STYLE="$STYLE"
 export WFYAML_MOCKUP="$MOCKUP"
+export WFYAML_KIT="$KIT"
+export WFYAML_STRICT_KIT="$STRICT_KIT"
 "$PY" - "$DIR" "$@" <<'PYEOF'
 import sys, os, glob
 SKILL_DIR = sys.argv[1]
@@ -84,6 +95,10 @@ sys.path.insert(0, SKILL_DIR)
 import wfyaml
 # 若 CLI 帶了 --mockup，於截圖管線也載入 theme（wfyaml module-level _THEME 生效）
 _mock = os.environ.get('WFYAML_MOCKUP')
+_kit = os.environ.get('WFYAML_KIT')
+if _kit:
+    wfyaml.cli_entry(lambda: wfyaml._load_kit(_kit, explicit=True))
+wfyaml._STRICT_KIT = os.environ.get('WFYAML_STRICT_KIT') == '1'
 if _mock:
     wfyaml.cli_entry(lambda: wfyaml._load_theme(_mock))
 from playwright.sync_api import sync_playwright
