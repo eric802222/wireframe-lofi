@@ -523,3 +523,34 @@ class SectionTests(unittest.TestCase):
     def test_section_requires_body_list(self):
         with self.assertRaises(ValueError):
             wf.render_item({'section': '沒有內容'})
+
+
+class SectionExpansionTests(unittest.TestCase):
+    """section 的 body 也要被 expand 走訪，否則藏在裡面的 kit 元件／embed 會靜默失效。"""
+
+    KIT = """
+components:
+  metric-card:
+    props: [label, value]
+    content:
+      - col: [ "text.hint: {{label}}", "text.title: {{value}}" ]
+        box: true
+"""
+
+    def test_kit_component_inside_section_expands(self):
+        with tempfile.TemporaryDirectory() as d:
+            kit = os.path.join(d, 'kit.yaml')
+            page = os.path.join(d, 'p.wf.yaml')
+            open(kit, 'w', encoding='utf-8').write(self.KIT)
+            open(page, 'w', encoding='utf-8').write(
+                'viewport: 390x600\nbody:\n'
+                '  - section: 指標\n'
+                '    body:\n'
+                '      - metric-card: {label: 待處理, value: "128"}\n')
+            wf_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'wfyaml.py')
+            proc = subprocess.run([sys.executable, wf_path, '--kit', kit, page],
+                                  capture_output=True, text=True, cwd=d)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            html = open(os.path.join(d, 'p.html'), encoding='utf-8').read()
+            self.assertIn('待處理', html)
+            self.assertIn('data-wf-role="metric-card"', html)

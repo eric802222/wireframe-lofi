@@ -2476,6 +2476,8 @@ def _child_list_keys(nd):
     # grid 的 list 是欄寬 tracks，不是子節點。
     keys = [k for k in ('items', 'row', 'col') if isinstance(nd.get(k), list)]
     keys += [k for k in _overlay_tokens() if isinstance(nd.get(k), list)]
+    if 'section' in nd and isinstance(nd.get('body'), list):   # section 的 body 也是結構子清單
+        keys.append('body')
     return keys
 
 
