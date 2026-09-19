@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """匯出：把 theme 的 tokens 與 kit 的 props/states 交給工具鏈外的世界。
 
-    python3 wfexport.py tokens <theme.yaml> [--format json|css|ts]   # 預設 json（DTCG）
+    python3 wfexport.py tokens <theme.yaml> [--format json|css|ts] [--kit <kit.yaml>]
     python3 wfexport.py types  <kit.yaml>   [--format ts|json] [--types-map <map.yaml>]
 
 設計立場：
@@ -270,8 +270,14 @@ def _tokens_as_ts(tokens):
     return '\n'.join(lines)
 
 
-def _tokens_export(theme_path, fmt):
-    """`tokens`：把 theme 的 tokens 匯出成 DTCG JSON / CSS / TS。"""
+def _tokens_export(theme_path, fmt, kit_path=None):
+    """`tokens`：把 theme 的 tokens 匯出成 DTCG JSON / CSS / TS。
+
+    theme 若為 kit 元件（例如 canvas）寫了 components 規則，
+    驗證時需要同一份 kit 才認得那些型別 —— 與 `lint --mockup --kit` 一致。
+    """
+    if kit_path:
+        wf._load_kit(kit_path, explicit=True)
     wf._load_theme(theme_path)                       # 沿用既有驗證（未定義 ref、循環在此炸）
     tokens = wf._THEME_TOKENS
     if fmt == 'css':
@@ -301,7 +307,8 @@ def main(argv=None):
         return 1
     cmd, rest = argv[0], argv[1:]
     tmap = _argval('--types-map', rest)
-    paths = [a for a in rest if not a.startswith('-') and a != tmap]
+    kit = _argval('--kit', rest)
+    paths = [a for a in rest if not a.startswith('-') and a not in (tmap, kit)]
     fmt = (_argval('--format', rest) or ('json' if cmd == 'tokens' else 'ts')).lower()
     if fmt in paths:
         paths.remove(fmt)
@@ -312,7 +319,7 @@ def main(argv=None):
         if cmd == 'tokens':
             if fmt not in ('json', 'css', 'ts'):
                 raise ValueError(f"tokens 的 --format 只接受 json / css / ts（收到 {fmt!r}）")
-            _tokens_export(paths[0], fmt)
+            _tokens_export(paths[0], fmt, kit)
         else:
             if fmt not in ('ts', 'json'):
                 raise ValueError(f"types 的 --format 只接受 ts / json（收到 {fmt!r}）")

@@ -156,5 +156,49 @@ class TypesTest(unittest.TestCase):
         self.assertIn('沒有的元件', run('types', self.kit, '--types-map', bad).stderr)
 
 
+class KitContextTest(unittest.TestCase):
+    """theme 若含 kit 元件（canvas 等）的 components 規則，tokens 匯出需要同一份 kit。"""
+
+    KIT = """
+components:
+  trip-map:
+    of: canvas
+    base: {grid: true}
+    item: {use: pin}
+    link: {shape: smooth}
+    states: [done, todo]
+  pin:
+    props: [place]
+    content:
+      - col: [ "text.strong: {{place}}" ]
+"""
+    THEME = """
+tokens:
+  color:  { brand: '#7c3aed', brand-soft: '#ede9fe' }
+  space:  { md: 14px }
+  stroke: { md: 3px, dash: '8 6' }
+components:
+  trip-map:
+    link: { stroke: '{color.brand}', stroke-width: '{stroke.md}', dash: true }
+"""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.kit = write(self.tmp, 'kit.yaml', self.KIT)
+        self.theme = write(self.tmp, 'theme.yaml', self.THEME)
+
+    def test_without_kit_reports_unknown_component(self):
+        proc = run('tokens', self.theme)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn('link', proc.stderr)
+
+    def test_with_kit_exports(self):
+        proc = run('tokens', self.theme, '--kit', self.kit)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads(proc.stdout)
+        self.assertEqual(out['color']['$type'], 'color')
+        self.assertEqual(out['space']['md']['$value'], {'value': 14, 'unit': 'px'})
+
+
 if __name__ == '__main__':
     unittest.main()
