@@ -177,7 +177,13 @@ class RegressionTests(unittest.TestCase):
     def test_placeholder_rendering_in_input_image_and_avatar(self):
         for role in ('input', 'image', 'avatar'):
             with self.subTest(role=role):
-                self.assertIn('wf-placeholder', wf.render_leaf({role: '[待定]'}, [], {}))
+                html = wf.render_leaf({role: '[待定]'}, [], {})
+                if role == 'input':
+                    # input 現在是真的 <input>：未定值落在 placeholder 屬性，
+                    # 沒有虛線底線的視覺標記（取捨：換得可打字）
+                    self.assertIn('placeholder="[待定]"', html)
+                else:
+                    self.assertIn('wf-placeholder', html)
 
     def test_bundle_titles_groups_and_stable_ids(self):
         files = [self.write('a.wf.yaml', 'title: 首頁\ngroup: 旅行\nbody: [{button: 行程, to: b}]'),
@@ -452,3 +458,42 @@ bindings:
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class InteractiveFormTests(unittest.TestCase):
+    """表單葉子渲染成真的 HTML 控制項：互動由瀏覽器原生提供，仍零 JS。"""
+
+    def test_input_is_a_real_input(self):
+        html = wf.render_leaf({'input': {'placeholder': '打一句', 'value': '已填'}}, [], {})
+        self.assertTrue(html.startswith('<input '))
+        self.assertIn('value="已填"', html)
+        self.assertIn('placeholder="打一句"', html)
+
+    def test_select_is_a_real_select_with_options(self):
+        html = wf.render_leaf({'select': {'text': '台北', 'options': ['台北', '台中']}}, [], {})
+        self.assertTrue(html.startswith('<select '))
+        self.assertIn('<option>台北</option>', html)
+        self.assertIn('<option>台中</option>', html)
+
+    def test_choice_has_native_input_and_label(self):
+        html = wf.render_leaf({'checkbox': {'label': '同意', 'checked': True}}, [], {})
+        self.assertIn('type="checkbox" checked', html)
+        self.assertIn('<label class="wf-choice-label"', html)   # 點文字也能勾
+
+    def test_radio_group_shares_name(self):
+        a = wf.render_leaf({'radio': {'label': '郵寄', 'group': '收件'}}, [], {})
+        b = wf.render_leaf({'radio': {'label': '電子', 'group': '收件'}}, [], {})
+        self.assertIn('name="收件"', a)
+        self.assertIn('name="收件"', b)                          # 同組互斥
+
+    def test_reveals_emits_css_only_rule(self):
+        wf._REVEAL_RULES.clear()
+        wf.render_leaf({'checkbox': {'label': '我要收據', 'reveals': '發票欄位'}}, [], {})
+        css = wf._reveal_css()
+        self.assertIn(':not(:checked)', css)
+        self.assertIn('[data-name="發票欄位"]', css)
+        self.assertIn('display:none', css)
+
+    def test_choice_rejects_unknown_key(self):
+        with self.assertRaises(ValueError):
+            wf.render_leaf({'checkbox': {'label': 'x', 'onClick': 'doThing()'}}, [], {})
