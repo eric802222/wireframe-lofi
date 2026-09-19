@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wireframe-lofi"
+version = "0.1.0"
+description = "語義化 YAML → 低保真、零 JS 的 wireframe；一份來源同時輸出線框與 mockup"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pyyaml>=6.0"]
+keywords = ["wireframe", "design-tokens", "dsl", "prototyping", "design-system"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: User Interfaces",
+  "Programming Language :: Python :: 3 :: Only",
+]
+
+[project.optional-dependencies]
+# 截圖（.png / .svg）才需要；lint、編譯 HTML、匯出都不需要
+shot = ["playwright>=1.40"]
+
+[project.urls]
+Homepage = "https://github.com/eric802222/wireframe-lofi"
+Issues = "https://github.com/eric802222/wireframe-lofi/issues"
+Changelog = "https://github.com/eric802222/wireframe-lofi/blob/main/CHANGELOG.md"
+
+[project.scripts]
+wfyaml = "wfyaml:console"
+wfexport = "wfexport:main"
+wfcheck = "wfcheck:main"
+
+[tool.setuptools]
+py-modules = ["wfyaml", "wfexport", "wfcheck", "flowmap"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = ["assets/*"]
