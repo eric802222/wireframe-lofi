@@ -1,0 +1,33 @@
+name: 功能建議
+description: 新語彙、新輸出、新檢查
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解決什麼問題
+      description: 描述情境，先不要描述解法
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提議的做法
+      description: 最好附上 YAML 寫起來的樣子
+      render: yaml
+  - type: textarea
+    id: boundary
+    attributes:
+      label: 界線在哪
+      description: |
+        這個專案的價值來自「刻意不做什麼」。請說明這個提議**不**包含什麼，
+        以及為什麼它不會把 DSL 變成程式語言。
+    validations: {required: true}
+  - type: checkboxes
+    id: redlines
+    attributes:
+      label: 與紅線的關係
+      options:
+        - label: 不需要在畫面層寫顏色、像素或字級
+        - label: 不需要在 theme 寫字面值（只用 token 參照）
+        - label: 不需要條件、迴圈或運算式
+        - label: 不會讓 `data-wf-path` 失去穩定性（評審定位仍可用）
