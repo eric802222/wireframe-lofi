@@ -1122,12 +1122,38 @@ def _load_theme_assets(assets, theme_path):
             if mime == 'image/svg+xml':
                 entry['icon'] = _safe_asset_svg(raw, True)
                 raw = _safe_asset_svg(raw).encode('utf-8')
+            else:
+                # link 模式只處理點陣圖：SVG 會被 _safe_asset_svg 消毒後內嵌（也當 icon 用），
+                # 直接連外部檔等於跳過消毒，而且 SVG 本來就小，沒有連結的必要。
+                entry['path'] = os.path.abspath(os.path.join(os.path.dirname(theme_path), relative))
             entry['uri'] = f'data:{mime};base64,' + base64.b64encode(raw).decode('ascii')
             total += len(entry['uri'])
         except (OSError, ET.ParseError, ValueError) as e:
             _THEME_ASSET_WARNINGS.append(f'素材 {name} 無法讀取 {relative}：{e}；使用佔位')
     if total > 5 * 1024 * 1024:
         _THEME_ASSET_WARNINGS.append(f'素材內嵌總量超過 5MB（{total} bytes；重複使用會增加產物大小）')
+
+
+
+_ASSET_MODE = 'inline'      # inline（自含單檔）/ link（引用 *.assets/ 資料夾）
+
+
+def _relink_assets(out_path):
+    """link 模式：把素材的 src 換成「相對於這個產出檔」的路徑。
+
+    相對路徑必須以產出檔為基準（同一份 theme 可能被不同目錄的畫面使用），
+    所以在每次寫檔前重算，而不是在載入 theme 時算一次。
+
+    交換條件：產物不再是單檔，要連同 *.assets/ 資料夾一起帶走；
+    換來的是 repo 與產出都小得多，AI 讀得起（見 #52）。
+    """
+    if _ASSET_MODE != 'link':
+        return
+    outdir = os.path.dirname(os.path.abspath(out_path)) or '.'
+    for entry in _THEME_ASSETS.values():
+        src = entry.get('path')
+        if src and os.path.exists(src):
+            entry['uri'] = os.path.relpath(src, outdir).replace(os.sep, '/')
 
 
 def _warn_asset_output(output):
@@ -1767,6 +1793,28 @@ def _slug(s):
 
 def _pgid(page, frag=''):
     return 'wf-pg-' + _slug(page) + (('-' + _slug(frag)) if frag else '')
+
+
+
+def _asset_weight_note(path):
+    """產出檔裡 base64 素材的佔比。
+
+    套了 --mockup 之後素材以 base64 內嵌，一份 10 畫面的 bundle 實測 3.39 MB、
+    97% 是 base64（約 85 萬 token）。人看不出差別，但 AI agent 一旦整份讀進去就
+    燒掉整個 context，而且那些位元組對它毫無用處 —— 它看不到圖。
+
+    所以編完就講一聲，並指出便宜的替代做法。門檻取 512 KB：低於這個量整份讀還好。
+    """
+    try:
+        raw = open(path, encoding='utf-8').read()
+    except OSError:
+        return ''
+    inlined = sum(len(m) for m in re.findall(r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+', raw))
+    if len(raw) < 512 * 1024 or not inlined:
+        return ''
+    return (f"\n  note: {len(raw)/1048576:.1f} MB，其中 {inlined/len(raw)*100:.0f}% 是內嵌素材"
+            f"（約 {len(raw)//4//10000} 萬 token）。人與瀏覽器沒差，但 AI 不要整份讀 ——\n"
+            f"        規格看 .wf.yaml，要驗證用 lint / wfcheck，要對照語義用 grep data-name。")
 
 
 def _href(target):
@@ -3628,7 +3676,7 @@ def main():
         if theme:
             _load_theme(theme)
         if not files:
-            print("usage: wfyaml.py lint [--kit <kit.yaml> [--strict-kit]] [--mockup <theme.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
+            print("usage: wfyaml.py lint [--kit <kit.yaml> [--strict-kit]] [--mockup <theme.yaml>] [--assets inline|link] <file.wf.yaml> [...]", file=sys.stderr)
             sys.exit(1)
         total_err, total_warn = 0, len(_THEME_ASSET_WARNINGS) + len(_THEME_WARNINGS)
         if not kit_path and files:
@@ -3649,8 +3697,10 @@ def main():
     kit_path = _argval('--kit')
     _STRICT_KIT = '--strict-kit' in sys.argv
     story_path = _argval('--story')
+    asset_mode = _argval('--assets')
     skip = {'--debug', '--bundle', '--bundle-standalone', '--no-lint', '--strict-kit', '-o', out_path,
-            '--style', style, '--mockup', mockup_theme, '--kit', kit_path, '--story', story_path}
+            '--style', style, '--mockup', mockup_theme, '--kit', kit_path, '--story', story_path,
+            '--assets', asset_mode}
     args = [a for a in sys.argv[1:] if a not in skip]
     if not args and not story_path:
         print("usage: wfyaml.py [--debug] [--bundle|--bundle-standalone [-o out.html]] [--kit <kit.yaml> [--strict-kit]] [--style <name>] [--mockup <theme.yaml>] [--story <x.story.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
@@ -3702,6 +3752,12 @@ def main():
         print(f"  story: {out}（底圖 {os.path.basename(spath)} + 故事疊加）")
         return
     # ---- render 前 lint gate（--no-lint 可略過；errors 早失敗、warnings 印但續）----
+    global _ASSET_MODE
+    mode = asset_mode or 'inline'
+    if mode not in ('inline', 'link'):
+        print(f"error: --assets 只接 inline / link（收到 {mode!r}）", file=sys.stderr)
+        sys.exit(2)
+    _ASSET_MODE = mode
     skip_lint = '--no-lint' in sys.argv
     if not skip_lint:
         total_err = 0
@@ -3714,9 +3770,14 @@ def main():
     if do_bundle:
         out = out_path or os.path.join(os.path.dirname(args[0]) or '.',
                                        'prototype' + ('.debug' if debug else '') + '.html')
+        if standalone and _ASSET_MODE == 'link':
+            print('error: --bundle-standalone 的定義就是單檔自含，與 --assets link 互斥',
+                  file=sys.stderr)
+            sys.exit(2)
+        _relink_assets(out)
         open(out, 'w').write(bundle(args, debug=debug, style=style, story=story_path, standalone=standalone))
         extra = (' [style:' + style + ']' if style else '') + (f' [story:{os.path.basename(story_path)}]' if story_path else '')
-        print(f"  bundled: {out} ({len(args)} 檔){extra}")
+        print(f"  bundled: {out} ({len(args)} 檔){extra}{_asset_weight_note(out)}")
         return
     for path in args:
         src = open(path).read()
@@ -3724,6 +3785,7 @@ def main():
         stem = re.sub(r'\.(wf\.)?ya?ml$', '', path)
         base = os.path.basename(stem)
         suffix = '.debug.html' if debug else '.html'
+        _relink_assets(stem + suffix)          # 相對路徑以產出檔為基準
         for rid, htmlout in compile_all(src, basedir, base, debug=debug, style=style, source_name=path):
             out = stem + (('.' + rid) if rid else '') + suffix
             open(out, 'w').write(htmlout)

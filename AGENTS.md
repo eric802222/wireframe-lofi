@@ -18,6 +18,8 @@ python3 wfcheck.py flow *.wf.yaml --entry <進入點>            # 動線有沒�
 python3 wfyaml.py --kit kit/components.yaml <改過的檔>        # 真的編得出來
 ```
 
+第四個選配:`python3 wfcheck.py gaps *.wf.yaml` —— 報「源碼沒說的事」(info 級別,不擋 CI)。
+
 `flow` 會報三種破洞：**斷鏈**（`to:` 指到不存在的畫面）、**孤島**（沒有入口）、
 **死路**（沒有出口）。這三種都是 error，要修掉。
 
@@ -142,6 +144,47 @@ python3 wfyaml.py --kit kit/components.yaml <改過的檔>        # 真的編得
 | 連結點下去沒反應 | 用 `link:` 寫站內導航；它的 `to:` 原樣輸出成 href，不補 `.html`、bundle 也不改成頁內錨點 | 站內跳頁用 `button:` 或在節點上寫 `to:`；`link:` 只給站外完整 URL |
 | 角標/浮層跑到畫面左上角 | `pin` 錨在最近的 `box`／`.wf-root`，父容器沒有 `box: true` 就會飄上去 | 父容器加 `box: true`；要貼整個畫面請用 `modal` 或 `dialog`/`toast` 這類 sugar |
 | 說明文字爆版 | 假資料很短，真資料會長 | 需要截斷的地方寫 `max-lines: 2`（只能用在文字節點，不能和 `wrap: false` 並用）|
+
+## 交付物就是 YAML + 產出的 HTML
+
+不另外寫規格文件。HTML 帶著 `data-name` / `data-wf-role` / `data-ui-state`，
+和 YAML 用同一套名字對得起來 —— 一份是規格，一份是它編出來的樣子。
+
+### ⚠️ 不要整份讀產出的 HTML
+
+**規格讀 YAML，HTML 只在需要驗證某一點時用 grep 取局部。**
+
+套了 `--mockup` 之後素材以 base64 內嵌，實測一份 10 畫面的 bundle：
+**3.39 MB，其中 97% 是 base64**（約 85 萬 token，真正的內容只有 2.5 萬）。
+而且那些位元組對你毫無用處 —— 你看不到圖。
+
+```bash
+grep -o 'data-name="[^"]*"' chat.html | sort -u    # 要對照語義身份
+grep -c 'wf-clamp' chat.html                       # 要確認某條規則有生效
+python3 wfyaml.py lint / wfcheck.py flow / gaps    # 要驗證正確性
+```
+
+需要整份讀的時候，用 `--assets link`（素材留在 `*.assets/` 資料夾，產物只存相對路徑）
+或不帶 `--mockup` 的版本。IG 10 畫面實測：inline 3.6 MB → link 380 KB。
+
+| 模式 | 用在哪 |
+|---|---|
+| `--assets inline`（預設） | 要把單一檔案丟給別人開 —— `--bundle-standalone` 只能用這個 |
+| `--assets link` | 平常開發、CI、AI 讀 —— 產物小，但要連同 `*.assets/` 資料夾一起帶走 |
+
+**DSL 表達不了的約束寫在 `note:` 裡**，不要另開檔案、也不要塞進畫面文字：
+
+```yaml
+- input: 訊息…
+  note: 上限 500 字；必填；送出失敗時保留草稿
+```
+
+`note:` 屬於標註面，可剝離、不影響視覺，跟著 YAML 一起進 git、一起被 diff 看見。
+驗證規則、API 來源、分頁行為、權限 —— 這些 DSL 沒有語彙，也不該加（加了就往系統
+規格滑坡），它們的位置就是 `note:`。
+
+**狀態要宣告出來**：空、錯誤、載入不是「之後再說」，用 `routes:` 加變體、
+元件內以 `when:` 切換。`wfcheck.py gaps` 會提醒哪一頁只有單一狀態。
 
 ## 紅線（違反就會被 lint 擋，或破壞這個工具的價值）
 

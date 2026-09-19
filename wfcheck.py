@@ -3,6 +3,7 @@
 
     python3 wfcheck.py flow <file.wf.yaml> [...] [--entry <畫面>] [--stages] [--quiet]
     python3 wfcheck.py spec <file.wf.yaml> [...] [--format md|json]
+    python3 wfcheck.py gaps <file.wf.yaml> [...] [--quiet]
 
 「哪邊動線不見了」不該靠人看。這支把 `to:` 走成一張圖，報告結構上的破洞：
 
@@ -207,12 +208,103 @@ def spec_export(paths, fmt, kit_path=None):
     print('\n'.join(spec_markdown(s) for s in specs))
 
 
+
+# ── gaps：源碼「沒說的事」───────────────────────────────────────────────
+# AI 讀 YAML 能知道畫面有什麼，但推不出「這裡沒有宣告空狀態」——缺席無法從內容推出來。
+# 這些洞 DSL 其實表達得了（routes + when 寫狀態、note: 寫 RD 約束），只是沒人提醒。
+# 所以這支不產生另一份規格文件（那會變成第四份平行製品），而是像 lint / flow 一樣
+# 指出源碼哪裡有洞，修法就在源碼本身。
+#
+# 全部是 info 級別、exit 0：只有單一狀態有時是刻意的，不該擋 CI。
+_INPUT_ROLES = ('input', 'select', 'checkbox', 'radio')
+
+
+def _expanded_body(doc, path):
+    """kit 元件裡的輸入控制項也算這一頁的規格；展開失敗就退回原樹。"""
+    body = doc.get('body')
+    if not isinstance(body, list):
+        return doc
+    try:
+        basedir = os.path.dirname(os.path.abspath(path)) or '.'
+        wf._ensure_kit(basedir)
+        return {**doc, 'body': wf.expand(body, basedir, {})}
+    except Exception:
+        return doc
+
+
+def _collect_inputs(obj, found, label=None):
+    """→ [(角色, 值的簡短描述, 有沒有 note)]。"""
+    if isinstance(obj, dict):
+        role = next((r for r in _INPUT_ROLES if r in obj), None)
+        if role:
+            value = obj[role]
+            desc = value if isinstance(value, str) else (
+                (value or {}).get('placeholder') or (value or {}).get('label') or '') if isinstance(value, dict) else ''
+            found.append((role, str(desc)[:24], bool(obj.get('note'))))
+        for k, v in obj.items():
+            if k not in ('__src', '__path', 'note'):
+                _collect_inputs(v, found)
+    elif isinstance(obj, list):
+        for item in obj:
+            _collect_inputs(item, found)
+    return found
+
+
+def page_gaps(path):
+    """→ [(kind, 訊息)]。只報「源碼沒說的事」，不重講源碼已經說的。"""
+    doc = _load(path)
+    base = re.sub(r'\.(wf\.)?ya?ml$', '', os.path.basename(path))
+    merged = _expanded_body(_with_layout(doc, path), path)
+    out = []
+
+    states = [wf._route_entry(r)[0] or 'default' for r in (doc.get('routes') or [])]
+    if len(states) <= 1:
+        out.append(('states', f'{base} 只有單一狀態 —— 空／錯誤／載入態都沒有宣告'
+                              f'（用 routes: 加變體，元件內以 when: 切換）'))
+
+    inputs = _collect_inputs(merged, [])
+    bare = [f'`{desc or role}`' for role, desc, has_note in inputs if not has_note]
+    if bare:
+        out.append(('constraints', f'{base} 有 {len(bare)} 個輸入控制項沒有 note: 約束'
+                                   f'（{"、".join(bare[:3])}{"…" if len(bare) > 3 else ""}）'
+                                   f' —— 長度、必填、失敗行為這些 DSL 沒有語彙，寫在 note: 裡'))
+
+    undefined = sorted(set(_undefined_values(merged, [])))
+    if undefined:
+        out.append(('undefined', f'{base} 有 {len(undefined)} 處未定值：'
+                                 f'{"、".join(undefined[:4])}{"…" if len(undefined) > 4 else ""}'))
+    return out
+
+
+def gaps(paths, quiet=False):
+    total = []
+    for path in paths:
+        total += [(path, kind, msg) for kind, msg in page_gaps(path)]
+    if not quiet:
+        for _, _, msg in total:
+            print(f'info:  {msg}')
+        by_kind = {}
+        for _, kind, _ in total:
+            by_kind[kind] = by_kind.get(kind, 0) + 1
+        summary = '、'.join(f'{k} {v}' for k, v in sorted(by_kind.items())) or '無'
+        print(f'═══ 規格缺口：{len(paths)} 畫面 / {len(total)} 項（{summary}）═══')
+        print('（info 級別，不影響 exit code：只有單一狀態有時是刻意的）')
+    return total
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv or argv[0] not in ('flow', 'spec'):
+    if not argv or argv[0] not in ('flow', 'spec', 'gaps'):
         print(__doc__.strip(), file=sys.stderr)
         return 1
     cmd, rest = argv[0], argv[1:]
+    if cmd == 'gaps':
+        paths = [a for a in rest if not a.startswith('-')]
+        if not paths:
+            print('usage: wfcheck.py gaps <file.wf.yaml> [...] [--quiet]', file=sys.stderr)
+            return 1
+        gaps(paths, quiet='--quiet' in rest)
+        return 0                      # info 級別，永遠不擋 CI
     if cmd == 'spec':
         fmt = next((rest[i + 1] for i, a in enumerate(rest) if a == '--format' and i + 1 < len(rest)), 'md')
         kit = next((rest[i + 1] for i, a in enumerate(rest) if a == '--kit' and i + 1 < len(rest)), None)
