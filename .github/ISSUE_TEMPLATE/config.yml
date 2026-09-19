@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 設計決策的來龍去脈
+    url: https://github.com/eric802222/wireframe-lofi/blob/main/DISCUSSION.md
+    about: 提語彙或架構的建議前，先看這裡是否已經討論過、為何那樣決定

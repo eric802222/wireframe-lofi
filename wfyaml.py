@@ -3410,5 +3410,10 @@ def main():
             print(f"  compiled: {out}")
 
 
+def console():
+    """console_scripts 進入點：沿用 cli_entry 的作者錯誤格式（不噴 traceback）。"""
+    return cli_entry(main)
+
+
 if __name__ == '__main__':
     cli_entry(main)

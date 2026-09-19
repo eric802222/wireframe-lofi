@@ -1,0 +1,33 @@
+name: Bug 回報
+description: 產物不如預期、報錯、或行為與文件不符
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 症狀
+      description: 發生什麼、預期什麼
+    validations: {required: true}
+  - type: textarea
+    id: repro
+    attributes:
+      label: 最小重現
+      description: 能重現的最小 YAML 與指令。愈小愈快修掉
+      render: yaml
+    validations: {required: true}
+  - type: input
+    id: cmd
+    attributes:
+      label: 指令
+      placeholder: python wfyaml.py lint --kit kit/components.yaml page.wf.yaml
+  - type: textarea
+    id: output
+    attributes:
+      label: 實際輸出
+      description: 錯誤訊息請附完整一段；需要 traceback 可加 WF_TRACEBACK=1
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      placeholder: commit sha 或 tag
