@@ -10,3 +10,9 @@ components:
           - "text.hint: {{time}}"
           - "text.strong: {{place}}"
         box: true
+  trip-map:
+    of: canvas
+    base: {asset: arashiyama, ratio: 4/3}
+    item: {use: stamp-card}
+    link: {shape: smooth}
+    states: [done, next, todo]

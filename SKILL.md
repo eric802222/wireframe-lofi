@@ -115,6 +115,13 @@ title/group 不渲染產品 UI、不改 id；to 仍用檔名，route 子連結�
 `components.<型別>`，值必須引用 token。畫面以 `{stamp-card: {place: ..., state: next}}` 使用。
 不要加入 if / each / 運算；大量資料由外部產生 YAML。`--strict-kit` 用於成熟專案強制復用。
 
+**kit canvas**：定位型複合元件用 `of: canvas`。kit 以
+`base:{asset|grid|blank,anchors?,ratio?}`、`item:{use:<kit-type>}`、可選的
+`link:{shape:straight|smooth,arrow?:true}`、`states` 宣告契約；畫面只給
+`items:[{id?,at:[0..1,0..1],state,to?,...item props}]` 與可選 `link:[item-ref,...]`。
+`at` 省略時必須命中 kit anchor。theme 可用 `base`、`link`、`item.state.<state>`（值仍全走 token）綁皮；
+asset 底必須宣告 theme asset。編譯器只准替 link 畫 SVG path／箭頭；item 必須展開既有 kit 元件。
+
 **色彩**：wireframe 全灰階，無節點顏色屬性（`tone` 已移除）。產品色走 `--mockup <theme.yaml>`；評審聚焦走標註面。
 
 **mockup theme（三層 token 化）**：`tokens:`（值層，`{family.name}` 引用、`$value` DTCG 相容、`tokens.preset` composite

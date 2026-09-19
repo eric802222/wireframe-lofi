@@ -558,6 +558,52 @@ components:
     state.next: {box-shadow: '0 0 0 {space.md} {color.brand-soft}'}
 ```
 
+#### Canvas：一組被定位的元件實例
+
+`of: canvas` 是不綁領域的複合基底：一個底、一組有 state 的定位元件，以及可省略的關聯線。
+kit 決定底的種類、item 元件、link 結構與 state 值域；畫面只給內容和 0–1 相對座標；theme
+才決定外觀。地圖、座位表、流程板、商品熱點都使用同一個基底。
+
+```yaml
+# kit/components.yaml
+components:
+  trip-map:
+    of: canvas
+    base: {asset: arashiyama, ratio: 4/3}
+    item: {use: stamp-card}
+    link: {shape: smooth}        # straight | smooth；可加 arrow: true
+    states: [done, next, todo]
+
+# page.wf.yaml
+- trip-map:
+    items:
+      - {place: 竹林小徑, at: [0.22, 0.83], state: done, time: "08:40"}
+      - {place: 渡月橋, at: [0.50, 0.42], state: next, to: c3-arrive, time: "11:00"}
+    link: [竹林小徑, 渡月橋]
+```
+
+`base` 恰選 `asset`、`grid: true`、`blank: true` 之一；後兩者不需要 theme 素材。`at` 可省略，
+但 kit 的 `base.anchors` 必須能以 item 的 `id` 或某個語義 prop 值找到座標。item 一律展開成
+`item.use` 指定的 kit 元件，所以同一張 `stamp-card` 可在 canvas 與列表復用；`to` 包在該 item 上。
+畫面的 `link` 以 `id` 或 prop 值指向 item，省略就不畫線。編譯器只為 link 產生 SVG path／箭頭，
+不替 item 畫 circle/path。asset 底在 mockup theme 的 `assets:` 綁定：
+
+```yaml
+assets: {arashiyama: trip.assets/arashiyama.svg}
+tokens:
+  color: {brand: '#7c3aed', brand-soft: '#ede9fe'}
+  stroke: {md: 3px, dash: '8 6'}
+  space: {md: 14px}
+components:
+  trip-map:
+    link: {stroke: '{color.brand}', stroke-width: '{stroke.md}', dash: true}
+    item.state.next: {box-shadow: '0 0 0 {space.md} {color.brand-soft}'}
+```
+
+`dash: true` 是結構開關，虛線節奏必須由 `tokens.stroke.dash` 提供。沒有 `--mockup` 時 canvas
+使用素材名佔位與灰階 link；缺素材檔時沿用 assets warning 並退回佔位。完整地圖範例見
+`examples/kit-demo/`。領域別名（例如 stops/route）留待後續；目前編譯器只認 items/link。
+
 不加 mockup 時，特化元件退回原 leaf 灰階外觀，組合元件使用灰階結構。兩者都輸出
 `data-wf-role`，debug 的 invocation path 維持穩定。`--strict-kit` 會禁止頁面直接使用 leaf、widget
 或裸露 `box`，只留下 kit 型別與 row/col/grid 等基本排版。lint 多檔時若相同容器結構出現在至少
