@@ -3064,11 +3064,17 @@ class _Diag:
                         print(f'  hint: {line}', file=out)
 
 
-def _walk_lint(node, path, diag, basedir='.', stack=()):
-    """遞迴 lint YAML 結構樹。只走結構節點，跳過 leaf value dict / with / as / meta 值。"""
+def _walk_lint(node, path, diag, basedir='.', stack=(), anchored=True):
+    """遞迴 lint YAML 結構樹。只走結構節點，跳過 leaf value dict / with / as / meta 值。
+
+    anchored：父節點是不是浮層的錨點（`.wf-root` 與 `box: true` 有 position:relative）。
+    pin 的定位盒子會找最近的定位祖先，父節點不是錨點時會靜默飄到更外層 —— 不報錯、
+    不退化，就只是位置不對。Compose 用 scope safety 在編譯期擋（align 只存在於 BoxScope），
+    我們沒有編譯期，用 lint 講一聲。
+    """
     if isinstance(node, list):
         for i, item in enumerate(node):
-            _walk_lint(item, f'{path}[{i}]', diag, basedir, stack)
+            _walk_lint(item, f'{path}[{i}]', diag, basedir, stack, anchored)
         return
     if isinstance(node, str):
         if diag.allow_parameters and _has_parameter(node):
@@ -3158,6 +3164,14 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
             diag.warn(f'{path}.link.to', f'`link:` 的 to: 會原樣輸出成 href（`{tgt}`），不是站內導航',
                       '站內跳頁請用 `button:` 或帶 `to:` 的節點；站外連結請寫完整 URL')
 
+    # 2c. pin 的錨點：定位盒子錨在最近的 .wf-box / .wf-root 上。父節點不是 box 時，
+    #     浮層會飄到更外層的容器去，位置不對卻完全無聲（實測：角標會跑到整頁左上角）。
+    #     modal 與 dialog/drawer/sheet/toast/loading 本來就是畫面級，不在此列。
+    if node.get('pin') and not node.get('modal') and not has_overlay_sugar and not anchored:
+        diag.warn(f'{path}.pin', 'pin 的父容器不是錨點，浮層會飄到更外層的容器上',
+                  '要貼在這一層，請在父容器加 `box: true`；要貼在整個畫面，請用 modal 或 '
+                  'dialog / drawer / sheet / toast / loading')
+
     # 3. container 恰一個 direction key
     if len(has_direction) > 1:
         diag.error(path, f"container 恰能有一個方向 key（收到 {sorted(has_direction)}）",
@@ -3222,18 +3236,22 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
     # 9. 遞迴子節點：只走結構性 key，跳過 leaf value / meta / 參數
     # 結構性 key：direction values (list) / items / body / overlay 角色內容 / slots values / routes items
     _RECURSE_INTO = {'row', 'col', 'items', 'body'}   # grid list 不是結構樹
+    # 子節點看得到的錨點 = 這個節點自己（box: true 或 overlay sugar 會得到 position:relative）；
+    # <root> 的 body 由呼叫端傳 anchored=True。
+    child_anchored = bool(node.get('box')) or has_overlay_sugar or 'body' in keys and not path
     for k, v in node.items():
         if k in ('__src', '__path'):
             continue
         sub_path = f'{path}.{k}' if path else k
         if k in _RECURSE_INTO or k in _overlay_tokens():
+            ca = True if (k == 'body' and not path) else child_anchored
             if isinstance(v, list):
                 for i, item in enumerate(v):
-                    _walk_lint(item, f'{sub_path}[{i}]', diag, basedir, stack)
+                    _walk_lint(item, f'{sub_path}[{i}]', diag, basedir, stack, ca)
             elif isinstance(v, dict):
-                _walk_lint(v, sub_path, diag, basedir, stack)
+                _walk_lint(v, sub_path, diag, basedir, stack, ca)
         elif k == 'widget' and isinstance(v, dict) and 'body' in v:
-            _walk_lint(v['body'], f'{sub_path}.body', diag, basedir, stack)
+            _walk_lint(v['body'], f'{sub_path}.body', diag, basedir, stack, True)
         elif k == 'slots':
             # slots 的 key 是使用者定義的 slot 名（不是 vocab key）→ 只走各 slot 的內容
             if isinstance(v, dict):
@@ -3245,6 +3263,28 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
                 for i, r in enumerate(v):
                     _walk_lint(r, f'{sub_path}[{i}]', diag, basedir, stack)
         # 其他 key（with/as/note/spotlight/button 等的 dict value）不遞迴 lint —— 屬 value 空間
+
+
+
+def _lint_kit_components(kit_path):
+    """kit 元件定義也要 lint。
+
+    元件寫一次、用在十個畫面，裡面藏的錨點錯誤影響面比單一畫面大，
+    但走訪畫面樹時看不到元件內部（kit 節點在 lint 階段不展開）。
+
+    錨點狀態從元件根節點算 anchored=True：呼叫端的父容器是不是 box 這裡不知道，
+    不替它猜；能確定的是元件「自己內部」多包的非 box 容器。
+    """
+    if not _KIT_COMPONENTS or not kit_path:
+        return 0, 0
+    diag = _Diag(kit_path, allow_parameters=True)      # 元件內容本來就含 {{param}}
+    for name, spec in _KIT_COMPONENTS.items():
+        content = spec.get('content')
+        if isinstance(content, list):
+            _walk_lint(content, f'components.{name}.content', diag, os.path.dirname(kit_path) or '.')
+    if diag.errors or diag.warnings:
+        diag.dump(kit_path)
+    return len(diag.errors), len(diag.warnings)
 
 
 def _lint_file(path):
@@ -3539,6 +3579,10 @@ def main():
             print("usage: wfyaml.py lint [--kit <kit.yaml> [--strict-kit]] [--mockup <theme.yaml>] <file.wf.yaml> [...]", file=sys.stderr)
             sys.exit(1)
         total_err, total_warn = 0, len(_THEME_ASSET_WARNINGS) + len(_THEME_WARNINGS)
+        if not kit_path and files:
+            kit_path = _KIT_PATH
+        ke, kw = _lint_kit_components(kit_path)        # 元件定義只檢查一次，不隨畫面數重複
+        total_err, total_warn = total_err + ke, total_warn + kw
         for f in files:
             e, w = _lint_file(f)
             total_err += e
