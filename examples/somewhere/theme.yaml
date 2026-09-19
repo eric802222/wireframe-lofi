@@ -1,0 +1,46 @@
+tokens:
+  color:
+    paper: '#f7f2e8'
+    ink: '#25231f'
+    accent: '#d96b3b'
+    accent-soft: '#f4d9c8'
+    mist: '#e7e2d8'
+    inverse: '#ffffff'
+  border:
+    ink: '2px solid #25231f'
+    accent: '2px solid #d96b3b'
+  radius: {card: 18px, pill: 999px}
+  space: {sm: 8px, md: 14px, lg: 22px}
+  shadow: {card: '5px 5px 0 #25231f'}
+components:
+  chapter-tag:
+    background: '{color.ink}'
+    text: '{color.inverse}'
+  primary-action:
+    background: '{color.ink}'
+    text: '{color.inverse}'
+    radius: '{radius.pill}'
+    padding: '{space.lg}'
+  place-card:
+    background: '{color.paper}'
+    border: '{border.ink}'
+    radius: '{radius.card}'
+    state.hidden: {opacity: 0.55}
+    state.available: {box-shadow: '{shadow.card}'}
+    state.discovered: {border: '{border.accent}'}
+  quest-card:
+    background: '{color.paper}'
+    border: '{border.ink}'
+    radius: '{radius.card}'
+    state.locked: {opacity: 0.45}
+    state.active: {box-shadow: '{shadow.card}'}
+  memory-card:
+    background: '{color.paper}'
+    border: '{border.ink}'
+    radius: '{radius.card}'
+    state.fresh: {box-shadow: '{shadow.card}'}
+  city-map:
+    link: {stroke: '{color.ink}', stroke-width: '2px', dash: true}
+    item.state.available: {box-shadow: '{shadow.card}'}
+base:
+  background: '{color.paper}'
