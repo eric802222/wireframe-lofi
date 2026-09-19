@@ -63,9 +63,25 @@ def _node_of(target, base):
     return page + ('.' + frag if frag else '')
 
 
+def _expanded(body, path):
+    """kit 元件／embed 裡的 to: 同樣是動線。底部導覽這類共用元件本來就該抽進 kit
+    （lint 自己也這樣建議），不展開就等於把整條導覽動線從圖上抹掉。
+    展開失敗不該讓整張圖掛掉 —— 退回未展開的原樹，寧可少算也不要炸。"""
+    if not isinstance(body, list):
+        return body
+    try:
+        basedir = os.path.dirname(os.path.abspath(path)) or '.'
+        wfyaml._ensure_kit(basedir)
+        return wfyaml.expand(body, basedir, {})
+    except Exception:
+        return body
+
+
 def extract(path):
     """回傳 (base, [(node_id, [(tgt_node, label)]), ...])。routed → 每路由一個 node。"""
     doc = yaml.safe_load(open(path)) or {}
+    if isinstance(doc, dict) and isinstance(doc.get('body'), list):
+        doc = {**doc, 'body': _expanded(doc['body'], path)}
     base = re.sub(r'\.(wf\.)?ya?ml$', '', os.path.basename(path))
     routes = doc.get('routes')
     out = []

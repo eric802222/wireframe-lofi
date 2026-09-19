@@ -6,6 +6,9 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+import flowmap          # noqa: E402
+import wfcheck          # noqa: E402
 CHECK = os.path.join(ROOT, 'wfcheck.py')
 
 GOOD = {
@@ -151,3 +154,37 @@ routes:
         proc = self._run('--format', 'xml')
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn('--format', proc.stderr)
+
+
+class LinkAndKitVisibility(unittest.TestCase):
+    """動線看得見與否，判準是「目標是不是站外」，不是「用哪個角色、寫在哪一層」。
+
+    舊行為有兩個洞：`link: {to:}` 整棵子樹被跳過、kit 元件不展開。底部導覽這種
+    共用元件本來就該抽進 kit（lint 自己也這樣建議），不展開等於把整條導覽動線
+    從圖上抹掉 —— 正確的原型被報成孤島，真的斷鏈反而靜默放過。
+    """
+
+    KIT = ("components:\n  navbar:\n    props: []\n    content:\n"
+           "      - row: [ { button: { text: 首頁, to: home } } ]\n")
+
+    def _project(self, d):
+        os.makedirs(os.path.join(d, 'kit'), exist_ok=True)
+        open(os.path.join(d, 'kit', 'components.yaml'), 'w', encoding='utf-8').write(self.KIT)
+        open(os.path.join(d, 'home.wf.yaml'), 'w', encoding='utf-8').write(
+            'viewport: 390x600\nbody:\n  - link: { text: 去設定, to: settings }\n')
+        open(os.path.join(d, 'settings.wf.yaml'), 'w', encoding='utf-8').write(
+            'viewport: 390x600\nbody:\n  - navbar: {}\n')
+        return [os.path.join(d, 'home.wf.yaml'), os.path.join(d, 'settings.wf.yaml')]
+
+    def test_link_role_is_not_a_flow_edge(self):
+        # link: 是站外真連結：render 原樣輸出 href，不補 .html、bundle 也不改成頁內錨點。
+        # 所以它不該進動線圖 —— 拿它寫站內導航是誤用，由 lint 攔下（見 test_regressions）。
+        with tempfile.TemporaryDirectory() as d:
+            _, out = flowmap.extract(self._project(d)[0])[1][0]
+            self.assertEqual([t for t, _ in out], [])
+
+    def test_flow_inside_kit_component_is_visible(self):
+        with tempfile.TemporaryDirectory() as d:
+            paths = self._project(d)
+            _, out = flowmap.extract(paths[1])[1][0]
+            self.assertIn('home', [t for t, _ in out], 'kit 元件裡的 to: 也是動線')

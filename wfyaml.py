@@ -3063,6 +3063,16 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
                 else:
                     diag.error(path, str(e))
 
+    # 2b. link: 的 to: 是站外真連結，render 原樣輸出 href（不補 .html、bundle 不改成頁內錨點）。
+    #     拿它寫站內導航 → `href="feed"` 這種死連結，點下去沒反應而且全程無聲。
+    #     站內導航請用 button / text 的 to:（那條路才會經過 _href 改寫）。
+    link_spec = node.get('link')
+    if isinstance(link_spec, dict):
+        tgt = link_spec.get('to')
+        if isinstance(tgt, str) and '://' not in tgt and not tgt.startswith(('#', 'mailto:', 'tel:')):
+            diag.warn(f'{path}.link.to', f'`link:` 的 to: 會原樣輸出成 href（`{tgt}`），不是站內導航',
+                      '站內跳頁請用 `button:` 或帶 `to:` 的節點；站外連結請寫完整 URL')
+
     # 3. container 恰一個 direction key
     if len(has_direction) > 1:
         diag.error(path, f"container 恰能有一個方向 key（收到 {sorted(has_direction)}）",
@@ -3108,8 +3118,10 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
             diag.error(f'{path}.spotlight', f"未知 spotlight.kind `{kind}`",
                        "合法值：focus / new / change / click")
 
-    # 8. 未知 key typo 檢查（只對通用 container 節點；leaf / widget / overlay sugar 有各自 shape）
-    if not is_widget and not has_overlay_sugar and not has_leaf_role and not is_slot_marker and not is_embed and not is_spacer:
+    # 8. 未知 key typo 檢查。葉子節點也要查：leaf 的「值」有各自 shape，但掛在它旁邊的
+    #    sibling 屬性（grow / pin / name / to …）沒有人管，打錯字會靜默消失在產出裡。
+    #    widget / overlay sugar / slot / embed / spacer 的 key 集合由各自路徑驗證，跳過。
+    if not is_widget and not has_overlay_sugar and not is_slot_marker and not is_embed and not is_spacer:
         known = _CONTAINER_ATTRS | _GRAMMAR_KEYS | set(LEAF_ROLES) | _OVERLAY_SUGARS | {'widget', 'is', 'can'}
         for k in keys:
             if k in known or k in ('placeholder', 'content', 'default'):
