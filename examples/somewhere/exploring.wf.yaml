@@ -1,0 +1,18 @@
+title: 探索中
+group: Somewhere
+extends: layouts/app
+with: {title: 探索中}
+slots:
+  main:
+    - chapter-tag: "MISSION 07 · ACTIVE"
+    - text.title: "別急著看地圖。"
+    - text: "城市正在慢慢給你提示。"
+    - map: {label: "只顯示模糊方向", markers: ["你", "探索區域"], can: [pan]}
+    - progress: {value: 0.72, label: "你已經很接近了"}
+    - alert: "附近似乎有什麼。抬頭看看紅磚拱廊。"
+    - box: true
+      col:
+        - text.label: 需要一點幫忙？
+        - text: "揭開下一個線索會少獲得 5 Memories。"
+        - button: "揭開線索"
+    - primary-action: {text: "我找到了！", to: discovered}
