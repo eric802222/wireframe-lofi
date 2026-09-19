@@ -1,0 +1,11 @@
+# 一般頁殼：標題 ＋ main（可捲）＋ footer（常駐）＋ 底部置中返回
+# 返回目標由使用端以 {{back}} 指定。
+viewport: 390x844
+body:
+  - page-head: { hint: "{{book}}", title: "{{title}}" }
+  - divider:
+  - col: [ { slot: main } ]
+    grow: true
+    scroll: true
+  - slot: footer
+  - back-bar: { text: ✕ 返回, to: "{{back}}" }

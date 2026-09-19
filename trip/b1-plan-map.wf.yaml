@@ -1,0 +1,59 @@
+# 冒險準備：計劃階段也是地圖優先。未排的地點＝還沒點亮的標記。
+# 地點來源＝使用者的 Google Maps 清單（匯入於 a3）。
+# 狀態：地圖（預設）／清單（list）／某一天的路線（day）。
+title: 冒險準備（地圖）
+group: B 計劃
+extends: layouts/world
+with: { kicker: "京都 五日散步 · 出發前 [N] 天", here: 把地點放上地圖 }
+routes:
+  - default: true
+    slots:
+      hud:
+        - row: [ { button: { text: 清單, to: "#list" } }, { button: { text: 準備, to: b4-prep } } ]
+          gap: sm
+      world:
+        - map: { label: 計劃地圖（已排的地點亮起並連成路線，未排的是空心標記）, markers: [京都車站 D1, 竹林小徑 D2, 常寂光寺 D2, 渡月橋 D2, "清水寺 ?", "錦市場 ?"], can: [pan, zoom, 點標記放進所選的那天] }
+          grow: true
+      buddy:
+        - buddy-bubble: { says: "第 2 天有點滿，要不要把錦市場移到第 5 天？" }
+          to: c4-ask
+      action:
+        - tabs: { active: D2, items: [D1, D2, D3, D4, D5] }
+        - row: [ "text.label: 還沒安排", { status.strong: 5 }, { spacer: }, { button: { text: 看地點, to: b3-place-detail } }, { button: { text: 看這天, to: "#day" } } ]
+          gap: sm
+        - button: { text: 準備好了，開始冒險, to: c1-trip-home }
+  - when: { state: day }
+    slots:
+      hud:
+        - button: { text: 回地圖, to: "#" }
+      world:
+        - map: { label: 只顯示第 2 天的路線, markers: [竹林小徑, 常寂光寺, 渡月橋, 河邊午餐], can: [pan, zoom] }
+      buddy:
+        - "text.hint: 拖曳可調整順序"
+      action:
+        - col:
+            - "row: [ 08:30, 竹林小徑, 40 分 ]"
+            - "row: [ ↓, 步行 12 分, ]"
+            - "row: [ 09:30, 常寂光寺, 45 分 ]"
+            - "row: [ ↓, 步行 20 分, ]"
+            - { row: [11:00, 渡月橋, 30 分], to: b3-place-detail }
+          box: true
+        - alert: 和 12:15 的午餐預約重疊 15 分
+        - button: { text: 請書籤鳥幫我排這天, to: c4-ask }
+  - when: { state: list }
+    slots:
+      hud:
+        - button: { text: 回地圖, to: "#" }
+      world:
+        - col:
+            - "text.heading: 五天總覽"
+            - "row: [ D1, 抵達日 · 2 站, 京都車站、東本願寺 ]"
+            - "row: [ D2, 嵐山 · 6 站, 竹林、常寂光寺、渡月橋… ]"
+            - "row: [ D3, 東山 · 4 站, 清水寺、二年坂… ]"
+            - "row: [ D4, 北邊 · 空, 還沒安排 ]"
+            - "row: [ D5, 回程 · 2 站, 錦市場、京都車站 ]"
+          box: true
+          grow: true
+      action:
+        - row: [ { button: { text: 看地圖, to: "#" } }, { button: { text: 行前準備, to: b4-prep } } ]
+          gap: sm

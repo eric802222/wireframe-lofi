@@ -1,0 +1,12 @@
+# 標題畫面：像遊戲開場，只有一個「開始」。
+title: 標題與登入
+group: A 入口
+viewport: 390x844
+body:
+  - col: [ { image: { label: 手繪世界地圖與書籤鳥, ratio: 4/3 }, name: 登入插圖 }, "text.title: 旅遊小書", "text: 每一趟旅行，都是一本小書。" ]
+    align: center
+    justify: center
+    grow: true
+  - jumbo-button: { text: 開始冒險（Apple 登入）, to: a2-shelf }
+  - button: { text: 用 Email 繼續, to: a2-shelf }
+  - "text.hint: 繼續即表示同意 [服務條款] 與 [隱私權政策]"

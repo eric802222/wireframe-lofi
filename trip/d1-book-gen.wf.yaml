@@ -1,0 +1,51 @@
+# 做成小書：把回程後的整理做成一條有進度的任務線。
+# 狀態：任務清單（預設）／書籤鳥寫作中（writing）／完成（done）。
+title: 做成小書
+group: D 回來後
+viewport: 390x844
+routes:
+  - default: true
+    body:
+      - row: [ "text.hint: 回來 2 天了" ]
+        justify: between
+      - col: [ { image: { label: 京都 · 封面, ratio: 16/9 } }, "text.title: 京都 五日散步", "text.hint: 收集 14 枚郵票 · 38 張照片" ]
+      - "text.heading: 還差三件事"
+      - col: [ "text.strong: 1　挑照片", "text.hint: 已挑 18 張 · 建議每天 6 張", { progress: { value: 0.6 } } ]
+        box: true
+        to: d2-picker
+      - col: [ "text.strong: 2　每天一句話", "text.hint: 5 天中寫了 3 天", { progress: { value: 0.6 } } ]
+        box: true
+        to: c6-day-end
+      - col: [ "text.strong: 3　選一種版型", { row: [ { image: { label: 繪本, ratio: 3/4 } }, { image: { label: 手帳, ratio: 3/4 } }, { image: { label: 相簿, ratio: 3/4 } } ], gap: sm } ]
+        box: true
+      - spacer:
+      - row: [ "text.hint: 預估 [本次花費]", { spacer: }, { button: { text: 請書籤鳥擬初稿, to: "#writing" } } ]
+      - back-bar: { text: ✕ 返回, to: a2-shelf }
+  - when: { state: writing }
+    body:
+      - row: [ { button: { text: ‹ 返回, to: "#" } }, "text.hint: 可以先去做別的事" ]
+        justify: between
+      - col: [ { avatar: { label: 鳥, size: lg }, name: 書籤鳥頭像 }, "text.title: 書籤鳥正在寫" ]
+        align: center
+      - widget:
+          is: 初稿進度（一步一步出現）
+          can: [看步驟, 中途取消]
+          body:
+            - "[x] 讀完 5 天、[N] 筆紀錄"
+            - "[x] 依每天的郵票分章"
+            - "[ ] 用你寫的句子當標題"
+            - "[ ] 寫出每章 2–4 段，標上來源"
+      - "text.hint: 第 2 章 / 共 5 章"
+      - progress: { value: 0.5 }
+      - spacer:
+      - button: { text: 完成了，去看看, to: "#done" }
+      - back-bar: { text: ✕ 返回, to: a2-shelf }
+  - when: { state: done }
+    body:
+      - col: [ { image: { label: 完成的小書封面, ratio: 3/4 } }, "text.title: 小書完成了", "text: 5 章 · [N] 頁 · 每一段都標著來源" ]
+        align: center
+        justify: center
+        grow: true
+      - button: { text: 開始閱讀與修改, to: d3-memory-read }
+      - button: { text: 分享或匯出, to: d4-share }
+      - back-bar: { text: ✕ 返回, to: a2-shelf }

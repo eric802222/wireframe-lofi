@@ -52,6 +52,113 @@ python3 wfyaml.py --story stories/x.story.yaml # SAC 故事疊加（底圖+spotl
 lint 遞迴驗證引用檔案、component content/placeholder 與 widget.body；錯誤列來源檔與 YAML path。
 CLI 的作者錯誤預設簡潔輸出，除錯工具時用 `--traceback` 或 `WF_TRACEBACK=1`。
 
+## 詞彙表
+
+下表由 `tools/update_docs.py` 從程式碼生成；隨時可跑 `python3 wfyaml.py list --ring 0` 拿到同一份。
+
+<!-- BEGIN GENERATED: vocabulary -->
+<!-- 由 `python3 tools/update_docs.py` 從 wfyaml.py 的註冊表生成，請勿手改 -->
+
+### Grammar 關鍵字
+
+`body` / `content` / `extends` / `group` / `placeholder` / `routes` / `slots` / `title` / `viewport` / `with`
+
+### 結構單元類型
+
+| 詞彙 | 說明 |
+| --- | --- |
+| `page` | 一個畫面 |
+| `layout` | 可被 extends 的版型 |
+| `component` | 可被 embed 的片段 |
+| `widget` | 有狀態的複合元件 |
+
+### Container
+
+| 詞彙 | 說明 |
+| --- | --- |
+| `row` | 橫向排列 |
+| `col` | 縱向排列 |
+| `grid` | 網格 |
+| `box` | 有邊框的容器，同時是浮層的錨點 |
+| `section` | 有名字的一段 |
+| `dialog` | overlay sugar → pin: center / modal: True / layer: overlay |
+| `drawer` | overlay sugar → pin: right / modal: True / layer: overlay |
+| `sheet` | overlay sugar → pin: bottom / modal: True / layer: overlay |
+| `toast` | overlay sugar → pin: bottom-right / layer: notify |
+| `loading` | overlay sugar → pin: center / modal: True / layer: top |
+
+### Leaf 元件 · 文字
+
+| 詞彙 | 說明 |
+| --- | --- |
+| `text.title` | 畫面主標題 |
+| `text.heading` | 段落標題 |
+| `text.label` | 表單欄位的標籤 |
+| `text.strong` | 語義強調（不是視覺加粗） |
+| `text.hint` | 次要說明、輔助文字 |
+| `text` | 一般內文 |
+
+### Leaf 元件 · 表單
+
+| 詞彙 | 說明 |
+| --- | --- |
+| `input` | 文字輸入框（真 <input>，零 JS） |
+| `select` | 下拉選擇 |
+| `button` | 動作按鈕；帶 to: 即為站內導航 |
+| `checkbox` | 多選；綁的是畫出來的控制項，不含旁邊文字 |
+| `radio` | 單選 |
+
+### Leaf 元件 · 狀態
+
+| 詞彙 | 說明 |
+| --- | --- |
+| `status.badge` | 小圓標：數量、角標 |
+| `status.muted` | 弱化狀態標籤 |
+| `status.strong` | 強調狀態標籤 |
+| `status` | 一般狀態標籤 |
+| `alert` | 提示區塊（圖示＋文字） |
+
+### Leaf 元件 · 其他
+
+| 詞彙 | 說明 |
+| --- | --- |
+| `icon` | 圖示（FA / Lucide canonical 名） |
+| `divider` | 分隔線 |
+| `tabs` | 分頁切換列 |
+| `image` | 圖片佔位；ratio 指定長寬比 |
+| `link` | 站外真連結；to: 原樣輸出，站內跳頁請用 button |
+| `progress` | 進度條 |
+| `avatar` | 單一頭像 |
+| `avatars` | 一組疊加頭像 |
+| `map` | 地圖佔位 |
+
+### 節點標註
+
+| 詞彙 | 說明 |
+| --- | --- |
+| `name` | 語義身份：theme 綁它、debug 定位靠它 |
+| `to` | 動線：跳到哪個畫面 |
+| `note` | 標註面：右側邊註（可剝離） |
+| `spotlight` | 標註面：聚焦標記（focus / new / change / click） |
+| `span` | grid 內跨幾欄 |
+| `grow` | 吃掉剩餘空間（col 內是長高） |
+| `pin` | 浮層錨點方位；錨在最近的 box/root，父容器要有 box: true |
+| `modal` | 浮層擋住後面（scrim + inert） |
+| `layer` | 浮層的 z 帶（base / overlay / notify / top） |
+| `ui-state` | 顯示態（selected / disabled / hover / focus / active） |
+| `max-lines` | 最多幾行，超過截斷；只能用在文字節點 |
+| `wrap` | false = 不換行、單行省略；不能與 max-lines 並用 |
+
+### 綁不到 theme 的角色
+
+| 詞彙 | 說明 |
+| --- | --- |
+| `alert` | alert 是容器型輸出（圖示＋文字），沒有單一元素可綁；要改外觀請綁 status / text 家族 |
+| `tabs` | tabs 渲染成一組 .wf-tab，綁單一 tab 請用 tab / tab.active |
+| `map` | map 是佔位示意，產品階段會被真地圖取代，綁它沒有意義 |
+
+<!-- END GENERATED: vocabulary -->
+
 ## 語法速查
 
 ```yaml

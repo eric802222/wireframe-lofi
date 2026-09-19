@@ -1,0 +1,149 @@
+# 元件與命名對照表：溝通用的單一字彙表（手機直式）。
+# 每一項都寫出我們口語怎麼稱呼它，括號內是 YAML 寫法。
+# 標註時直接說「把 X 換成 Y」「這裡間距改 lg」，不必描述外觀或給色碼。
+title: 元件與命名
+group: Z 設計系統
+viewport: 390x2600
+body:
+  - title-sub: { title: "元件與命名", sub: "討論時請用這裡的名字" }
+
+  - col:
+      - "text.heading: 文字階層"
+      - row: [ "text.strong: 標題（text.title）", { spacer: }, "text.hint: 27px · 一頁一個" ]
+        gap: sm
+      - "text.title: 旅行書櫃"
+      - row: [ "text.strong: 段標（text.heading）", { spacer: }, "text.hint: 20px · 區塊開頭" ]
+        gap: sm
+      - "text.heading: 旅行中"
+      - row: [ "text.strong: 強調（text.strong）", { spacer: }, "text.hint: 15px 粗 · 卡片主詞" ]
+        gap: sm
+      - "text.strong: 京都 五日散步"
+      - row: [ "text.strong: 內文（text）", { spacer: }, "text.hint: 15px" ]
+        gap: sm
+      - "text: 早上八點走進竹林，人還很少。"
+      - row: [ "text.strong: 說明（text.hint）", { spacer: }, "text.hint: 12px 灰 · 次要資訊" ]
+        gap: sm
+      - "text.hint: Day 2 / 5 · 已收集 14 枚郵票"
+      - row: [ "text.strong: 欄位標籤（text.label）", { spacer: }, "text.hint: 12px 灰 · 輸入框上方" ]
+        gap: sm
+      - "text.label: 出發"
+    box: true
+
+  - col:
+      - "text.heading: 顏色"
+      - row: [ { status: "主色 brand" }, "text.hint: #B85A3C · 主要動作、重點、已蓋的郵票" ]
+        gap: sm
+      - row: [ { status.muted: "紙面 surface" }, "text.hint: #FBF7EE · 卡片底色" ]
+        gap: sm
+      - row: [ { status.muted: "深紙 surface-alt" }, "text.hint: #F4ECDC · 機身、需要分層時" ]
+        gap: sm
+      - row: [ { status.muted: "更深 surface-sunk" }, "text.hint: #E7DEC8 · 底板、凹陷區" ]
+        gap: sm
+      - row: [ { status.strong: "墨線 ink" }, "text.hint: #2B2A33 · 框線與主要文字" ]
+        gap: sm
+      - row: [ { status.muted: "淡墨 ink-soft" }, "text.hint: #5A5763 · 說明文字" ]
+        gap: sm
+      - row: [ { status.muted: "頁底 page" }, "text.hint: #ECE8E1 · 畫面最底層" ]
+        gap: sm
+      - "text.hint: 要改配色時說 token 名（例：改 brand），不要說色碼"
+    box: true
+
+  - col:
+      - "text.heading: 按鈕與動作"
+      - row: [ { button: { text: 主要動作, to: z-components } }, { spacer: }, "text.hint: 赭紅實心 · 一頁一個" ]
+        gap: sm
+      - row: [ { button: 一般按鈕 }, { spacer: }, "text.hint: 米白描邊" ]
+        gap: sm
+      - row: [ { button: { text: ‹, to: z-components }, name: 次要動作 }, { spacer: }, "text.hint: 避讓動線：取消 ✕ 、上一步 ‹" ]
+        gap: sm
+      - row: [ { button: { text: ✕ 返回, to: z-components } }, { spacer: }, "text.hint: 離開：置中放最下方" ]
+        gap: sm
+      - "text.hint: 慣例：前往的入口放上面，離開的動作放下面中央"
+    box: true
+
+  - col:
+      - "text.heading: 輸入"
+      - "text.label: 輸入框（input）· 要滿版時包 row + grow"
+      - row: [ { input: 打一句…, grow: true } ]
+      - "text.label: 下拉（select）"
+      - select: 可編輯
+      - "text.label: 勾選"
+      - "[x] 護照"
+      - "[ ] 薄外套"
+      - "text.label: 單選"
+      - "(x) 只有成員"
+      - "( ) 有連結就能讀"
+    box: true
+
+  - col:
+      - "text.heading: 狀態與提示"
+      - row: [ { status: 一般 }, { status.strong: 重點 }, { status.muted: 次要 }, { status.badge: 9 } ]
+        gap: sm
+      - "text.hint: 一般／重點（進行中、新）／次要（已完成、來源）／數字徽章"
+      - alert: 警示條（alert）· 衝突、重疊、需要你決定
+      - "text.label: 進度（progress）"
+      - "text.hint: Day 2 / 5"
+      - progress: { value: 0.4 }
+      - "text.label: 分頁（tabs）· 同層切換"
+      - tabs: { active: D2, items: [D1, D2, D3] }
+      - "text.label: 分隔線（divider）"
+      - divider:
+    box: true
+
+  - col:
+      - "text.heading: 人與圖像"
+      - row: [ { avatar: 我 }, { avatar: 伴 }, { avatar: { label: 鳥, size: lg }, name: 書籤鳥頭像 }, { spacer: }, "text.hint: 頭像 sm/md/lg" ]
+        gap: sm
+      - row: [ { avatars: { items: [我, 伴, 友, 家], max: 3 } }, { spacer: }, "text.hint: 成員群 · 超過顯示 +N" ]
+        gap: sm
+      - row: [ { icon: star, name: 郵票圖示 }, { spacer: }, "text.hint: 圖示 · 跟著字大小，可綁 SVG" ]
+        gap: sm
+      - "text.label: 圖片（image）· 可綁素材，未綁是佔位框"
+      - image: { label: 照片, ratio: 16/9 }
+    box: true
+
+  - col:
+      - "text.heading: 容器"
+      - "text.label: 卡片（box: true）· 紙面＋墨框＋厚陰影"
+      - col: [ "text: 這是一張卡片" ]
+        box: true
+      - "text.label: 機身（name: 電報機身）· 深紙底，包住整個對話"
+      - col: [ "text: 機身裡面放對話或操作區" ]
+        box: true
+        name: 電報機身
+      - row: [ "text.label: 抽屜（sheet）· 從底部拉起，隨時收回", { spacer: }, { button: { text: 看實例, to: c1a-route } } ]
+        gap: sm
+      - row: [ "text.label: 對話框（dialog）· 置中，要做決定才離開", { spacer: }, { button: { text: 看實例, to: a4-book-switch } } ]
+        gap: sm
+      - "text.label: 地圖（map）· 有標記、可拖曳縮放的示意"
+      - map: { label: 地圖示意, markers: [地標 A, 地標 B], can: [pan, zoom, markers] }
+      - "text.label: 示意元件（widget）· 只宣告能力，不規定實作"
+      - widget:
+          is: 示意元件的樣子
+          can: [列出能力, 不規定實作]
+          body:
+            - row: [內容, 用最小方式表達]
+    box: true
+
+  - col:
+      - "text.heading: 訊息泡泡"
+      - row: [ { spacer: }, { col: [ "text: 我的訊息（name: 我的訊息）" ], box: true, name: 我的訊息 } ]
+        gap: sm
+      - row: [ { avatar: { label: 鳥, size: lg }, name: 書籤鳥頭像 }, { col: [ "text: 書籤鳥的訊息（name: 鳥的訊息）" ], box: true, name: 鳥的訊息 } ]
+        gap: sm
+    box: true
+
+  - col:
+      - "text.heading: 版面尺度"
+      - row: [ "text.strong: 手機畫面", { spacer: }, "text.hint: 390 × 844" ]
+        gap: sm
+      - row: [ "text.strong: 間距", { spacer: }, "text.hint: sm 6px · md 14px · lg 20px" ]
+        gap: sm
+      - row: [ "text.strong: 圓角", { spacer: }, "text.hint: sm / md / lg / pill" ]
+        gap: sm
+      - row: [ "text.strong: 陰影", { spacer: }, "text.hint: 墨色硬邊位移，不是模糊陰影" ]
+        gap: sm
+      - "text.hint: 說「間距改 lg」比說「改成 20px」好，前者全域一致"
+    box: true
+
+  - back-bar: { text: ✕ 返回, to: c1-trip-home }

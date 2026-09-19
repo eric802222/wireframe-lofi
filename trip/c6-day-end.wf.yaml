@@ -1,0 +1,30 @@
+# 今日總結：一天的結算畫面。郵票列＋數字＋書籤鳥一句話＋明天預告。
+title: 今日總結
+group: C 旅途中
+viewport: 390x844
+body:
+  - row: [ "text.hint: 19:30" ]
+    justify: between
+  - page-head: { hint: "今日結算", title: "Day 2 · 嵐山，走完了" }
+  - row: [ { status: 08:40 }, { status: 09:32 }, { status: 11:08 }, { status: 12:20 }, { status: 14:10 }, { status: 15:44 } ]
+    gap: sm
+  - grid: 4
+    items:
+      - { stat-tile: { value: "6", unit: "站" } }
+      - { stat-tile: { value: "38", unit: "照片" } }
+      - { stat-tile: { value: "23", unit: "紀錄" } }
+      - { stat-tile: { value: "[金額]", unit: "花費" } }
+  - widget:
+      is: 體力曲線（來自你點的體力紀錄）
+      can: [看一天的高低]
+      body:
+        - row: [08:30, 09:30, 13:15, 15:40, 19:00]
+        - row: ["4", "4", "2", "3", "2"]
+  - buddy-bubble: { says: "下午體力掉到 2，明天走的路比較多，早點休息吧。" }
+  - col: [ "text.label: 今天用一句話說", { input: 例：風只在竹林裡 } ]
+    box: true
+  - nav-card: { hint: "明天 · Day 3 東山", main: "第一站 09:00 清水寺 · 共 4 站" }
+    to: b1-plan-map
+  - spacer:
+  - button: { text: 收進手帳, to: c5-collection }
+  - back-bar: { text: ✕ 返回, to: c1-trip-home }

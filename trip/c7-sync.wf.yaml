@@ -1,0 +1,27 @@
+# 離線與同步：離線是常態，畫面要讓人放心，而不是報錯。
+title: 離線與同步
+group: C 旅途中
+viewport: 390x844
+body:
+  - row: [ "text.title: 同步狀態" ]
+  - alert: 目前離線 · 4 筆等待送出，資料都安全地存在手機
+  - "text.heading: 等待送出"
+  - widget:
+      is: 待送清單
+      can: [重試, 查看內容]
+      body:
+        - row: ["11:08", 抵達 · 渡月橋, 等待中]
+        - row: ["11:12", "照片 ×3 · [N] MB", 等待中]
+        - row: ["11:20", 體力 3/5, 等待中]
+        - row: ["11:25", 照片 IMG_2231, "失敗 · 重試"]
+  - "text.heading: 需要你決定"
+  - col:
+      - row: [ { avatars: { items: [我, 伴], max: 3 } }, "text.strong: 「行李清單」有兩個版本" ]
+        gap: sm
+      - row: [ { col: [ "text.hint: 你 · 10:38", "text: 勾了「轉接頭」" ], box: true }, { col: [ "text.hint: [旅伴] · 10:40", "text: 刪了「轉接頭」" ], box: true } ]
+        gap: sm
+      - row: [ { button: 用我的 }, { button: 用旅伴的 }, { button: 兩個都留 } ]
+        gap: sm
+    box: true
+  - "text.hint: 恢復連線後自動送出，時間與位置在按下的那一刻就記好了"
+  - back-bar: { text: ✕ 返回, to: c1-trip-home }

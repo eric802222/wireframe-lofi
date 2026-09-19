@@ -1,0 +1,36 @@
+# 抵達：整個畫面只做一件事——蓋章。蓋完才展開後續選項。
+title: 抵達蓋章
+group: C 旅途中
+viewport: 390x844
+routes:
+  - default: true
+    body:
+      - row: [ "text.hint: 第 3 站 / 6" ]
+        justify: between
+      - col: [ "text.hint: 抵達", "text.title: 渡月橋", "text: 11:08 · 比計畫晚 8 分鐘" ]
+        align: center
+      - image: { label: 這一站的明信片（拍照後換成照片）, ratio: 4/3 }
+      - col: [ "text.hint: 郵戳位置" ]
+        box: true
+        align: center
+      - spacer:
+      - button: { text: 按住蓋章, to: "#stamped" }
+        spotlight: { kind: click, text: 長按 0.8 秒，郵戳落下, step: 1 }
+      - "text.hint: 蓋下今天的第 3 枚郵戳"
+      - back-bar: { text: ✕ 返回, to: c1-trip-home }
+  - when: { state: stamped }
+    body:
+      - row: [ { button: { text: ‹ 世界, to: c1-trip-home } }, { status.strong: ＋1 枚郵票 } ]
+        justify: between
+      - col: [ "text.title: 渡月橋", "text: 2026 · D2 · 11:08 郵戳已蓋" ]
+        align: center
+      - image: { label: 明信片（右下角有郵戳）, ratio: 4/3 }
+      - "text.heading: 順手記一下"
+      - row: [ { button: 好喜歡 }, { button: 還不錯 }, { button: 有點累 } ]
+        gap: sm
+      - row: [ { button: 拍一張 }, { button: 記花費 }, { button: 說一句 } ]
+        gap: sm
+      - spacer:
+      - button: { text: 繼續冒險 → 河邊午餐, to: c1-trip-home }
+      - row: [ { spacer: }, { button: { text: 看手帳, to: c5-collection } }, { spacer: } ]
+      - back-bar: { text: ✕ 返回, to: c1-trip-home }

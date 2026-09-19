@@ -1,0 +1,18 @@
+# 今日路線抽屜：從世界底部拉起，收起就回世界。工具性資訊只藏一層手勢。
+title: 今日路線（抽屜）
+group: C 旅途中
+extends: layouts/sheet-over-world
+with: { kicker: Day 2 · 嵐山, map: 世界地圖（縮在背景） }
+slots:
+  main:
+    - row: [ "text.title: 今日路線", { spacer: }, { status.strong: 2 / 6 } ]
+    - col:
+        - "row: [ 08:30, 竹林小徑, 已蓋章 08:40 ]"
+        - "row: [ 09:30, 常寂光寺, 已蓋章 09:32 ]"
+        - "row: [ 11:00, 渡月橋, 下一站 ]"
+        - "row: [ 12:00, 河邊午餐, 預約 12:15 ]"
+        - "row: [ 14:00, 嵯峨野小火車, ]"
+        - "row: [ 15:30, 保津川散步, ]"
+      box: true
+    - row: [ { button: { text: 看全部天數, to: b1-plan-map } }, { button: { text: 問書籤鳥, to: c4-ask } } ]
+      gap: sm

@@ -1,0 +1,10 @@
+# 步驟式頁殼：標題 ＋ 進度 ＋ main ＋ 底部動作列（由各步驟填入）
+# 動作列慣例：左邊是避讓動線（取消／上一步，次要色、正方形一格），右邊是主要動作、佔滿寬度。
+viewport: 390x844
+body:
+  - row: [ "text.title: {{title}}" ]
+  - slot: step
+  - col: [ { slot: main } ]
+    grow: true
+    scroll: true
+  - slot: actions

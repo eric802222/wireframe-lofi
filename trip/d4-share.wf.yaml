@@ -1,0 +1,21 @@
+# 分享與匯出：完成之後的出口。
+title: 分享、匯出、版本
+group: D 回來後
+viewport: 390x844
+body:
+  - row: [ "text.title: 分享與匯出" ]
+  - row: [ { image: { label: 封面, ratio: 3/4 } }, { label-pair: { main: "京都 五日散步", sub: "5 章 · [N] 頁 · 最後修改 今天 10:20" } } ]
+    gap: sm
+  - "text.heading: 誰可以閱讀"
+  - tabs: { active: 只有成員, items: [只有成員, 有連結就能讀] }
+  - row: [ { input: "[網域]/b/[代碼]" }, { button: 複製 } ]
+    gap: sm
+  - "text.hint: 讀者只看得到完成的小書，看不到原始紀錄、位置與花費"
+  - "text.heading: 匯出"
+  - col: [ "row: [ PDF · 印刷用（A5）, 下載 ]", "row: [ PDF · 手機閱讀, 下載 ]", "row: [ 原始資料 YAML ＋ 照片 ZIP, 下載 ]" ]
+    box: true
+  - "text.heading: 版本紀錄"
+  - col: [ "row: [ [旅伴] 改了第 2 章第 3 段, 今天 10:20, 目前 ]", "row: [ 你改了前言, 昨天 22:15, 還原 ]", "row: [ 書籤鳥 初稿, [日期], 還原 ]", "row: [ 建立小書, [日期], 還原 ]" ]
+    box: true
+  - row: [ { button: { text: ‹ 小書, to: d3-memory-read } }, { spacer: }, { button: { text: 完成，回書櫃, to: a2-shelf } } ]
+    gap: sm

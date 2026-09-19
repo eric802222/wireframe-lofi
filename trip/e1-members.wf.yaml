@@ -1,0 +1,24 @@
+# 旅伴與權限：多人共用的最小設定面。
+title: 旅伴與權限
+group: E 共用與設定
+viewport: 390x844
+body:
+  - row: [ "text.title: 旅伴與共用" ]
+  - "text.hint: 京都 五日散步 · 成員看得到這本的所有紀錄與照片"
+  - col:
+      - row: [ { avatar: 我 }, { col: [ "text: [你的名字]", "text.hint: 你" ] }, { spacer: }, { status.strong: 擁有者 } ]
+        gap: sm
+      - row: [ { avatar: 伴 }, { col: [ "text: [旅伴]", "text.hint: 上次活動 11:08" ] }, { spacer: }, { select: 可編輯 } ]
+        gap: sm
+      - row: [ { avatar: 友 }, { col: [ "text: [朋友]", "text.hint: 邀請中 · 還沒接受" ] }, { spacer: }, { button: 取消邀請 } ]
+        gap: sm
+    box: true
+  - "text.heading: 用連結邀請"
+  - row: [ { input: "[網域]/j/[邀請代碼]" }, { button: 複製 } ]
+    gap: sm
+  - row: [ "text.hint: 加入後的身分", { spacer: }, { select: 可編輯 } ]
+  - "text.hint: 7 天後失效 · [重新產生]"
+  - "text.heading: 誰可以請書籤鳥改寫回憶"
+  - col: [ "(x) 所有可編輯的旅伴", "( ) 只有我" ]
+    box: true
+  - back-bar: { text: ✕ 返回, to: e3-book-settings }

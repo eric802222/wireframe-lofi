@@ -1,0 +1,54 @@
+# 旅途世界：打開 app 就在這。畫面同時只有一個主要動作（大圓鈕）。
+# 狀態：路上（預設）／快到了（near）／今天結束（done）。
+# 今日路線與快速紀錄是從底部拉起的抽屜，見 c1a / c1b。
+title: 旅途世界
+group: C 旅途中
+extends: layouts/world
+with: { kicker: 10:42 · 晴 24° · Day 2 / 5, here: 嵐山 }
+routes:
+  - default: true
+    slots:
+      hud:
+        - row: [ { button: { text: 手帳, to: c5-collection } }, { button: { text: 動態, to: e2-activity } }, { button: { text: 設定, to: e3-book-settings } } ]
+          gap: sm
+      world:
+        - trip-map:
+            items:
+              - { place: 竹林小徑, at: [0.20, 0.80], state: done, time: "08:40" }
+              - { place: 常寂光寺, at: [0.15, 0.60], state: done, time: "09:32" }
+              - { place: 渡月橋, at: [0.50, 0.42], state: next, time: "11:00", to: c3-arrive }
+              - { place: 河邊午餐, at: [0.72, 0.30], state: todo, time: "12:00" }
+              - { place: 小火車, at: [0.88, 0.16], state: todo, time: "14:00" }
+            link: [竹林小徑, 常寂光寺, 渡月橋, 河邊午餐, 小火車]
+      buddy:
+        - buddy-bubble: { says: "渡月橋在河的另一邊，走過去大概 12 分鐘。" }
+          to: c4-ask
+      action:
+        - row: [ { button: { text: 今日路線 2/6, to: c1a-route } }, { button: { text: 記一筆, to: c1b-log } } ]
+          gap: sm
+        - button: { text: 我到了, to: c3-arrive }
+  - when: { state: near }
+    slots:
+      hud:
+        - row: [ { button: { text: 手帳 · 2 枚, to: c5-collection } }, { button: { text: 動態, to: e2-activity } }, { button: { text: 設定, to: e3-book-settings } } ]
+          gap: sm
+      world:
+        - map: { label: 下一站的光圈放大、小人已靠近渡月橋, markers: [渡月橋 ←就在前面], can: [pan, zoom] }
+          grow: true
+      buddy:
+        - buddy-bubble: { says: "就在前面！到了就按下去蓋章。" }
+      action:
+        - button: { text: 到了，蓋章, to: c3-arrive }
+          spotlight: { kind: click, text: 主要動作放大並發光, step: 1 }
+  - when: { state: done }
+    slots:
+      hud:
+        - row: [ { button: { text: 手帳 · 6 枚, to: c5-collection } }, { button: { text: 動態, to: e2-activity } }, { button: { text: 設定, to: e3-book-settings } } ]
+          gap: sm
+      world:
+        - map: { label: 今天的路線整條亮起、六個地標都已蓋章, markers: [竹林小徑 ✔, 常寂光寺 ✔, 渡月橋 ✔, 河邊午餐 ✔, 小火車 ✔, 保津川 ✔], can: [pan, zoom] }
+          grow: true
+      buddy:
+        - buddy-bubble: { says: "今天收集了 6 枚郵票，要收進手帳嗎？" }
+      action:
+        - button: { text: 收進手帳, to: c6-day-end }

@@ -447,42 +447,47 @@ def _kit_css():
 # 現在三張表都由這裡導出，缺欄位在載入期就炸，不必等執行期警告。
 #
 # selector=None 必須附理由：那是「這個角色目前綁不到」的明確宣告，不是忘了填。
-_RoleSpec = collections.namedtuple('_RoleSpec', 'text_class selector unthemable_reason')
+# group / doc 是給人與 AI 讀的那一面：`list` 的詞彙表與文件的生成區塊都從這裡長出來，
+# 不另外手抄。新增角色時寫不出一句 doc，通常代表這個角色的語義還沒想清楚。
+_RoleSpec = collections.namedtuple('_RoleSpec', 'text_class selector unthemable_reason group doc')
 
 
-def _role(text_class=None, selector=None, unthemable_reason=None):
-    return _RoleSpec(text_class, selector, unthemable_reason)
+def _role(text_class=None, selector=None, unthemable_reason=None, group='其他', doc=''):
+    return _RoleSpec(text_class, selector, unthemable_reason, group, doc)
 
 
 # 順序即比對順序：長前綴必須排在短的前面（text.title 先於 text），
 # render_leaf / lint 都靠 `next(r for r in LEAF_ROLES if r in node)` 挑角色。
 _ROLE_SPECS = collections.OrderedDict([
-    ('text.title',    _role('wf-h wf-h1', '.wf-h1')),
-    ('text.heading',  _role('wf-h wf-h2', '.wf-h2')),
-    ('text.label',    _role('wf-label wf-fieldlabel', '.wf-fieldlabel')),
-    ('text.strong',   _role('wf-b', '.wf-b')),
-    ('text.hint',     _role('wf-hint', '.wf-hint')),
-    ('text',          _role('wf-label', '.wf-label:not(.wf-fieldlabel)')),
-    ('input',         _role(selector='.wf-input')),
-    ('select',        _role(selector='.wf-select')),
-    ('button',        _role(selector='.wf-btn')),
-    ('status.badge',  _role(selector='.wf-badge')),
-    ('status.muted',  _role(selector='.wf-tag-muted')),
-    ('status.strong', _role(selector='.wf-tag-strong')),
-    ('status',        _role(selector='.wf-tag')),
-    ('alert',         _role(unthemable_reason='alert 是容器型輸出（圖示＋文字），沒有單一元素可綁；'
+    ('text.title',    _role('wf-h wf-h1', '.wf-h1', group='文字', doc='畫面主標題')),
+    ('text.heading',  _role('wf-h wf-h2', '.wf-h2', group='文字', doc='段落標題')),
+    ('text.label',    _role('wf-label wf-fieldlabel', '.wf-fieldlabel', group='文字', doc='表單欄位的標籤')),
+    ('text.strong',   _role('wf-b', '.wf-b', group='文字', doc='語義強調（不是視覺加粗）')),
+    ('text.hint',     _role('wf-hint', '.wf-hint', group='文字', doc='次要說明、輔助文字')),
+    ('text',          _role('wf-label', '.wf-label:not(.wf-fieldlabel)', group='文字', doc='一般內文')),
+    ('input',         _role(selector='.wf-input', group='表單', doc='文字輸入框（真 <input>，零 JS）')),
+    ('select',        _role(selector='.wf-select', group='表單', doc='下拉選擇')),
+    ('button',        _role(selector='.wf-btn', group='表單', doc='動作按鈕；帶 to: 即為站內導航')),
+    ('status.badge',  _role(selector='.wf-badge', group='狀態', doc='小圓標：數量、角標')),
+    ('status.muted',  _role(selector='.wf-tag-muted', group='狀態', doc='弱化狀態標籤')),
+    ('status.strong', _role(selector='.wf-tag-strong', group='狀態', doc='強調狀態標籤')),
+    ('status',        _role(selector='.wf-tag', group='狀態', doc='一般狀態標籤')),
+    ('alert',         _role(group='狀態', doc='提示區塊（圖示＋文字）',
+                            unthemable_reason='alert 是容器型輸出（圖示＋文字），沒有單一元素可綁；'
                                               '要改外觀請綁 status / text 家族')),
-    ('icon',          _role(selector='.wf-icon')),
-    ('divider',       _role(selector='.wf-hr')),
-    ('tabs',          _role(unthemable_reason='tabs 渲染成一組 .wf-tab，綁單一 tab 請用 tab / tab.active')),
-    ('image',         _role(selector='.wf-image')),
-    ('checkbox',      _role(selector='.wf-check-control')),   # 綁畫出來的控制項，不含旁邊的文字
-    ('radio',         _role(selector='.wf-radio-control')),
-    ('link',          _role(selector='.wf-hyperlink')),
-    ('progress',      _role(selector='.wf-progress')),
-    ('avatar',        _role(selector='.wf-avatar')),
-    ('avatars',       _role(selector='.wf-avatars')),
-    ('map',           _role(unthemable_reason='map 是佔位示意，產品階段會被真地圖取代，綁它沒有意義')),
+    ('icon',          _role(selector='.wf-icon', doc='圖示（FA / Lucide canonical 名）')),
+    ('divider',       _role(selector='.wf-hr', doc='分隔線')),
+    ('tabs',          _role(doc='分頁切換列',
+                            unthemable_reason='tabs 渲染成一組 .wf-tab，綁單一 tab 請用 tab / tab.active')),
+    ('image',         _role(selector='.wf-image', doc='圖片佔位；ratio 指定長寬比')),
+    ('checkbox',      _role(selector='.wf-check-control', group='表單', doc='多選；綁的是畫出來的控制項，不含旁邊文字')),   # 綁畫出來的控制項，不含旁邊的文字
+    ('radio',         _role(selector='.wf-radio-control', group='表單', doc='單選')),
+    ('link',          _role(selector='.wf-hyperlink', doc='站外真連結；to: 原樣輸出，站內跳頁請用 button')),
+    ('progress',      _role(selector='.wf-progress', doc='進度條')),
+    ('avatar',        _role(selector='.wf-avatar', doc='單一頭像')),
+    ('avatars',       _role(selector='.wf-avatars', doc='一組疊加頭像')),
+    ('map',           _role(doc='地圖佔位',
+                            unthemable_reason='map 是佔位示意，產品階段會被真地圖取代，綁它沒有意義')),
 ])
 
 # 非葉子的綁定目標：容器、元件的組成部件、以及帶 to: 的按鈕變體。
@@ -503,6 +508,9 @@ def _check_role_registry():
             raise AssertionError(f'角色 `{name}` 既沒有 theme 選擇器也沒有說明為什麼綁不到')
         if spec.selector and spec.unthemable_reason:
             raise AssertionError(f'角色 `{name}` 同時宣告了選擇器與「綁不到」的理由')
+        if not spec.doc:
+            # 文件從這裡生成，沒有 doc 就等於文件缺一塊；寫不出一句話通常代表語義還沒想清楚
+            raise AssertionError(f'角色 `{name}` 缺少 doc（一句話說明它是什麼）')
 
 
 _check_role_registry()
@@ -634,6 +642,59 @@ def _gradient_value(entry, name, where):
             pct = f'{float(pos) * 100:g}%' if isinstance(pos, (int, float)) and 0 <= float(pos) <= 1 else str(pos)
             parts.append(f"{stop['color']} {pct}")
     return f"linear-gradient({angle}, {', '.join(parts)})"
+
+
+
+def _vocabulary():
+    """詞彙表的單一來源：角色與節點標註都從註冊表長出來，`list` 與文件都吃這份。
+
+    回傳 [(小節名, [(詞, 說明), ...]), ...]。Grammar / Container 這些沒有註冊表的項目
+    仍寫在這裡 —— 但寫在「一個」地方，不散落在 print 字串、README、SKILL、AGENTS 四處。
+    """
+    by_group = collections.OrderedDict()
+    for name, spec in _ROLE_SPECS.items():
+        by_group.setdefault(spec.group, []).append((name, spec.doc))
+    sections = [
+        ('Grammar 關鍵字', [(k, '') for k in sorted(_GRAMMAR_KEYS)]),
+        ('結構單元類型', [(k, d) for k, d in (
+            ('page', '一個畫面'), ('layout', '可被 extends 的版型'),
+            ('component', '可被 embed 的片段'), ('widget', '有狀態的複合元件'))]),
+        ('Container', [('row', '橫向排列'), ('col', '縱向排列'), ('grid', '網格'),
+                       ('box', '有邊框的容器，同時是浮層的錨點'),
+                       ('section', '有名字的一段'),
+                       *((k, f'overlay sugar → {" / ".join(f"{a}: {b}" for a, b in v.items())}')
+                         for k, v in _OVERLAY_DEFAULTS.items())]),
+    ]
+    for group in ('文字', '表單', '狀態', '其他'):
+        if group in by_group:
+            sections.append((f'Leaf 元件 · {group}', by_group[group]))
+    sections.append(('節點標註', list(_ANNOTATION_DOCS.items())))
+    sections.append(('綁不到 theme 的角色', [(n, r) for n, r in UNTHEMABLE_ROLES.items()]))
+    return sections
+
+
+def _vocabulary_text():
+    lines = []
+    for title, items in _vocabulary():
+        lines.append(f'\n[{title}]')
+        for word, doc in items:
+            lines.append(f'  {word}' + (f' —— {doc}' if doc else ''))
+    return '\n'.join(lines)
+
+
+def _vocabulary_markdown():
+    """文件裡的生成區塊。人讀的表格，內容與 `list` 同源。"""
+    out = []
+    for title, items in _vocabulary():
+        out.append(f'\n### {title}\n')
+        if any(doc for _, doc in items):
+            out.append('| 詞彙 | 說明 |')
+            out.append('| --- | --- |')
+            for word, doc in items:
+                out.append(f'| `{word}` | {doc} |')
+        else:
+            out.append(' / '.join(f'`{w}`' for w, _ in items))
+    return '\n'.join(out).strip()
 
 
 def _theme_var_name(family, name):
@@ -2548,8 +2609,22 @@ def _kit_params(name, spec, raw):
 # 節點級標註：可以掛在任何節點旁邊的 sibling 屬性（kit 型別、葉子、容器共用）。
 # 曾經有三份手抄複本散在 expand / canvas / lint 三處，加一個屬性要記得改三個地方，
 # 漏一個就是「某條路徑接受、另一條拒絕」的靜默不一致。
-_ANNOTATION_KEYS = frozenset({'name', 'to', 'note', 'spotlight', 'span', 'grow',
-                              'pin', 'modal', 'layer', 'ui-state', 'max-lines', 'wrap'})
+_ANNOTATION_DOCS = collections.OrderedDict([
+    ('name',      '語義身份：theme 綁它、debug 定位靠它'),
+    ('to',        '動線：跳到哪個畫面'),
+    ('note',      '標註面：右側邊註（可剝離）'),
+    ('spotlight', '標註面：聚焦標記（focus / new / change / click）'),
+    ('span',      'grid 內跨幾欄'),
+    ('grow',      '吃掉剩餘空間（col 內是長高）'),
+    ('pin',       '浮層錨點方位；錨在最近的 box/root，父容器要有 box: true'),
+    ('modal',     '浮層擋住後面（scrim + inert）'),
+    ('layer',     '浮層的 z 帶（base / overlay / notify / top）'),
+    ('ui-state',  '顯示態（selected / disabled / hover / focus / active）'),
+    ('max-lines', '最多幾行，超過截斷；只能用在文字節點'),
+    ('wrap',      'false = 不換行、單行省略；不能與 max-lines 並用'),
+])
+
+_ANNOTATION_KEYS = frozenset(_ANNOTATION_DOCS)
 
 def _expand_kit_node(it, basedir, ctx, stack):
     name, spec = _kit_use(it)
@@ -3513,31 +3588,8 @@ def main():
         want_r1 = ring in (None, '1')
         if want_r0:
             print("═══ Ring 0：結構原語（恆定，AI 必背）═══")
-            print("\n[Grammar 關鍵字]")
-            print("  viewport / title / group / body / extends / embed / with / slot / slots / as / routes / default / when / items")
-            print("\n[結構單元類型]")
-            print("  page / layout / component / widget")
-            print("\n[Container]")
-            print("  row / col / grid / box / widget")
-            print("  Overlay 家族 sugar: dialog / drawer / sheet / toast / loading")
-            print("\n[Leaf 元件]")
-            print("  文字：text / text.title / text.heading / text.label / text.strong / text.hint")
-            print("  表單：input / select / button / checkbox / radio")
-            print("  狀態：status / status.muted / status.strong / status.badge / alert")
-            print("  其他：icon / divider / image / tabs / link / progress / avatar / avatars / map")
-            print("\n[Widget 屬性]")
-            print("  is / can")
-            print("\n[空間屬性]")
-            print("  justify / align / gap / padding / span / grow / scroll / scroll-x / spacer")
-            print("  寬度 token：grow / fit / w-N/M / <N>% / w-N（逃生門）")
-            print("\n[動線/連結]")
-            print("  to / link")
-            print("\n[浮層原語]")
-            print("  pin / modal / layer")
-            print("\n[標註面] (Layer 2)")
-            print("  note / spotlight")
-            print("\n[Meta（隱形）]")
-            print("  name / viewport")
+            # 詞彙表由註冊表生成：新增角色/標註只改一處，這裡與文件同時更新。
+            print(_vocabulary_markdown() if _argval('--format') == 'md' else _vocabulary_text())
         if want_r1:
             _load_tokens(basedir)
             print("\n═══ Ring 1：專案 semantic token（opt-in，讀 tokens/*.yaml + wf.tokens.yaml）═══")
