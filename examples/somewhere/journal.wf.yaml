@@ -1,0 +1,14 @@
+title: 城市手帳
+group: Somewhere
+extends: layouts/app
+with: {title: 城市手帳}
+slots:
+  main:
+    - text.label: "TAIPEI · 2026"
+    - text.title: "你不是去過 18 個地方。你留下了 18 段記憶。"
+    - tabs: {active: 九月, items: [九月, 八月, 七月]}
+    - memory-card: {place: "昭和布丁店", date: "SEP 19", note: "雨聲、焦糖，還有一扇差點錯過的門", state: saved}
+    - memory-card: {place: "午後市場", date: "SEP 18", note: "市場快收攤時的最後一束光", state: saved}
+    - memory-card: {place: "河堤盡頭", date: "SEP 06", note: "沒有目的地的一個下午", state: saved}
+    - button: "看看這些記憶在地圖上的位置"
+      to: home
