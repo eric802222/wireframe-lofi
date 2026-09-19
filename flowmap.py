@@ -3,7 +3,7 @@
 flowmap.py — 掃一個資料夾下所有 *.wf.yaml，依其中的 `to:` 連結自動生成「畫面互動流程圖」。
 
 節點來自 YAML 的 routes（一頁多路由 = 多個可定址節點），
-連結來自 `to:`（`page` / `page#stage.state` / `#stage.state`）。link:（真超連結）不計入動線。
+連結來自 `to:`（`page` / `page#stage.state` / `#stage.state`）。只有站外連結（`://`）不計入動線。
 來源即真相：改 to: 重跑即同步。需 graphviz `dot`。
 
 用法：python3 flowmap.py <資料夾> [-o out_basename]
@@ -35,15 +35,16 @@ _INLINE_TO = re.compile(r'\[([^\]]+)\]\(to:([^)]+)\)')  # inline 動線連結 [�
 
 def walk_to(obj):
     """遞迴收集 (target, label)；吃 block 級 to、button 的 to、inline [字](to:目標)。
-    link:（外部真連結）不計入動線 → 不遞迴其子樹、不收其 to。"""
+
+    外部連結（`to:` 帶 `://`）不計入動線。判準是「目標是不是站外」，不是「用哪個角色寫的」：
+    render 把 `link: {text: 取消, to: feed}` 編成站內導航 href，flow 就必須看得見它，
+    否則正確的原型被報成孤島／死路，真的斷鏈反而靜默放過。"""
     edges = []
     if isinstance(obj, dict):
         t = obj.get('to')
         if isinstance(t, str) and '://' not in t:
             edges.append((t, _label(obj)))
         for k, v in obj.items():
-            if k == 'link':                    # link: = 外部，不計入動線
-                continue
             edges += walk_to(v)
     elif isinstance(obj, list):
         for x in obj:
@@ -63,9 +64,25 @@ def _node_of(target, base):
     return page + ('.' + frag if frag else '')
 
 
+def _expanded(body, path):
+    """kit 元件／embed 裡的 to: 同樣是動線。底部導覽這類共用元件本來就該抽進 kit
+    （lint 自己也這樣建議），不展開就等於把整條導覽動線從圖上抹掉。
+    展開失敗不該讓整張圖掛掉 —— 退回未展開的原樹，寧可少算也不要炸。"""
+    if not isinstance(body, list):
+        return body
+    try:
+        basedir = os.path.dirname(os.path.abspath(path)) or '.'
+        wfyaml._ensure_kit(basedir)
+        return wfyaml.expand(body, basedir, {})
+    except Exception:
+        return body
+
+
 def extract(path):
     """回傳 (base, [(node_id, [(tgt_node, label)]), ...])。routed → 每路由一個 node。"""
     doc = yaml.safe_load(open(path)) or {}
+    if isinstance(doc, dict) and isinstance(doc.get('body'), list):
+        doc = {**doc, 'body': _expanded(doc['body'], path)}
     base = re.sub(r'\.(wf\.)?ya?ml$', '', os.path.basename(path))
     routes = doc.get('routes')
     out = []

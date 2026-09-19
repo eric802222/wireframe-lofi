@@ -78,3 +78,21 @@ class CompositeExportRoundTrip(unittest.TestCase):
         back, _ = wfexport._dtcg_to_tokens(out)
         self.assertEqual(back['gradient']['scrim']['angle'], '180deg')
         self.assertEqual(back['typography']['hint']['$value']['fontWeight'], 400)
+
+
+class TypographyRefFamily(unittest.TestCase):
+    """typography: 的參照要看家族 —— 只取最後一段會讓 {color.ink} 默默變成 typography.ink。"""
+    THEME = ("tokens:\n  color: { ink: '#111' }\n  typography:\n    ink:\n"
+             "      $type: typography\n      $value: { fontSize: 99px }\n"
+             "bindings:\n  text.hint: { typography: '%s' }\n")
+    def tearDown(self): wf._load_theme(None)
+    def _load(self, ref):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'theme.yaml'; p.write_text(self.THEME % ref)
+            wf._load_theme(str(p)); return wf._theme_css()
+    def test_wrong_family_rejected(self):
+        with self.assertRaises(Exception):
+            self._load('{color.ink}')
+    def test_right_family_and_bare_name_both_work(self):
+        for ref in ('{typography.ink}', 'ink'):
+            self.assertIn('--wf-typography-ink-font-size', self._load(ref))

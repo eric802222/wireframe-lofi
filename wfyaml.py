@@ -559,7 +559,6 @@ def _check_token_name_collisions(tokens):
 # family + size + weight + line-height + letter-spacing 的 token。
 _TYPOGRAPHY_SUBS = {'fontFamily': 'font-family', 'fontSize': 'font-size', 'fontWeight': 'font-weight',
                     'lineHeight': 'line-height', 'letterSpacing': 'letter-spacing'}
-_COMPOSITE_FAMILIES = {'typography', 'gradient'}
 
 
 def _typography_vars(name, value, where):
@@ -576,9 +575,10 @@ def _typography_vars(name, value, where):
 def _gradient_value(entry, name, where):
     """gradient 複合值 → 單一 CSS 漸層字串。
 
-    DTCG 的 gradient 是一組 {color, position}，本身沒有定義方向（見 DTCG issue #101），
-    所以 `angle` 走 $extensions 之外的同層鍵,預設 180deg（由上而下，最常見的暗角）。
-    漸層只住 theme：畫面 YAML 永遠不准寫,跟「產品色只住 theme」是同一條原則。"""
+    DTCG 的 gradient 是一組 {color, position}，本身沒有定義方向（見 DTCG issue #101）。
+    theme 裡 `angle` 寫在 token 的同層（預設 180deg，由上而下）；匯出 DTCG 時它進
+    $extensions（規格外的資料只能放那裡），匯入時再還原回同層——兩邊是同一個值。
+    漸層只住 theme：畫面 YAML 永遠不准寫，跟「產品色只住 theme」是同一條原則。"""
     stops = entry.get('$value') if isinstance(entry, dict) else entry
     if not isinstance(stops, list) or not stops:
         raise ValueError(f'{where} 需要一組色停 list（DTCG gradient：[{{color, position}}, ...]）')
@@ -871,7 +871,14 @@ def _theme_components_css(components):
 
 def _typography_decls(value, where):
     """typography: <token 名> → 一組宣告。只展開該 token 真的有宣告的子值。"""
-    name = str(value).strip('{}').split('.')[-1]
+    ref = str(value).strip('{}')
+    if '.' in ref:
+        family, name = ref.split('.', 1)
+        if family != 'typography':
+            # 只取最後一段會讓 {color.ink} 默默被當成 typography.ink 用——錯的家族要報錯
+            raise ValueError(f'{where}: 需要 typography 家族的 token（收到 {value!r}）')
+    else:
+        name = ref
     keys = (_THEME_TOKENS.get('typography') or {})
     if name not in keys:
         raise ValueError(f'{where}: 未定義的 typography token {value!r}（可用：{sorted(keys)}）')
@@ -934,12 +941,14 @@ def _warn_unbindable_target(role):
     """bindings 的 fallback selector 是給 kit 元件角色與畫面 `name:` 用的正當路徑，
     但打錯字或綁一個還沒有選擇器的 DSL 角色時，它會編出對不到任何元素的死 CSS 而靜默通過。
     這裡只在「確定綁不到」的兩種情況出聲，name: 因為可能定義在本次範圍外的畫面，一律放行。"""
+    # 契約：kit 必須先於 theme 載入，否則 kit 元件角色會被誤判成綁不到。
+    # CLI 兩條路徑（render / lint）都是這個順序；當作程式庫呼叫時也要維持。
     if role in _KIT_COMPONENTS:
         return
     bindable = sorted(_THEME_ELEMENT_SELECTORS)
     if role in LEAF_ROLES or role in TEXT_CLASS:
         msg = (f'bindings.{role} 是 DSL 葉子角色，但目前沒有對應的 theme 選擇器，'
-               f'這條綁定不會生效（可綁的角色：{bindable}）')
+               f'這條綁定不會生效（`wfyaml.py list` 可看可綁的角色）')
     else:
         sugg = _suggest_key(str(role), set(bindable))
         if not sugg:
@@ -2251,6 +2260,10 @@ def _render_item(it, src=None, path=None):
             raise ValueError(f'max-lines 需要 >= 1 的整數（收到 {max_lines!r}）')
     if wrap is not None and not isinstance(wrap, bool):
         raise ValueError(f'wrap 只接 true/false（收到 {wrap!r}）')
+    if max_lines is not None and wrap is False:
+        # 「最多兩行」與「不准換行」語義互斥。靜默吃掉一邊，正是 theme binding
+        # 警示（#48）在抓的同一種錯：規格寫了，工具默默不做。
+        raise ValueError('max-lines 與 wrap: false 互斥（一個要多行截斷、一個要單行不換行），請擇一')
     pin = d.pop('pin', None)          # 浮層：錨點(center/邊/角)
     modal = d.pop('modal', None)      # 浮層：擋後面(scrim + inert)
     layer = d.pop('layer', None)      # 浮層：z 帶(base/overlay/notify/top)
@@ -2283,6 +2296,13 @@ def _render_item(it, src=None, path=None):
     styles = []
     if isinstance(span, int):
         styles.append(f'grid-column:span {span}')
+    if max_lines is not None or wrap is False:
+        # 截斷是「這段文字」的規格，容器上沒有語義。而且 wf-clamp 帶 display:-webkit-box，
+        # 套在容器上會直接蓋掉 flex 排版——版面壞掉卻不報錯，比不支援還糟。
+        container = next((k for k in ('row', 'col', 'grid', 'items', 'section') if k in d), None)
+        if container:
+            raise ValueError(f'max-lines / wrap 只能用在文字節點，不能放在 `{container}` 容器上'
+                             f'（要截斷容器裡的某段文字，請掛在那個文字節點上）')
     if max_lines is not None:
         xcls.append('wf-clamp')
         styles.append(f'--wf-max-lines:{max_lines}')
@@ -2943,7 +2963,6 @@ _GRAMMAR_KEYS = {'viewport', 'title', 'group', 'body', 'extends', 'with', 'slots
 # 已知 container 屬性 keys（sibling 掛在容器 dict 上）
 _CONTAINER_ATTRS = {'row', 'col', 'grid', 'items', 'section', 'collapsed', 'box', 'gap', 'padding',
                     'justify', 'align', 'span', 'grow', 'scroll', 'scroll-x',
-                    'max-lines', 'wrap',
                     'name', 'to', 'note', 'spotlight', 'pin', 'modal', 'layer',
                     'embed', 'with', 'slot', 'as', 'when', 'ui-state',
                     'collapsible', 'expanded', 'summary'}
@@ -3131,8 +3150,10 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
             diag.error(f'{path}.spotlight', f"未知 spotlight.kind `{kind}`",
                        "合法值：focus / new / change / click")
 
-    # 8. 未知 key typo 檢查（只對通用 container 節點；leaf / widget / overlay sugar 有各自 shape）
-    if not is_widget and not has_overlay_sugar and not has_leaf_role and not is_slot_marker and not is_embed and not is_spacer:
+    # 8. 未知 key typo 檢查。葉子節點也要查：leaf 的「值」有各自 shape，但掛在它旁邊的
+    #    sibling 屬性（grow / pin / name / to …）沒有人管，打錯字會靜默消失在產出裡。
+    #    widget / overlay sugar / slot / embed / spacer 的 key 集合由各自路徑驗證，跳過。
+    if not is_widget and not has_overlay_sugar and not is_slot_marker and not is_embed and not is_spacer:
         known = _CONTAINER_ATTRS | _GRAMMAR_KEYS | set(LEAF_ROLES) | _OVERLAY_SUGARS | {'widget', 'is', 'can'}
         for k in keys:
             if k in known or k in ('placeholder', 'content', 'default'):

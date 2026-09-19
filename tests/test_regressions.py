@@ -556,6 +556,24 @@ components:
             self.assertIn('data-wf-role="metric-card"', html)
 
 
+class LeafSiblingKeyTypos(unittest.TestCase):
+    """葉子的 sibling 屬性打錯字要出聲：leaf 的「值」有 shape，掛在旁邊的屬性沒人管。"""
+
+    def _lint(self, body):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'p.wf.yaml')
+            open(p, 'w', encoding='utf-8').write('viewport: 390x600\nbody:\n' + body)
+            return wf._lint_file(p)
+
+    def test_typo_on_leaf_sibling_warns(self):
+        err, warn = self._lint('  - text: 內容\n    gorw: true\n')
+        self.assertEqual(err, 0)
+        self.assertGreaterEqual(warn, 1, '`gorw` 會被靜默丟掉，必須出聲')
+
+    def test_real_sibling_attributes_stay_silent(self):
+        err, warn = self._lint('  - text: 內容\n    grow: true\n    name: 標題\n    to: other\n')
+        self.assertEqual((err, warn), (0, 0), '合法 sibling 不該誤報')
+
 class TokenNameCollision(unittest.TestCase):
     """兩個 token 名塌成同一個 CSS var → 後者靜默覆蓋前者，綁不同 token 的角色拿到同一個值。"""
 
