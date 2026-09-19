@@ -1,0 +1,15 @@
+title: 發現！
+group: Somewhere
+extends: layouts/app
+with: {title: 發現！}
+slots:
+  main:
+    - text.label: "✦ DISCOVERED ✦"
+    - text.title: "原來是這裡。"
+    - memory-card: {place: "昭和布丁店", date: "SEP 19 · TAIPEI", note: "雨聲、焦糖，還有一扇差點錯過的門", state: fresh}
+    - text: "你解開了「老房子裡的甜味」。城市地圖上多亮了一盞燈。"
+    - status.badge: "+20 MEMORIES"
+    - progress: {value: 0.8, label: "Chapter 03 · 4 / 5"}
+    - primary-action: {text: "把這一刻收進手帳", to: memory}
+    - button: "回到城市"
+      to: home
