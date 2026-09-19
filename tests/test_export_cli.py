@@ -1,0 +1,160 @@
+"""wfexport.py：tokens → DTCG，types → 型別契約。不改動 wfyaml.py 的行為。"""
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+EXPORT = os.path.join(ROOT, 'wfexport.py')
+
+THEME = """
+tokens:
+  color:  { brand: '#B85A3C', surface: '#FBF7EE', link: '{color.brand}' }
+  space:  { sm: 6px, lg: 1.25rem }
+  font:   { body: "'Inter',sans-serif", weight: 700 }
+  opacity: { faded: 0.5 }
+  motion: { fast: 150ms, slow: 1.5s, spring: [0.34, 1.56, 0.64, 1] }
+  shadow: { md: '0 4px 0 #2B2A33' }
+  preset: { card: { padding: '{space.sm}' } }
+"""
+
+KIT = """
+components:
+  stamp-card:
+    props: [place, time, visits, tone]
+    states: [done, next, todo]
+    content:
+      - col: [ "text.strong: {{place}}" ]
+        box: true
+  jumbo-button:
+    of: button
+  back-bar:
+    props: [to, text]
+    content:
+      - col: [ "text: {{text}}" ]
+"""
+
+TYPES_MAP = "stamp-card: { visits: number, tone: [info, warn] }\n"
+
+
+def write(tmp, name, text):
+    path = os.path.join(tmp, name)
+    open(path, 'w', encoding='utf-8').write(text)
+    return path
+
+
+def run(*args, cwd=ROOT):
+    return subprocess.run([sys.executable, EXPORT, *args], capture_output=True, text=True, cwd=cwd)
+
+
+class TokensTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.theme = write(self.tmp, 'theme.yaml', THEME)
+
+    def test_dtcg_types(self):
+        out = json.loads(run('tokens', self.theme).stdout)
+        self.assertEqual(out['color']['$type'], 'color')            # 同型家族：$type 提到群組層
+        self.assertEqual(out['space']['sm']['$value'], {'value': 6, 'unit': 'px'})
+        self.assertEqual(out['space']['lg']['$value'], {'value': 1.25, 'unit': 'rem'})
+        self.assertEqual(out['font']['body']['$type'], 'fontFamily')
+        self.assertEqual(out['font']['weight']['$type'], 'fontWeight')
+        self.assertEqual(out['opacity']['$type'], 'number')
+        self.assertEqual(out['motion']['fast']['$value'], {'value': 150, 'unit': 'ms'})
+        self.assertEqual(out['motion']['spring']['$type'], 'cubicBezier')
+
+    def test_alias_kept_without_type(self):
+        link = json.loads(run('tokens', self.theme).stdout)['color']['link']
+        self.assertEqual(link['$value'], '{color.brand}')            # DTCG 同語法，原樣保留
+        self.assertNotIn('$type', link)
+
+    def test_preset_not_exported(self):
+        self.assertNotIn('preset', json.loads(run('tokens', self.theme).stdout))
+
+    def test_unmappable_skipped_with_reason(self):
+        proc = run('tokens', self.theme)
+        self.assertNotIn('shadow', json.loads(proc.stdout))
+        self.assertIn('tokens.shadow.md 未匯出', proc.stderr)
+
+    def test_rejects_non_dtcg_unit(self):
+        theme = write(self.tmp, 'bad.yaml', "tokens:\n  space: { md: 2em }\n")
+        proc = run('tokens', theme)
+        self.assertEqual(proc.stdout.strip(), '{}')
+        self.assertIn('只支援 px / rem', proc.stderr)
+
+    def test_rejects_bad_cubic_bezier(self):
+        theme = write(self.tmp, 'bez.yaml', "tokens:\n  motion: { bad: [1.5, 0, 1, 1] }\n")
+        self.assertIn('x 座標', run('tokens', theme).stderr)
+
+    def test_css_format(self):
+        css = run('tokens', self.theme, '--format', 'css').stdout
+        self.assertIn('--wf-brand: #B85A3C;', css)
+        self.assertIn('--wf-motion-spring: cubic-bezier(0.34, 1.56, 0.64, 1);', css)
+        self.assertIn('var(--wf-brand', css)                          # 別名編成 var()
+        self.assertNotIn('wf-gutter', css)                            # 不夾帶線框機制的規則
+
+    def test_ts_format(self):
+        ts = run('tokens', self.theme, '--format', 'ts').stdout
+        self.assertIn('"color.link": "#B85A3C"', ts)                  # 別名已解析
+        self.assertIn('"motion.spring": [0.34, 1.56, 0.64, 1]', ts)
+        self.assertIn('export type TokenName', ts)
+
+    def test_unknown_format(self):
+        proc = run('tokens', self.theme, '--format', 'scss')
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn('--format', proc.stderr)
+
+
+class TypesTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.kit = write(self.tmp, 'kit.yaml', KIT)
+        self.map = write(self.tmp, 'map.yaml', TYPES_MAP)
+
+    def test_untyped_props_are_strings(self):
+        ts = run('types', self.kit).stdout
+        self.assertIn('export type StampCardProps = {', ts)
+        self.assertIn('place: string;', ts)
+        self.assertIn('state?: "done" | "next" | "todo";', ts)
+
+    def test_types_map_applies(self):
+        ts = run('types', self.kit, '--types-map', self.map).stdout
+        self.assertIn('visits: number;', ts)
+        self.assertIn('tone: "info" | "warn";', ts)
+
+    def test_own_to_prop_not_duplicated(self):
+        ts = run('types', self.kit).stdout
+        back = ts[ts.index('export type BackBarProps'):]
+        back = back[:back.index('};')]
+        self.assertIn('to: string;', back)
+        self.assertNotIn('to?: string', back)
+
+    def test_generated_header(self):
+        self.assertIn('do not edit', run('types', self.kit).stdout)
+
+    def test_json_format(self):
+        out = json.loads(run('types', self.kit, '--format', 'json',
+                             '--types-map', self.map).stdout)
+        self.assertEqual(out['stamp-card']['props']['visits'], 'number')
+        self.assertEqual(out['stamp-card']['states'], ['done', 'next', 'todo'])
+        self.assertEqual(out['jumbo-button']['of'], 'button')
+
+    def test_rejects_unknown_prop_type(self):
+        bad = write(self.tmp, 'bad.yaml', "stamp-card: { visits: shape }\n")
+        proc = run('types', self.kit, '--types-map', bad)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn('型別只接', proc.stderr)
+
+    def test_rejects_unknown_prop_name(self):
+        bad = write(self.tmp, 'ghost.yaml', "stamp-card: { nope: number }\n")
+        self.assertIn('不存在的 props', run('types', self.kit, '--types-map', bad).stderr)
+
+    def test_rejects_unknown_component(self):
+        bad = write(self.tmp, 'ghost2.yaml', "no-such: { a: number }\n")
+        self.assertIn('沒有的元件', run('types', self.kit, '--types-map', bad).stderr)
+
+
+if __name__ == '__main__':
+    unittest.main()
