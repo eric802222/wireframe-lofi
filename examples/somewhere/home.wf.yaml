@@ -1,0 +1,18 @@
+title: 今日冒險
+group: Somewhere
+extends: layouts/app
+with: {title: 今日冒險}
+slots:
+  main:
+    - chapter-tag: "TAIPEI · CHAPTER 03"
+    - text.title: "雨停以前，找到城市裡的五盞燈。"
+    - text: "今天不需要完成一張清單。只要往一個讓你好奇的方向走。"
+    - progress: {value: 0.6, label: "3 / 5 個記憶已發現"}
+    - city-map:
+        items:
+          - {eyebrow: "DISCOVERED", title: "午後市場", meta: "已留下記憶", at: [0.20, 0.74], state: discovered, to: journal}
+          - {eyebrow: "?", title: "老房子裡的甜味", meta: "距離約 650m", at: [0.54, 0.47], state: available, to: quest}
+          - {eyebrow: "LOCKED", title: "看得見火車的屋頂", meta: "完成 Mission 07 解鎖", at: [0.78, 0.24], state: hidden}
+        link: [午後市場, 老房子裡的甜味, 看得見火車的屋頂]
+    - quest-card: {number: "07", title: "老房子裡的甜味", hint: "沿著騎樓走，找到一扇沒有招牌的木門。", reward: "+20 MEMORIES", state: available}
+    - primary-action: {text: "接受這次冒險 →", to: quest}
