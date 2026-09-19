@@ -1,0 +1,23 @@
+# 旅人手帳：角色檔案。累積的收集放最前面，設定往後收。
+title: 旅人手帳（我的）
+group: A 入口
+viewport: 390x844
+body:
+  - row: [ "text.title: 旅人手帳" ]
+  - row: [ { avatar: 我 }, { label-pair: { main: "[你的名字]", sub: "從 [起始年份] 開始記錄" } }, { spacer: }, { button: 編輯 } ]
+    gap: sm
+  - grid: 3
+    items:
+      - { stat-tile: { value: "[N]", unit: "枚郵票" } }
+      - { stat-tile: { value: "[N]", unit: "本小書" } }
+      - { stat-tile: { value: "[N]", unit: "旅行天數" } }
+  - map: { label: 走過的地方（每個去過的城市一個標記）, markers: [京都, 台南, 首爾, 沖繩], can: [pan, zoom] }
+  - "text.heading: 書籤鳥"
+  - col: [ { col: [ "text.hint: 本月已用 [金額] / 上限 [金額]", { progress: { value: 0.38 } } ] }, "link: 用量明細" ]
+    box: true
+  - "text.heading: 設定"
+  - col: [ "row: [ 語言, 繁體中文 ]", "row: [ 時區, 跟著旅行地自動 ]", "row: [ 貨幣, 當地＋台幣 ]", "row: [ 體力提醒, 每 3 小時 ]" ]
+    box: true
+  - col: [ { row: [離線資料, "已下載 2 本 · [N] MB"], to: c7-sync }, "row: [ 匯出全部, YAML / ZIP ]", "row: [ 登出 ]", "row: [ 刪除帳號, 會刪除你擁有的所有小書 ]" ]
+    box: true
+  - back-bar: { text: ✕ 返回, to: a2-shelf }

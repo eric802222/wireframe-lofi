@@ -1,0 +1,46 @@
+# 問書籤鳥：外框是一台有厚度的發報機，裡面就是一般的 agent chat。
+# 銘牌只留旅遊書名稱（標示對話範圍，避免寫進別本）。
+# 進行狀態＝貼著對話泡泡的小字，不另外放進度列或停止鍵；送出後同一顆鍵變「停止」。
+# 輸入框撐滿剩餘寬度，與按鈕等高（theme 的 input 與 button 同一級 padding）。
+title: 問書籤鳥
+group: C 旅途中
+viewport: 390x844
+routes:
+  - default: true
+    body:
+      - col:
+          - row: [ "text.strong: 京都 五日散步", { spacer: } ]
+          - divider:
+          - row: [ { spacer: }, { col: [ "text: 從今天的照片挑三張，放進小書第 2 天。" ], box: true, name: 我的訊息 } ]
+            gap: sm
+          - row: [ { avatar: { label: 鳥, size: lg }, name: 書籤鳥頭像 }, { col: [ "text: 好，我看一下今天的紀錄。", "text.hint: 讀了 23 筆紀錄 · 找到 38 張照片 · 正在收成連拍…　進行中 12 秒" ], box: true, name: 鳥的訊息 } ]
+            gap: sm
+          - spacer:
+          - row: [ { input: 再問一句…, grow: true }, { button: 停止 } ]
+            gap: sm
+          - row: [ "text.hint: 這則 [本次花費]", { spacer: }, "text.hint: 本月剩 [餘額]" ]
+        box: true
+        name: 電報機身
+        grow: true
+      - row: [ { spacer: }, { button: { text: ✕, to: c1-trip-home } }, { spacer: } ]
+  - when: { state: result }
+    body:
+      - col:
+          - row: [ "text.strong: 京都 五日散步", { spacer: } ]
+          - divider:
+          - row: [ { spacer: }, { col: [ "text: 從今天的照片挑三張，放進小書第 2 天。" ], box: true, name: 我的訊息 } ]
+            gap: sm
+          - row: [ { avatar: { label: 鳥, size: lg }, name: 書籤鳥頭像 }, { col: [ "text: 挑好了，這三張最能代表今天。", "text.hint: 光線、有你在畫面裡、彼此不重複　花了 12 秒" ], box: true, name: 鳥的訊息 } ]
+            gap: sm
+          - row: [ { image: { label: 竹林 08:52, ratio: 1/1 } }, { image: { label: 常寂光寺, ratio: 1/1 } }, { image: { label: 渡月橋, ratio: 1/1 } } ]
+            gap: sm
+          - row: [ { button: { text: 放進小書, to: d3-memory-read } }, { button: { text: 我自己挑, to: d2-picker } } ]
+            gap: sm
+          - spacer:
+          - row: [ { input: 再問一句…, grow: true }, { button: 送出 } ]
+            gap: sm
+          - row: [ "text.hint: 這則 [本次花費]", { spacer: }, "text.hint: 本月剩 [餘額]" ]
+        box: true
+        name: 電報機身
+        grow: true
+      - row: [ { spacer: }, { button: { text: ✕, to: c1-trip-home } }, { spacer: } ]

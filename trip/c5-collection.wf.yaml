@@ -1,0 +1,37 @@
+# 手帳郵票：收集感是推進感的來源。未取得的地點以灰階輪廓呈現。
+# 計畫外的地點也能收（例：路邊的貓），與計畫內同一格狀清單。
+title: 手帳郵票
+group: C 旅途中
+viewport: 390x844
+routes:
+  - default: true
+    body:
+      - row: [ "text.title: 手帳", "text.hint: 14 枚" ]
+        justify: between
+      - tabs: { active: D2, items: [D1, D2, D3, D4, D5] }
+      - row: [ "text.heading: 第 2 天", { spacer: }, { col: [ "text.hint: 4 / 7", { progress: { value: 0.57 } } ] } ]
+      - grid: 3
+        items:
+          - { stamp-card: { place: 竹林小徑, time: "08:40", state: done }, to: "#postcard" }
+          - { stamp-card: { place: 常寂光寺, time: "09:32", state: done }, to: "#postcard" }
+          - { stamp-card: { place: 渡月橋, time: "11:08", state: done }, to: "#postcard" }
+          - { stamp-card: { place: 路邊的貓, time: "09:58", state: done }, to: "#postcard" }
+          - { stamp-card: { place: 河邊午餐, time: "12:00", state: todo } }
+          - { stamp-card: { place: 小火車, time: "14:00", state: todo } }
+      - spacer:
+      - row: [ { label-pair: { main: "這天可以寫成一章了", sub: "郵票、照片與紀錄交給書籤鳥" } }, { button: { text: 請書籤鳥寫成一章, to: c4-ask } } ]
+        box: true
+        justify: between
+      - back-bar: { text: ✕ 返回, to: c1-trip-home }
+  - when: { state: postcard }
+    body:
+      - row: [ { button: { text: ‹ 手帳, to: "#" } }, "text.hint: 第 3 枚 / 7" ]
+        justify: between
+      - image: { label: 明信片正面（照片）, ratio: 4/3 }
+      - col: [ "text.title: 渡月橋", "text: 11:08 抵達 · 停留 30 分", "text: 橋上風很大，站著看河十分鐘。" ]
+        box: true
+      - row: [ { button: 翻到背面 }, { button: 換一張照片 } ]
+        gap: sm
+      - spacer:
+      - row: [ { button: ‹ 上一枚 }, { spacer: }, { button: 下一枚 › } ]
+      - back-bar: { text: ✕ 返回, to: c1-trip-home }

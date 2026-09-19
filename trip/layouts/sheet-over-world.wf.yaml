@@ -1,0 +1,8 @@
+# 抽屜頁殼：世界縮在上方當背景，抽屜從底部拉起（收起＝回世界）
+viewport: 390x844
+body:
+  - row: [ "text.hint: {{kicker}}", { button: { text: 收起, to: c1-trip-home } } ]
+    justify: between
+  - map: { label: "{{map}}", can: [pan, zoom, markers] }
+  - sheet:
+      - slot: main

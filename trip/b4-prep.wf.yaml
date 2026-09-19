@@ -1,0 +1,40 @@
+# 行前準備：出發前的檢查表。三個分頁＝三個路由。
+title: 行前準備
+group: B 計劃
+extends: layouts/phone
+with: { book: "京都 五日散步 · 出發前 [N] 天", title: 行前準備, back: b1-plan-map }
+routes:
+  - default: true
+    slots:
+      main:
+        - tabs: { active: 行李, items: [行李, 票券預約, 證件] }
+        - row: [ "text.label: 行李", { spacer: }, { col: [ "text.hint: 3 / 6", { progress: { value: 0.5 } } ] } ]
+        - col:
+            - "[x] 護照　（我）"
+            - "[x] 交通卡　（我）"
+            - "[ ] 薄外套　（[旅伴]）"
+            - "[x] 行動電源　（共用）"
+            - "[ ] 轉接頭　（[旅伴]）"
+            - "[ ] 常備藥　（共用）"
+          box: true
+        - button: ＋ 加一項
+      footer:
+        - col: [ "text.strong: 離線準備好了", "text.hint: 地圖、5 天行程、票券 · [N] MB" ]
+          box: true
+  - when: { state: tickets }
+    slots:
+      main:
+        - tabs: { active: 票券預約, items: [行李, 票券預約, 證件] }
+        - col: [ "text.strong: HARUKA 特急", "text: 10/03 14:40 · 關西機場 → 京都", "text.hint: 訂位代碼 [代碼] · 已存離線" ]
+          box: true
+        - col: [ "text.strong: [飯店名稱]", "text: 10/03 16:00 入住 · 4 晚", "text.hint: 確認碼 [代碼] · 已存離線" ]
+          box: true
+        - col: [ "text.strong: 川床料理", "text: 10/06 12:00 · 2 人", "text.hint: 預約人 [姓名] · 已存離線" ]
+          box: true
+        - button: ＋ 加入票券或預約（可拍照）
+  - when: { state: docs }
+    slots:
+      main:
+        - tabs: { active: 證件, items: [行李, 票券預約, 證件] }
+        - col: [ "row: [ 護照, 效期 [日期] ]", "row: [ 旅遊保險, [保單號碼] ]", "row: [ 住宿地址（給計程車看）, [日文地址] ]", "row: [ 緊急聯絡, [電話] ]" ]
+          box: true

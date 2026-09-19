@@ -1,0 +1,18 @@
+# 記一筆抽屜：打字為主，體力與拍照各一鍵；送出即存，不擋動線。
+title: 記一筆（抽屜）
+group: C 旅途中
+extends: layouts/sheet-over-world
+with: { kicker: 10:42 · 已定位, map: 世界地圖（縮在背景） }
+slots:
+  main:
+    - "text.title: 記一筆"
+    - row: [ { input: 打一句：到機場了、買了… }, { button: 送出 } ]
+      gap: sm
+    - "text.hint: 按下的那一刻就記下時間與位置"
+    - row: [ "text.label: 體力", { button: 1 }, { button: 2 }, { button: 3 }, { button: 4 }, { button: 5 } ]
+      gap: sm
+    - row: [ { button: 拍一張 }, { button: 記花費 }, { button: 心情 } ]
+      gap: sm
+    - "text.heading: 今日足跡"
+    - col: [ "row: [ 08:40, 抵達 · 竹林小徑 ]", "row: [ 09:05, 照片 ×10 ]", "row: [ 09:32, 抵達 · 常寂光寺 ]" ]
+      box: true

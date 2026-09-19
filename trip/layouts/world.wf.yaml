@@ -1,0 +1,9 @@
+# 世界頁殼：極簡 HUD ＋ 地圖佔滿 ＋ 底部一個主要動作（拇指區）
+# 遊戲化原則：畫面上同時只有一個最主要的動作，其餘收在抽屜或角色身上。
+viewport: 390x844
+body:
+  - row: [ { col: [ "text.hint: {{kicker}}", "text.title: {{here}}" ] }, { slot: hud } ]
+    justify: between
+  - slot: world
+  - slot: buddy
+  - slot: action

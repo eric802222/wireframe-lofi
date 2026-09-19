@@ -1,0 +1,25 @@
+# 切換小書：置中 dialog（不是底部抽屜），動作按鈕滿寬、垂直排列，方便單手點。
+# 旅途中預設鎖定進行中的那本，切換要有明確提醒。
+title: 切換／鎖定小書
+group: A 入口
+viewport: 390x844
+body:
+  - row: [ "text.hint: 京都 五日散步 · Day 2",  ]
+    justify: between
+  - map: { label: 世界地圖（在對話框後方變暗）, can: [pan, zoom] }
+    grow: true
+  - dialog:
+      - "text.title: 切換小書"
+      - "text.heading: 正在進行"
+      - col: [ "(x) 京都 五日散步", "text.hint: Day 2 / 5 · 已鎖定到回程日" ]
+        box: true
+      - row: [ { label-pair: { main: "旅途中自動鎖定", sub: "出發日到回程日之間，紀錄一律寫進這本" } }, { select: 開啟 } ]
+        justify: between
+      - "text.heading: 其他小書"
+      - col: [ "( ) 北海道 冬天的雪　計劃中", "( ) 台南 吃一整天　已完成", "( ) 首爾 三天兩夜　已完成" ]
+        box: true
+      - alert: 切換後，快速紀錄會寫進所選的那本，並暫時關閉自動鎖定
+      - button: { text: 確定切換, to: c1-trip-home }
+      - button: { text: 看書櫃, to: a2-shelf }
+      - button: { text: 取消, to: c1-trip-home }
+  - back-bar: { text: ✕ 返回, to: c1-trip-home }

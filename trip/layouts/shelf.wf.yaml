@@ -1,0 +1,10 @@
+# 書架頁殼：頁首 ＋ main（各狀態填）＋ 常駐的「新的一本」
+# 「＋ 新的一本」放在 main 之後：旅行中／下一趟的卡片永遠排在它前面。
+viewport: 390x844
+body:
+  - row: [ { col: [ "text.hint: {{count}}", "text.title: 旅行書櫃" ] }, { row: [ { button: { text: 動態, to: e2-activity } }, { button: { text: 我的, to: a5-profile } } ] } ]
+    justify: between
+  - col: [ { slot: main } ]
+    grow: true
+    scroll: true
+  - button: { text: ＋ 新的一本, to: a3-new-book }

@@ -1,0 +1,52 @@
+# 回憶閱讀：這裡密度最低，一次一段。來源與保護標記放頁邊，平常很淡。
+# 狀態：閱讀（預設）／目錄（toc）／AI 建議並排（suggest）。
+title: 回憶閱讀與修改
+group: D 回來後
+viewport: 390x844
+routes:
+  - default: true
+    body:
+      - row: [ { button: { text: 目錄, to: "#toc" } } ]
+        justify: between
+      - page-head: { hint: "chapter 2", title: "風只在竹林裡" }
+      - row: [ { col: [ "text.hint: ✎ 3" ], align: center }, { col: [ "text: 早上八點走進竹林，人還很少。整條路只聽得到風聲，我們都不太想說話。" ] } ]
+        gap: sm
+      - col: [ "text.hint: 根據 08:10 的一句話、08:40 的抵達、09:05 的 10 張照片寫成" ]
+        box: true
+      - row: [ { image: { label: 照片, ratio: 4/3 } }, { col: [ { image: { label: 照片, ratio: 1/1 } }, { image: { label: 換一張, ratio: 1/1 } } ] } ]
+        gap: sm
+      - row: [ { col: [ "text.hint: 🔒" ], align: center }, { col: [ "text: 湯豆腐燙到我們兩個都不說話，只好一起看河。", "text.hint: 你改過 · 書籤鳥不會再動這段" ] } ]
+        gap: sm
+      - spacer:
+      - row: [ { button: { text: 請書籤鳥改寫這段, to: "#suggest" } }, { button: { text: 分享, to: d4-share } } ]
+        gap: sm
+      - back-bar: { text: ✕ 返回, to: a2-shelf }
+  - when: { state: toc }
+    body:
+      - row: [ { button: { text: ‹ 閱讀, to: "#" } }, "text.title: 目錄", "text.hint: 5 / 7 章有內容" ]
+        justify: between
+      - col:
+          - "row: [ 序, 前言, 2 段 ]"
+          - "row: [ 1, 抵達日, 3 段 ]"
+          - "row: [ 2, 風只在竹林裡, 4 段 ]"
+          - "row: [ 3, 東山的石階, 3 段 ]"
+          - "row: [ 4, 北邊的雨, 空白 ]"
+          - "row: [ 5, 回家那天, 2 段 ]"
+          - "row: [ 跋, 後記, 空白 ]"
+        box: true
+      - button: { text: 請書籤鳥補上空白章節, to: c4-ask }
+      - back-bar: { text: ✕ 返回, to: a2-shelf }
+  - when: { state: suggest }
+    body:
+      - row: [ { button: { text: ‹ 閱讀, to: "#" } }, "text.hint: 原文不會被動到" ]
+        justify: between
+      - "text.heading: 原文"
+      - col: [ "text: 早上八點走進竹林，人還很少。整條路只聽得到風聲，我們都不太想說話。" ]
+        box: true
+      - "text.heading: 書籤鳥的建議"
+      - col: [ "text: 八點的竹林還沒醒，路上只有我們兩個，和一陣一陣從竹梢滑下來的風。" ]
+        box: true
+      - row: [ { button: { text: 保留原文, to: "#" } }, { button: { text: 換成建議, to: "#" } } ]
+        gap: sm
+      - "text.hint: 換掉之後仍可復原，版本紀錄留著每一版"
+      - back-bar: { text: ✕ 返回, to: a2-shelf }

@@ -1,0 +1,29 @@
+# 小書設定：鎖定與隱私是重點，其餘往後收。
+title: 小書設定
+group: E 共用與設定
+viewport: 390x844
+body:
+  - row: [ "text.title: 小書設定" ]
+  - row: [ { image: { label: 封面, ratio: 3/4 } }, { col: [ "text.label: 書名", { input: 京都 五日散步 }, "link: 換封面" ] } ]
+    gap: sm
+  - col:
+      - "row: [ 日期, [出發日] – [回程日] ]"
+      - "row: [ 時區, 跟著目的地 ]"
+      - row: [ "text: 旅伴與共用", { spacer: }, { avatars: { items: [我, 伴], max: 3 } } ]
+        to: e1-members
+      - row: [ "text: 切換／鎖定小書", { spacer: } ]
+        to: a4-book-switch
+    box: true
+  - "text.heading: 鎖定"
+  - col:
+      - row: [ { label-pair: { main: "鎖定計劃", sub: "旅途中建議開啟；書籤鳥不會改動行程" } }, { select: 開啟 } ]
+        justify: between
+      - row: [ { label-pair: { main: "鎖定回憶", sub: "書籤鳥只能讀，不能改寫任何段落" } }, { select: 關閉 } ]
+        justify: between
+    box: true
+  - "text.heading: 誰可以閱讀"
+  - tabs: { active: 只有成員, items: [只有成員, 有連結就能讀] }
+  - "text.heading: 其他"
+  - col: [ { row: [匯出與版本紀錄], to: d4-share }, "row: [ 封存這本, 從書櫃收起、資料保留 ]", "row: [ 刪除這本, 所有旅伴都會失去這本 ]" ]
+    box: true
+  - back-bar: { text: ✕ 返回, to: c1-trip-home }

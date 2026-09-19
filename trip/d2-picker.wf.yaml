@@ -1,0 +1,19 @@
+# 挑照片：一次只看一組連拍，只有兩個大按鈕。人做二選一，機器做分組。
+title: 挑照片
+group: D 回來後
+viewport: 390x844
+body:
+  - row: [ { label-pair: { main: "第 2 天", sub: "38 張 → 收成 10 組" } }, "text.hint: 5 / 10" ]
+    justify: between
+  - progress: { value: 0.5 }
+  - image: { label: 這一組的代表張, ratio: 4/3 }
+    grow: true
+  - row: [ { button: ‹ }, { col: [ "text.hint: 連拍 12 張，左右換一張", "text: 渡月橋 · 11:12" ], align: center }, { button: › } ]
+    gap: sm
+  - row: [ { button: 略過這組 }, { button: 留這張 } ]
+    gap: sm
+  - "text.heading: 小書這一頁的 6 個位置"
+  - row: [ { image: { label: 08:40, ratio: 1/1 } }, { image: { label: 09:32, ratio: 1/1 } }, { image: { label: 空, ratio: 1/1 } }, { image: { label: 空, ratio: 1/1 } }, { image: { label: 空, ratio: 1/1 } }, { image: { label: 空, ratio: 1/1 } } ]
+    gap: sm
+  - row: [ "text.hint: 已挑 2 / 6", { spacer: }, { button: { text: 完成, to: d1-book-gen } } ]
+  - back-bar: { text: ✕ 返回, to: d1-book-gen }

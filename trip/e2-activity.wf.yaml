@@ -1,0 +1,31 @@
+# 動態：旅伴與書籤鳥的消息，需要處理的排最前面。
+title: 動態
+group: E 共用與設定
+viewport: 390x844
+body:
+  - row: [ "text.title: 動態", { button: 全部已讀 } ]
+    justify: between
+  - tabs: { active: 全部, items: [全部, 旅伴, 書籤鳥, 需要處理] }
+  - "text.heading: 今天"
+  - row: [ { avatar: ！ }, { col: [ "text: 你和 [旅伴] 同時改了「行李清單」", "text.hint: 10:40 · 選一個版本" ] }, { status.strong: 新 } ]
+    box: true
+    gap: sm
+    to: c7-sync
+  - row: [ { avatar: 伴 }, { col: [ "text: [旅伴] 在「渡月橋」蓋了郵票，還拍了 3 張照片", "text.hint: 11:08" ] }, { status.strong: 新 } ]
+    box: true
+    gap: sm
+    to: c5-collection
+  - row: [ { avatar: 鳥 }, { col: [ "text: 書籤鳥把第 1 天整理成初稿了", "text.hint: 09:30 · 看初稿" ] } ]
+    box: true
+    gap: sm
+    to: d3-memory-read
+  - "text.heading: 昨天"
+  - row: [ { avatar: 伴 }, { col: [ "text: [旅伴] 改寫了第 1 章第 2 段", "text.hint: 22:15 · 看差異" ] } ]
+    box: true
+    gap: sm
+    to: d4-share
+  - row: [ { avatar: 鳥 }, { col: [ "text: 本月書籤鳥額度已用 80%", "text.hint: 08:00 · 看用量" ] } ]
+    box: true
+    gap: sm
+    to: a5-profile
+  - back-bar: { text: ✕ 返回, to: c1-trip-home }

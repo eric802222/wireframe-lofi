@@ -1,0 +1,72 @@
+# 旅遊小書的專案詞彙：只宣告型別與結構，樣式一律在 theme。
+components:
+  # 地標卡：地圖上的標記、手帳裡的郵票格、明信片，共用同一個元件
+  stamp-card:
+    props: [place, time]
+    states: [done, next, todo]
+    content:
+      - col:
+          - { icon: star }
+          - "text.hint: {{time}}"
+          - "text.strong: {{place}}"
+        box: true
+
+  # 書籤鳥的一句話：出現在世界、計劃、總結、做成小書等畫面
+  buddy-bubble:
+    props: [says]
+    content:
+      - row:
+          - { avatar: { label: 鳥, size: lg }, name: 書籤鳥頭像 }
+          - col: [ "text: {{says}}" ]
+            box: true
+        gap: sm
+
+  # 主要動作的大鍵（旅途中的「我到了」、登入的「開始冒險」）
+  jumbo-button:
+    of: button
+
+  # 旅途世界／冒險準備共用的地圖
+  trip-map:
+    of: canvas
+    base: { asset: basemap, ratio: 3/4 }
+    item: { use: stamp-card }
+    link: { shape: smooth }
+    states: [done, next, todo]
+
+  # 置中的離開鍵：所有畫面最下方一律用這個
+  back-bar:
+    props: [to, text]
+    content:
+      - row: [ { spacer: }, { button: { text: "{{text}}", to: "{{to}}" } }, { spacer: } ]
+
+  # 標題組：說明在上、主標在下
+  page-head:
+    props: [title, hint]
+    content:
+      - col: [ "text.hint: {{hint}}", "text.title: {{title}}" ]
+
+  # 標題組（反向）：主標在上、說明在下
+  title-sub:
+    props: [title, sub]
+    content:
+      - col: [ "text.title: {{title}}", "text.hint: {{sub}}" ]
+
+  # 數字格：大字＋單位，統計列用
+  stat-tile:
+    props: [value, unit]
+    content:
+      - col: [ "text.strong: {{value}}", "text.hint: {{unit}}" ]
+        box: true
+
+  # 兩行資訊：主詞＋一行說明（列、卡片內都用）
+  label-pair:
+    props: [main, sub]
+    content:
+      - col: [ "text.strong: {{main}}", "text.hint: {{sub}}" ]
+
+  # 可點的兩行卡片：說明在上、主詞在下，整張可點
+  nav-card:
+    props: [hint, main]
+    content:
+      - col: [ "text.hint: {{hint}}", "text.strong: {{main}}" ]
+        box: true

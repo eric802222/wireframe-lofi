@@ -1,0 +1,46 @@
+# 旅程書櫃：選擇要進入哪一個世界。進行中的那本是主要動作。
+# 邊界：超過 12 本出現搜尋與年份索引（見邊界規則表）。
+# 狀態：旅行中（預設）／沒有旅行中（idle）／全空（empty）；切換靠路由，不放 UI。
+title: 旅程書櫃
+group: A 入口
+extends: layouts/shelf
+with: { count: 4 本小書 }
+routes:
+  - default: true
+    slots:
+      main:
+        - "text.heading: 旅行中"
+        - col: [ { image: { label: 京都 · 封面, ratio: 16/9 } }, "text.title: 京都 五日散步", "text.hint: Day 2 / 5 · 已收集 14 枚郵票", { avatars: { items: [我, 伴], max: 3 } }, { progress: { value: 0.4 } }, { button: { text: 回到旅途, to: c1-trip-home } } ]
+          box: true
+        - "text.heading: 還沒出發"
+        - row: [ { col: [ "text: 北海道 冬天的雪", "text.hint: 12/20 出發" ], box: true, to: b1-plan-map }, { col: [ "text: 第一次去日本", "text.hint: 日期未定" ], box: true, to: b1-plan-map } ]
+          gap: sm
+        - "text.heading: 已完成"
+        - grid: 3
+          items:
+            - { col: [ { image: { label: 台南, ratio: 3/4 } }, "text.hint: 18 枚" ], to: d3-memory-read }
+            - { col: [ { image: { label: 沖繩, ratio: 3/4 } }, "text.hint: 整理中" ], to: d1-book-gen }
+            - { col: [ { image: { label: 首爾, ratio: 3/4 } }, "text.hint: 12 枚" ], to: d3-memory-read }
+  - when: { state: idle }
+    slots:
+      main:
+        - "text.heading: 下一趟"
+        - col: [ { image: { label: 北海道 · 封面, ratio: 16/9 } }, "text.title: 北海道 冬天的雪", "text.hint: 12/20 出發 · 還有 [N] 天", { col: [ "text.hint: 行前準備 13 / 20", { progress: { value: 0.65 } } ] }, { button: { text: 繼續計劃, to: b1-plan-map } } ]
+          box: true
+        - "text.heading: 還沒收尾"
+        - row: [ { col: [ "text: 沖繩", "text.hint: 回來 6 天 · 小書還沒做" ] }, { spacer: }, { button: { text: 做成小書, to: d1-book-gen } } ]
+          box: true
+          gap: sm
+        - "text.heading: 已完成"
+        - grid: 3
+          items:
+            - { col: [ { image: { label: 京都, ratio: 3/4 } }, "text.hint: 14 枚" ], to: d3-memory-read }
+            - { col: [ { image: { label: 台南, ratio: 3/4 } }, "text.hint: 18 枚" ] }
+            - { col: [ { image: { label: 首爾, ratio: 3/4 } }, "text.hint: 12 枚" ] }
+  - when: { state: empty }
+    slots:
+      main:
+        - col: [ { image: { label: 空書櫃插畫, ratio: 4/3 } }, "text.heading: 書櫃還空著", "text: 每一趟旅行是一本小書，從寫下第一個想去的地方開始。" ]
+          align: center
+          justify: center
+          grow: true

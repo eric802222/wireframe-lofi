@@ -1,0 +1,20 @@
+# 地點卡：像遊戲的地點資訊卡，圖大、資訊少、一個主要動作。
+title: 地點卡
+group: B 計劃
+viewport: 390x844
+body:
+  - row: [ { status.muted: 來自 Google Maps 清單 } ]
+    justify: between
+  - image: { label: 地點照片, ratio: 16/9 }
+  - title-sub: { title: "常寂光寺", sub: "寺院 · 嵐山 · 步行 12 分" }
+  - col: [ "row: [ 營業, [營業時間] ]", "row: [ 門票, [金額] ]", "row: [ 建議停留, 40 分 ]" ]
+    box: true
+  - "text.heading: 放進哪一天"
+  - tabs: { active: D2, items: [D1, D2, D3, D4, D5, 未定] }
+  - "text.heading: 旅伴的筆記"
+  - row: [ { avatar: 伴 }, { col: [ "text: 秋天楓葉很美，早點去人比較少。" ], box: true } ]
+    gap: sm
+  - input: 留一句筆記給旅伴
+  - spacer:
+  - button: { text: 放進第 2 天, to: b1-plan-map }
+  - back-bar: { text: ✕ 返回, to: b1-plan-map }

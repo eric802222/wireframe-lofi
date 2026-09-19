@@ -1,0 +1,210 @@
+assets:
+  basemap: tripbook.assets/art/basemap.svg
+  onboard-art: tripbook.assets/art/onboard.svg
+  bird: tripbook.assets/icons/bird.svg
+  stamp: tripbook.assets/icons/stamp.svg
+
+# 旅遊小書 mockup theme：米紙底、墨線框、赭紅重點（對應畫布上的視覺版）
+tokens:
+  font:
+    body: "'LXGW WenKai TC','PingFang TC','Noto Sans TC','Microsoft JhengHei',sans-serif"
+    size: 15px
+    h1: 27px
+    h2: 20px
+    h3: 16px
+  color:
+    brand: "#B85A3C"
+    brand-soft: "#F6E7DC"
+    surface: "#FBF7EE"
+    surface-alt: "#F4ECDC"
+    surface-sunk: "#E7DEC8"
+    ink: "#2B2A33"
+    ink-soft: "#5A5763"
+    inverse: "#FFFFFF"
+    line: "#2B2A33"
+    line-subtle: "#D9CDB6"
+    line-strong: "#2B2A33"
+    page: "#ECE8E1"
+  border: { strong: '2px solid #2B2A33' }
+  size: { jumbo: 76px }
+  opacity: { faded: 0.5 }
+  stroke: { md: 3px, dash: '4 10' }
+  radius:
+    default: 10px
+    sm: 6px
+    md: 10px
+    lg: 16px
+    pill: 999px
+  shadow:
+    sm: "0 2px 0 #2B2A33"
+    md: "0 4px 0 #2B2A33"
+    lg: "0 6px 0 rgba(43,42,51,0.18)"
+  space:
+    sm: 6px
+    md: 14px
+    lg: 20px
+    xl: 30px
+base:
+  chrome: card
+  link-marker: hide
+  scrollbar: hide
+bindings:
+  box:
+    background: surface
+    border: strong
+    radius: lg
+    padding: md
+    shadow: sm
+  button:
+    background: surface
+    border: strong
+    radius: lg
+    text: ink
+    padding: md
+    shadow: md
+  button-link:
+    background: brand
+    text: inverse
+    border: strong
+    radius: lg
+    padding: md
+    shadow: md
+  input:
+    background: surface
+    border: strong
+    radius: lg
+    padding: md
+  select:
+    background: surface
+    border: strong
+    radius: lg
+    padding: md
+  status:
+    background: brand-soft
+    text: brand
+    radius: pill
+    border: subtle
+  status.muted:
+    background: surface-alt
+    text: soft
+    radius: pill
+  status.strong:
+    background: brand
+    text: inverse
+    radius: pill
+  status.badge:
+    background: ink
+    text: inverse
+    radius: sm
+  Hero 目前位置:
+    background: brand-soft
+    border: brand
+    radius: lg
+  快速紀錄:
+    background: surface-alt
+    border: strong
+    radius: lg
+  頁首:
+    padding: sm
+  登入插圖:
+    image: onboard-art
+    fit: contain
+  書籤鳥頭像:
+    image: bird
+    fit: contain
+    background: surface
+    border: strong
+    radius: pill
+  郵票圖示:
+    icon: stamp
+    text: ink
+  checkbox:
+    background: surface
+    border: strong
+    radius: sm
+  radio:
+    background: surface
+    border: strong
+    radius: pill
+  progress:
+    background: surface-sunk
+    border: strong
+    radius: pill
+  progress.fill:
+    background: brand
+  avatar:
+    background: surface
+    border: strong
+    radius: pill
+  avatars:
+    background: surface
+  icon:
+    text: ink
+  image:
+    background: surface-alt
+    border: strong
+    radius: md
+  divider:
+    border: subtle
+  widget:
+    background: surface
+    border: subtle
+    radius: md
+  tab:
+    background: surface
+    border: subtle
+    radius: md
+    text: soft
+  tab.active:
+    background: ink
+    text: inverse
+    border: strong
+    radius: md
+  link:
+    text: brand
+  次要動作:
+    background: surface
+    text: ink
+    border: strong
+    radius: lg
+    padding: md
+    shadow: sm
+  我的訊息:
+    background: brand-soft
+    border: brand
+    radius: lg
+    padding: md
+  鳥的訊息:
+    background: surface
+    border: strong
+    radius: lg
+    padding: md
+  電報機身:
+    background: surface-alt
+    border: strong
+    radius: md
+    shadow: lg
+    padding: md
+
+components:
+  alert:
+    color: '{color.ink}'
+    background: '{color.brand-soft}'
+    border: '{border.strong}'
+    border-radius: '{radius.md}'
+    padding: '{space.md}'
+  tabs:
+    border-bottom: none
+  jumbo-button:
+    padding: '{space.lg}'
+    min-height: '{size.jumbo}'
+    font-size: '{font.h2}'
+  stamp-card:
+    background: '{color.surface}'
+    border: '{border.strong}'
+    border-radius: '{radius.md}'
+    state.next: { box-shadow: '0 0 0 {space.md} {color.brand-soft}' }
+    state.todo: { opacity: '{opacity.faded}' }
+  trip-map:
+    link: { stroke: '{color.brand}', stroke-width: '{stroke.md}', dash: true }
+    item.state.next: { box-shadow: '0 0 0 {space.md} {color.brand-soft}' }

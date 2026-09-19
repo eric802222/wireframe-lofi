@@ -1,0 +1,52 @@
+# 新增一本：三個步驟＝三個路由。每一步只做一件事。
+# 輸入框包一層 row + grow 才會滿版（input 自帶寬度上限）。
+# 動作列：左邊避讓動線用次要色（第一步是取消，之後是上一步），右邊主要動作佔滿。
+title: 新增一本
+group: A 入口
+extends: layouts/wizard
+with: { title: 新的一本 }
+routes:
+  - default: true
+    slots:
+      step: [ { col: [ "text.hint: 1 / 3", { progress: { value: 0.33 } } ] } ]
+      main:
+        - "text.heading: 這趟要去哪裡？"
+        - row: [ { input: 例：京都、冰島環島, grow: true } ]
+        - col:
+            - "text.strong: 帶入 Google Maps 清單"
+            - "text.hint: Google 沒有開放清單 API，所以用貼網址的方式匯入"
+            - row: [ { input: 貼上清單分享網址, grow: true } ]
+            - "text.hint: 已讀到：[清單名稱] · [N] 個地點"
+          box: true
+      actions:
+        - row: [ { button: { text: ✕, to: a2-shelf }, name: 次要動作 }, { button: { text: 下一步, to: "#dates" }, grow: true } ]
+          gap: sm
+  - when: { state: dates }
+    slots:
+      step: [ { col: [ "text.hint: 2 / 3", { progress: { value: 0.66 } } ] } ]
+      main:
+        - "text.heading: 什麼時候出發？"
+        - "text.label: 出發"
+        - row: [ { input: 出發日, grow: true } ]
+        - "text.label: 回程"
+        - row: [ { input: 回程日, grow: true } ]
+        - "[ ] 還沒決定日期"
+        - "text.hint: 有日期的小書，旅途中會自動鎖定為進行中"
+      actions:
+        - row: [ { button: { text: ‹, to: "#" }, name: 次要動作 }, { button: { text: 下一步, to: "#people" }, grow: true } ]
+          gap: sm
+  - when: { state: people }
+    slots:
+      step: [ { col: [ "text.hint: 3 / 3", { progress: { value: 1 } } ] } ]
+      main:
+        - "text.heading: 跟誰一起？"
+        - row: [ { avatars: { items: [我], max: 3 } }, "text: [你的名字]", { spacer: }, { status.muted: 擁有者 } ]
+          gap: sm
+        - button: 複製邀請連結
+        - "text.hint: 一個人去也可以，之後再邀請"
+        - "text.heading: 封面顏色"
+        - row: [ { button: 森綠 }, { button: 夜藍 }, { button: 磚紅 }, { button: 紫灰 } ]
+          gap: sm
+      actions:
+        - row: [ { button: { text: ‹, to: "#dates" }, name: 次要動作 }, { button: { text: 建立小書, to: b1-plan-map }, grow: true } ]
+          gap: sm

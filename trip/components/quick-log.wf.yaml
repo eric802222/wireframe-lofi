@@ -1,0 +1,16 @@
+# 快速紀錄列：打字 + 體力 + 拍照（旅途中常駐）
+content:
+  - col:
+      - row: [ { button: 試試「我到了機場」 }, { button: 試試「好累休息一下」 } ]
+        gap: sm
+      - row: [ "text.label: 體力", { button: 1 }, { button: 2 }, { button: 3 }, { button: 4 }, { button: 5 } ]
+        gap: sm
+      - grid: [fit, grow, fit]
+        items:
+          - { button: { text: 拍照, icon: camera } }
+          - { input: 打一句：到機場了、買了… }
+          - { button: { text: 送出, to: c1-trip-home } }
+      - "text.hint: 送出的那一刻就記下時間與位置"
+    box: true
+    gap: sm
+    name: 快速紀錄

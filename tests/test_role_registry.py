@@ -37,12 +37,16 @@ class RoleRegistryInvariants(unittest.TestCase):
             if spec.selector:
                 self.assertEqual(wf._THEME_ELEMENT_SELECTORS[name], spec.selector)
 
-    def test_annotation_keys_have_one_definition(self):
-        import re as _re
+    def test_annotation_keys_derive_from_one_table(self):
+        # 曾經有三份手抄複本散在 expand / canvas / lint。現在成員關係由 _ANNOTATION_DOCS 導出，
+        # 文件與 `list` 也從同一張表長出來 —— 只有一個地方要維護。
+        self.assertEqual(wf._ANNOTATION_KEYS, frozenset(wf._ANNOTATION_DOCS))
         src = open(os.path.join(ROOT, 'wfyaml.py'), encoding='utf-8').read()
-        literal = _re.findall(r"\{'name', 'to', 'note', 'spotlight'", src)
-        self.assertEqual(len(literal), 1,
-                         '節點級標註只能有 _ANNOTATION_KEYS 一個定義（曾經有三份手抄複本）')
+        self.assertEqual(src.count('_ANNOTATION_KEYS = '), 1)
+
+    def test_every_annotation_key_has_a_doc(self):
+        for key, doc in wf._ANNOTATION_DOCS.items():
+            self.assertTrue(doc.strip(), f'{key} 缺少說明（文件從這裡生成）')
 
 
 if __name__ == "__main__":
