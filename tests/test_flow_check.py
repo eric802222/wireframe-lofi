@@ -100,3 +100,54 @@ class FlowCheckTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SpecExportTest(unittest.TestCase):
+    """每頁規格：元件、狀態、動線、未定值 —— 交付 RD 與餵給 AI 的清單。"""
+
+    PAGE = """title: 問書籤鳥
+group: C 旅途中
+routes:
+  - default: true
+    body:
+      - "text.strong: 京都 五日散步"
+      - row: [ { input: 再問一句…, grow: true }, { button: { text: 送出, to: home } } ]
+      - "text.hint: 這則 [本次花費]"
+  - when: { state: result }
+    body:
+      - button: { text: 放進小書, to: memory }
+"""
+
+    def _run(self, *args):
+        with tempfile.TemporaryDirectory() as d:
+            page = os.path.join(d, 'ask.wf.yaml')
+            open(page, 'w', encoding='utf-8').write(self.PAGE)
+            for extra in ('home', 'memory'):
+                open(os.path.join(d, f'{extra}.wf.yaml'), 'w', encoding='utf-8').write(
+                    f'title: {extra}\nbody: [{{text: x}}]\n')
+            return subprocess.run([sys.executable, CHECK, 'spec', page, *args],
+                                  capture_output=True, text=True, cwd=ROOT)
+
+    def test_markdown_lists_states_components_flows(self):
+        out = self._run().stdout
+        self.assertIn('ask　問書籤鳥（C 旅途中）', out)
+        self.assertIn('狀態：default / result', out)
+        self.assertIn('`button`', out)
+        self.assertIn('ask → home', out)
+        self.assertIn('ask.result → memory', out)
+
+    def test_undefined_values_listed(self):
+        self.assertIn('[本次花費]', self._run().stdout)
+
+    def test_json_format(self):
+        import json
+        spec = json.loads(self._run('--format', 'json').stdout)[0]
+        self.assertEqual(spec['id'], 'ask')
+        self.assertEqual(spec['states'], ['default', 'result'])
+        self.assertIn('button', spec['components'])
+        self.assertTrue(any(f['to'] == 'memory' for f in spec['flows']))
+
+    def test_unknown_format_errors(self):
+        proc = self._run('--format', 'xml')
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn('--format', proc.stderr)

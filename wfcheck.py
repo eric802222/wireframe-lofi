@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""動線完整性檢查：孤島、死路、斷鏈、跨階段。
+"""給人與 AI 讀的檢查與規格輸出。
 
     python3 wfcheck.py flow <file.wf.yaml> [...] [--entry <畫面>] [--stages] [--quiet]
+    python3 wfcheck.py spec <file.wf.yaml> [...] [--format md|json]
 
 「哪邊動線不見了」不該靠人看。這支把 `to:` 走成一張圖，報告結構上的破洞：
 
@@ -10,7 +11,10 @@
 - **死路**：沒有任何出口的畫面 → error
 - **跨階段**：動線跨越 `group:` → 預設只計數（共用畫面本來就會跨）；`--stages` 才逐條列出
 
-exit code 與 lint 一致：0 乾淨 / 1 有 warning / 2 有 error，可直接放進 CI。
+`flow` 的 exit code 與 lint 一致：0 乾淨 / 1 有 warning / 2 有 error，可直接放進 CI。
+`spec` 產出每頁的結構化規格（元件、狀態、動線、未定值），交付 RD 或餵給 AI 開發，
+也是驗收的清單 —— 交付的不該是一份巨量 HTML。
+
 獨立模組，不改動 wfyaml.py 的行為。
 """
 import os
@@ -116,12 +120,112 @@ def check(paths, entries=(), quiet=False, stages=False):
     return errors, warnings
 
 
+# ── spec：每頁的結構化規格（給 RD 與 AI，不是給瀏覽器）──────────────────
+def _count_leaves(obj, tally):
+    """統計用到哪些元件（含 kit 型別）。"""
+    if isinstance(obj, dict):
+        for key in obj:
+            if key in ('__src', '__path'):
+                continue
+            if key in wf.LEAF_ROLES or key in wf._KIT_COMPONENTS or key == 'widget':
+                tally[key] = tally.get(key, 0) + 1
+        for value in obj.values():
+            _count_leaves(value, tally)
+    elif isinstance(obj, list):
+        for item in obj:
+            _count_leaves(item, tally)
+
+
+def _undefined_values(obj, found):
+    if isinstance(obj, str):
+        found += [m for m in re.findall(r'(?<!\\)\[([^\]\[]+)\]', obj)
+                  if m not in ('x', ' ', '') and not m.startswith('http')]
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if k not in ('__src', '__path'):
+                _undefined_values(v, found)
+    elif isinstance(obj, list):
+        for item in obj:
+            _undefined_values(item, found)
+    return found
+
+
+def page_spec(path, kit_path=None):
+    """→ 一頁的規格 dict。讀既有結構，不新增語彙。"""
+    if kit_path:
+        wf._load_kit(kit_path, explicit=True)
+    doc = _load(path)
+    base = re.sub(r'\.(wf\.)?ya?ml$', '', os.path.basename(path))
+    merged = _with_layout(doc, path)
+    states = []
+    for route in doc.get('routes') or []:
+        rid = wf._route_entry(route)[0]
+        states.append(rid or 'default')
+    tally = {}
+    _count_leaves({k: v for k, v in merged.items() if k not in ('title', 'group')}, tally)
+    flows = []
+    for node, raw in flowmap.extract(path)[1]:
+        for target, label in raw:
+            if target:
+                flows.append({'from': node, 'to': target, 'label': label or ''})
+    for target, label in flowmap.walk_to(merged.get('__layout')):
+        node = flowmap._node_of(target, base)
+        if node:
+            flows.append({'from': base, 'to': node, 'label': label or ''})
+    undefined = _undefined_values(merged, [])
+    return {'id': base, 'title': doc.get('title') or base, 'group': doc.get('group') or '',
+            'extends': doc.get('extends'), 'states': states,
+            'components': dict(sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))),
+            'flows': flows, 'undefined': sorted(set(undefined))}
+
+
+def spec_markdown(spec):
+    lines = [f"# {spec['id']}　{spec['title']}" + (f"（{spec['group']}）" if spec['group'] else ''), '']
+    if spec['extends']:
+        lines.append(f"頁殼：`{spec['extends']}`")
+    lines.append('狀態：' + (' / '.join(spec['states']) if spec['states'] else '（單一狀態）'))
+    if spec['components']:
+        parts = [f'`{name}` ×{count}' for name, count in spec['components'].items()]
+        lines += ['', '## 元件', '、'.join(parts)]
+    if spec['flows']:
+        lines += ['', '## 動線']
+        for flow in spec['flows']:
+            label = f"（{flow['label']}）" if flow['label'] else ''
+            lines.append(f"- {flow['from']} → {flow['to']}{label}")
+    if spec['undefined']:
+        lines += ['', '## 未定值', '、'.join(f'`[{v}]`' for v in spec['undefined'])]
+    lines.append('')
+    return '\n'.join(lines)
+
+
+def spec_export(paths, fmt, kit_path=None):
+    specs = [page_spec(path, kit_path) for path in paths]
+    if fmt == 'json':
+        import json
+        print(json.dumps(specs, ensure_ascii=False, indent=2))
+        return
+    print('\n'.join(spec_markdown(s) for s in specs))
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv or argv[0] != 'flow':
+    if not argv or argv[0] not in ('flow', 'spec'):
         print(__doc__.strip(), file=sys.stderr)
         return 1
-    rest = argv[1:]
+    cmd, rest = argv[0], argv[1:]
+    if cmd == 'spec':
+        fmt = next((rest[i + 1] for i, a in enumerate(rest) if a == '--format' and i + 1 < len(rest)), 'md')
+        kit = next((rest[i + 1] for i, a in enumerate(rest) if a == '--kit' and i + 1 < len(rest)), None)
+        paths = [a for a in rest if not a.startswith('-') and a not in (fmt, kit)]
+        if not paths:
+            print('usage: wfcheck.py spec <file.wf.yaml> [...] [--format md|json] [--kit <kit.yaml>]',
+                  file=sys.stderr)
+            return 1
+        if fmt not in ('md', 'json'):
+            print(f'error: spec 的 --format 只接受 md / json（收到 {fmt!r}）', file=sys.stderr)
+            return 1
+        spec_export(paths, fmt, kit)
+        return 0
     entries = {rest[i + 1] for i, a in enumerate(rest) if a == '--entry' and i + 1 < len(rest)}
     quiet, stages = '--quiet' in rest, '--stages' in rest
     skip = entries | {'--entry', '--quiet', '--stages'}
