@@ -339,6 +339,7 @@ def _load_kit(path=None, explicit=False):
     if not isinstance(data, dict) or set(data) != {'components'} or not isinstance(data['components'], dict):
         raise AuthorError('kit 頂層只能是 components: dict', path, '<root>')
     allowed = {'of', 'props', 'states', 'content'}
+    canvas_allowed = {'of', 'base', 'item', 'link', 'states'}
     for name, spec in data['components'].items():
         here = f'components.{name}'
         if not isinstance(name, str) or not re.fullmatch(r'[a-z][a-z0-9-]*', name):
@@ -347,13 +348,15 @@ def _load_kit(path=None, explicit=False):
             raise AuthorError(f'kit 型別 `{name}` 與內建詞彙衝突', path, here)
         if not isinstance(spec, dict):
             raise AuthorError('kit 元件定義必須是 dict', path, here)
-        unknown = set(spec) - allowed
+        is_canvas = spec.get('of') == 'canvas'
+        legal = canvas_allowed if is_canvas else allowed
+        unknown = set(spec) - legal
         if unknown:
-            raise AuthorError(f'kit 元件不接受 {sorted(unknown)}；只允許 {sorted(allowed)}', path, here)
+            raise AuthorError(f'kit 元件不接受 {sorted(unknown)}；只允許 {sorted(legal)}', path, here)
         of, content = spec.get('of'), spec.get('content')
-        if bool(of) == (content is not None):
+        if not is_canvas and bool(of) == (content is not None):
             raise AuthorError('元件必須二選一：of（leaf 特化）或 content（純組合）', path, here)
-        if of and of not in LEAF_ROLES:
+        if of and of not in LEAF_ROLES and of != 'canvas':
             raise AuthorError(f'of 只能指向既有 leaf（收到 `{of}`）', path, f'{here}.of')
         if content is not None and not isinstance(content, list):
             raise AuthorError('content 必須是 list', path, f'{here}.content')
@@ -363,7 +366,42 @@ def _load_kit(path=None, explicit=False):
         states = spec.get('states', [])
         if not isinstance(states, list) or any(not isinstance(x, str) or not re.fullmatch(r'[a-z][a-z0-9-]*', x) for x in states) or len(states) != len(set(states)):
             raise AuthorError('states 必須是不重複的小寫名稱 list', path, f'{here}.states')
+        if is_canvas:
+            base, item, link = spec.get('base'), spec.get('item'), spec.get('link')
+            if not isinstance(base, dict) or set(base) - {'asset', 'grid', 'blank', 'anchors', 'ratio'}:
+                raise AuthorError('canvas.base 必須是 {asset|grid|blank, anchors?, ratio?}', path, f'{here}.base')
+            base_kinds = [k for k in ('asset', 'grid', 'blank') if base.get(k)]
+            if len(base_kinds) != 1 or ('asset' in base and (not isinstance(base['asset'], str) or not base['asset'])):
+                raise AuthorError('canvas.base 必須恰選一種非空底：asset / grid:true / blank:true', path, f'{here}.base')
+            if 'grid' in base and base['grid'] is not True or 'blank' in base and base['blank'] is not True:
+                raise AuthorError('canvas.base 的 grid / blank 只接 true', path, f'{here}.base')
+            anchors = base.get('anchors', {})
+            if not isinstance(anchors, dict):
+                raise AuthorError('canvas.base.anchors 必須是 id → [x,y] dict', path, f'{here}.base.anchors')
+            for anchor, point in anchors.items():
+                if not isinstance(anchor, str) or not anchor:
+                    raise AuthorError('canvas anchor 名必須是非空字串', path, f'{here}.base.anchors')
+                _canvas_point(point, path, f'{here}.base.anchors.{anchor}')
+            ratio = base.get('ratio')
+            if ratio is not None:
+                match = re.fullmatch(r'(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)', str(ratio))
+                if not match or float(match.group(1)) <= 0 or float(match.group(2)) <= 0:
+                    raise AuthorError('canvas.base.ratio 必須是大於零的 N/N（例如 4/3）', path, f'{here}.base.ratio')
+            if not isinstance(item, dict) or set(item) != {'use'} or not isinstance(item.get('use'), str):
+                raise AuthorError('canvas.item 必須是 {use: kit-type}', path, f'{here}.item')
+            if link is not None and (not isinstance(link, dict) or set(link) - {'shape', 'arrow'} or
+                                     link.get('shape') not in ('straight', 'smooth') or
+                                     ('arrow' in link and link['arrow'] is not True)):
+                raise AuthorError('canvas.link 只接 {shape: straight|smooth, arrow?: true}', path, f'{here}.link')
     _KIT_COMPONENTS = data['components']
+    for name, spec in _KIT_COMPONENTS.items():
+        if spec.get('of') == 'canvas':
+            used = spec['item']['use']
+            target = _KIT_COMPONENTS.get(used)
+            if not target:
+                raise AuthorError(f'canvas item.use `{used}` 未在 kit 宣告', path, f'components.{name}.item.use')
+            if target.get('of') == 'canvas':
+                raise AuthorError('canvas item.use 不可再指向 canvas', path, f'components.{name}.item.use')
     _kit_css()  # fail fast on CSS properties and token references
     # Validate composition structure once; parameter placeholders are deliberately allowed.
     check = _Diag(path, allow_parameters=True)
@@ -374,6 +412,13 @@ def _load_kit(path=None, explicit=False):
         _src, at, message, _hint = check.errors[0]
         raise AuthorError(message, path, at)
     return _KIT_COMPONENTS
+
+
+def _canvas_point(point, source=None, path=None):
+    if (not isinstance(point, list) or len(point) != 2 or
+            any(isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 1 for v in point)):
+        raise AuthorError('canvas 座標必須是 0–1 的 [x, y]', source, path)
+    return [float(point[0]), float(point[1])]
 
 
 def _ensure_kit(basedir):
@@ -458,7 +503,7 @@ _CSS_PROP_ALLOW = {
     'line-height', 'letter-spacing', 'text-transform', 'text-decoration', 'text-align',
     'height', 'min-height', 'max-height', 'width', 'min-width', 'max-width',
     'display', 'align-items', 'justify-content', 'transition', 'cursor',
-    'outline', 'outline-offset', 'fill',
+    'outline', 'outline-offset', 'fill', 'stroke', 'stroke-width', 'stroke-dasharray',
 }
 
 _THEME_BASE_KEYS = {'chrome', 'link-marker', 'scrollbar'}
@@ -663,6 +708,44 @@ def _theme_components_css(components):
         if _KIT_COMPONENTS and cname not in _KIT_COMPONENTS and cname not in _THEME_COMPONENT_SELECTORS:
             raise ValueError(f'theme.components.{cname} 未在 kit 宣告；可用型別：{sorted(_KIT_COMPONENTS)}')
         sel = _THEME_COMPONENT_SELECTORS.get(cname) or f'.wf-role-{_theme_slug(cname)}'
+        kit_spec = _KIT_COMPONENTS.get(cname) or {}
+        if kit_spec.get('of') == 'canvas':
+            special = {'base', 'link'} | {f'item.state.{s}' for s in kit_spec.get('states', [])}
+            unknown_special = {k for k in spec if k.startswith('item.') and k not in special}
+            if unknown_special:
+                raise ValueError(f'theme.components.{cname} 未知 canvas 規則 {sorted(unknown_special)}（合法：{sorted(special)}）')
+            base_rules = spec.get('base', {})
+            if not isinstance(base_rules, dict):
+                raise ValueError(f'theme.components.{cname}.base 必須是 dict')
+            if base_rules:
+                _require_token_rules(base_rules, f'components.{cname}.base')
+                lines.append(f'{sel} .wf-canvas-base{{{_props_str(_expand_props(base_rules, f"components.{cname}.base"))}}}')
+            link_rules = spec.get('link', {})
+            if not isinstance(link_rules, dict) or set(link_rules) - {'stroke', 'stroke-width', 'dash'}:
+                raise ValueError(f'theme.components.{cname}.link 只接 stroke/stroke-width/dash')
+            if link_rules and kit_spec.get('link') is None:
+                raise ValueError(f'theme.components.{cname}.link 無效：kit 未宣告 canvas link')
+            link_props = {k: v for k, v in link_rules.items() if k != 'dash'}
+            if link_props:
+                _require_token_rules(link_props, f'components.{cname}.link')
+                lines.append(f'{sel} .wf-canvas-link{{{_props_str(_expand_props(link_props, f"components.{cname}.link"))}}}')
+            if link_rules.get('dash') is not None:
+                if link_rules['dash'] is not True:
+                    raise ValueError(f'theme.components.{cname}.link.dash 只接 true；虛線節奏定義在 tokens.stroke.dash')
+                if 'stroke.dash' not in _THEME_FLATVALS:
+                    raise ValueError(f'theme.components.{cname}.link.dash 需要先定義 tokens.stroke.dash')
+                lines.append(f'{sel} .wf-canvas-link{{stroke-dasharray:{_resolve_value("{stroke.dash}")}}}')
+            for key, rules in spec.items():
+                if not key.startswith('item.'):
+                    continue
+                if not isinstance(rules, dict):
+                    raise ValueError(f'theme.components.{cname}.{key} 必須是 dict')
+                _require_token_rules(rules, f'components.{cname}.{key}')
+                props = _expand_props(rules, f'components.{cname}.{key}')
+                state = key[len('item.state.'):]
+                target = f'{sel} .wf-canvas-item[data-kit-state="{_theme_slug(state)}"]'
+                lines.append(f'{target}{{{_props_str(props)}}}')
+            spec = {k: v for k, v in spec.items() if k not in special}
         state_flat = {k[6:]: v for k, v in spec.items() if k.startswith('state.')}
         base = {k: v for k, v in spec.items() if k not in ('variants', 'states') and not k.startswith('state.')}
         if base:
@@ -877,6 +960,11 @@ def _load_theme(path):
     for pn, pr in presets.items():        # 驗證 preset 內 property + ref
         _expand_props(pr, f'tokens.preset.{pn}')
     _THEME, _THEME_BASE, _THEME_TOKENS, _THEME_COMPONENTS = bindings, base, tokens, components
+    for cname, spec in _KIT_COMPONENTS.items():
+        asset_name = spec.get('base', {}).get('asset') if spec.get('of') == 'canvas' else None
+        if asset_name and asset_name not in _THEME_ASSETS:
+            raise AuthorError(f'canvas `{cname}` 使用未定義素材 {asset_name!r}', path,
+                              f'components.{cname}.base.asset')
     # 全部先編一次觸發驗證（property 白名單 / enum / ref）
     _theme_tokens_css(tokens)
     _theme_components_css(components)
@@ -1193,6 +1281,17 @@ CSS_EXTRA = r"""
 .wf-asset-image img { position:absolute; inset:0; width:100%; height:100%; }
 .wf-avatar img { width:100%; height:100%; border-radius:inherit; }
 .wf-asset-icon { vertical-align:middle; }
+.wf-canvas { position:relative; overflow:hidden; min-height:8rem; }
+.wf-canvas-base { position:absolute; inset:0; }
+.wf-canvas-base-img { width:100%; height:100%; object-fit:cover; }
+.wf-canvas-base-grid { background:repeating-linear-gradient(0deg,transparent,transparent 23px,#e5e7eb 24px),
+  repeating-linear-gradient(90deg,transparent,transparent 23px,#e5e7eb 24px); }
+.wf-canvas-placeholder { display:flex; align-items:center; justify-content:center;
+  color:#6b7280; border:1px dashed #9ca3af; background:#f3f4f6; }
+.wf-canvas-link-layer { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+.wf-canvas-link { fill:none; stroke:#6b7280; stroke-width:4; vector-effect:non-scaling-stroke; }
+.wf-canvas-link-arrow { fill:context-stroke; stroke:none; }
+.wf-canvas-item { position:absolute; z-index:2; transform:translate(-50%,-50%); }
 /* avatar leaf：只 label(縮寫) + size(sm/md/lg)；圓形佔位，禁 src/bg（守視覺封印） */
 .wf-avatar { display:inline-flex; align-items:center; justify-content:center;
   background:#e5e7eb; color:#374151; border:1px solid #9ca3af; border-radius:var(--wf-radius-pill);
@@ -1807,6 +1906,64 @@ def render_widget(d, xcls, xattr, src=None, path=None):
     return f'<div class="{" ".join(cls)}"{_attrs(xattr)}>{head}{can_html}{body_html}{foot}</div>'
 
 
+def _canvas_link_path(points, shape):
+    if not points:
+        return ''
+    scaled = [(x * 1000, y * 1000) for x, y in points]
+    out = [f'M {scaled[0][0]:g} {scaled[0][1]:g}']
+    for x2, y2 in scaled[1:]:
+        x1, y1 = scaled[len(out) - 1]
+        if shape == 'smooth':
+            mid = (x1 + x2) / 2
+            out.append(f'C {mid:g} {y1:g} {mid:g} {y2:g} {x2:g} {y2:g}')
+        else:
+            out.append(f'L {x2:g} {y2:g}')
+    return ' '.join(out)
+
+
+def render_canvas(canvas, xcls, xattr, src=None, path=None):
+    """Canvas positions HTML kit components; only optional relationship links use SVG geometry."""
+    base_spec = canvas['base']
+    ratio = base_spec.get('ratio')
+    root_attrs = dict(xattr)
+    if ratio:
+        root_attrs['style'] = ';'.join(x for x in (root_attrs.get('style'), f'aspect-ratio:{ratio}') if x)
+    if base_spec.get('asset'):
+        asset = _THEME_ASSETS.get(base_spec['asset'], {})
+        if asset.get('uri'):
+            base = f'<img class="wf-canvas-base wf-canvas-base-img" src="{asset["uri"]}" alt="">'
+        else:
+            base = f'<div class="wf-canvas-base wf-canvas-placeholder">▧ {esc(base_spec["asset"])}</div>'
+    elif base_spec.get('grid'):
+        base = '<div class="wf-canvas-base wf-canvas-base-grid"></div>'
+    else:
+        base = '<div class="wf-canvas-base wf-canvas-blank"></div>'
+    points = canvas.get('link_points') or []
+    link_spec = canvas.get('link_spec') or {}
+    link_d = _canvas_link_path(points, link_spec.get('shape', 'straight'))
+    arrow = ''
+    marker_end = ''
+    if link_spec.get('arrow') and len(points) > 1:
+        arrow_id = 'wf-canvas-arrow-' + esc_attr(f'{src or "page"}-{path or "root"}')
+        arrow = (f'<defs><marker id="{arrow_id}" viewBox="0 0 10 10" refX="9" refY="5" '
+                 'markerWidth="6" markerHeight="6" orient="auto-start-reverse">'
+                 '<path class="wf-canvas-link-arrow" d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>')
+        marker_end = f' marker-end="url(#{arrow_id})"'
+    link = (f'<svg class="wf-canvas-link-layer" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">'
+            f'{arrow}<path class="wf-canvas-link" d="{link_d}"{marker_end}></path></svg>') if len(points) > 1 else ''
+    items = []
+    for item in canvas['items']:
+        mx, my = item['at']
+        state = item['props'].get('state') if isinstance(item['props'], dict) else None
+        attrs = {'style': f'left:{mx * 100:g}%;top:{my * 100:g}%'}
+        if state:
+            attrs['data-kit-state'] = state
+        inner = render_item(item['node'], item.get('__src') or src, item.get('__path') or path)
+        items.append(f'<div class="wf-canvas-item"{_attrs(attrs)}>{inner}</div>')
+    cls = ['wf-node', 'wf-canvas'] + xcls
+    return f'<div class="{" ".join(cls)}"{_attrs(root_attrs)}>{base}{link}{"".join(items)}</div>'
+
+
 def _ckeys(it):
     """內容鍵（排除 __ 開頭的內部 metadata 蓋章）→ 供結構判斷不受干擾。"""
     return {k for k in it if not (isinstance(k, str) and k.startswith('__'))}
@@ -1867,6 +2024,7 @@ def _render_item(it, src=None, path=None):
     embed_role = d.pop('__embed_role', None)  # P7 theme 綁定：embed 展開時蓋 component 名為 wf-role
     kit_role = d.pop('__kit_role', None)
     kit_state = d.pop('__kit_state', None)
+    canvas = d.pop('__canvas', None)
     story_badge = d.pop('__story_badge', None)   # SAC：故事貼紙 / flow 序號徽章
     story_steps = d.pop('__story_steps', None)
 
@@ -1890,7 +2048,7 @@ def _render_item(it, src=None, path=None):
             "產品狀態色 → --mockup theme binding；評審聚焦 → spotlight/badge（標註面）；"
             "語義強調 → text.strong / status.strong")
     is_widget = 'widget' in d
-    block_to = d.pop('to', None) if (is_container(d) or is_widget) else None
+    block_to = d.pop('to', None) if (is_container(d) or is_widget or canvas is not None) else None
     spot = d.pop('spotlight', None)
     note = d.pop('note', None)
     span = d.pop('span', None)
@@ -1923,7 +2081,9 @@ def _render_item(it, src=None, path=None):
     if isinstance(span, int):
         xattr['style'] = f'grid-column:span {span}'
 
-    if is_widget:
+    if canvas is not None:
+        core = render_canvas(canvas, xcls, xattr, esrc, epath)
+    elif is_widget:
         core = render_widget(d, xcls, xattr, esrc, epath)
     elif is_container(d):
         d.setdefault('span', span) if isinstance(span, int) else None
@@ -2030,6 +2190,60 @@ def _kit_use(it):
 
 
 def _kit_params(name, spec, raw):
+    if spec.get('of') == 'canvas':
+        if not isinstance(raw, dict):
+            raise ValueError(f'kit canvas `{name}` 需要 {{items: [...]}}')
+        clean = {k: v for k, v in raw.items() if k not in ('__src', '__path')}
+        unknown = set(clean) - {'items', 'link'}
+        if unknown or not isinstance(clean.get('items'), list):
+            raise ValueError(f'kit canvas `{name}` 只接 items: list 與 link: list（多餘：{sorted(unknown)}）')
+        anchors = spec['base'].get('anchors') or {}
+        item_name = spec['item']['use']
+        item_spec = _KIT_COMPONENTS[item_name]
+        items = []
+        for i, original in enumerate(clean['items']):
+            if not isinstance(original, dict):
+                raise ValueError(f'kit canvas `{name}` items[{i}] 必須是 dict')
+            item = {k: v for k, v in original.items() if k not in ('__src', '__path')}
+            item_id = item.pop('id', None)
+            if item_id is not None and (isinstance(item_id, bool) or not isinstance(item_id, (str, int, float))):
+                raise ValueError(f'kit canvas `{name}` items[{i}].id 必須是字串或數字')
+            anchor_key = item_id or next((v for k, v in item.items()
+                                          if k not in ('at', 'state', 'to') and isinstance(v, str) and v in anchors), None)
+            point = item.pop('at', anchors.get(anchor_key))
+            if point is None:
+                raise ValueError(f'kit canvas `{name}` items[{i}] 缺 at，kit anchors 也找不到對應值')
+            try:
+                point = _canvas_point(point)
+            except AuthorError as e:
+                raise ValueError(f'kit canvas `{name}` items[{i}].at：{e}') from e
+            target = item.pop('to', None)
+            state = item.get('state')
+            if state is not None and state not in (spec.get('states') or []):
+                raise ValueError(f'kit canvas `{name}` items[{i}].state `{state}` 不合法（合法：{spec.get("states") or []}）')
+            item_props = _kit_params(item_name, item_spec, item)
+            identities = {item_id} if item_id is not None else set()
+            if isinstance(item_props, dict):
+                identities.update(v for k, v in item_props.items() if k != 'state' and isinstance(v, (str, int, float)))
+            items.append({'id': item_id, 'at': point, 'to': target, 'props': item_props,
+                          'identities': identities, '__src': original.get('__src'), '__path': original.get('__path')})
+        link_refs = clean.get('link')
+        if link_refs is not None:
+            if spec.get('link') is None:
+                raise ValueError(f'kit canvas `{name}` 未宣告 link，畫面不可提供 link')
+            if not isinstance(link_refs, list) or len(link_refs) < 2:
+                raise ValueError(f'kit canvas `{name}` link 必須是至少兩個 item 識別值的 list')
+            link_items = []
+            for ref in link_refs:
+                if isinstance(ref, bool) or not isinstance(ref, (str, int, float)):
+                    raise ValueError(f'kit canvas `{name}` link 識別值必須是字串或數字（收到 {ref!r}）')
+                matches = [item for item in items if ref in item['identities']]
+                if len(matches) != 1:
+                    raise ValueError(f'kit canvas `{name}` link 值 {ref!r} 必須恰好對應一個 item（找到 {len(matches)} 個）')
+                link_items.append(matches[0])
+        else:
+            link_items = []
+        return {'items': items, 'link_items': link_items}
     props = spec.get('props') or []
     if isinstance(raw, dict):
         raw = {k: v for k, v in raw.items() if k not in ('__src', '__path')}
@@ -2064,6 +2278,31 @@ def _expand_kit_node(it, basedir, ctx, stack):
     if marker in stack:
         raise ValueError(f'kit 元件循環引用：{" -> ".join(stack + (marker,))}')
     params = _kit_params(name, spec, it[name])
+    if spec.get('of') == 'canvas':
+        ann_keys = {'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state'}
+        unknown = _ckeys(it) - {name} - ann_keys
+        if unknown:
+            raise ValueError(f'kit 型別 `{name}` 不接受 sibling {sorted(unknown)}')
+        ann = {k: it[k] for k in ann_keys if k in it}
+        for internal in ('__src', '__path'):
+            if internal in it:
+                ann[internal] = it[internal]
+        item_name = spec['item']['use']
+        items = []
+        for item in params['items']:
+            node = {item_name: item['props']}
+            if item['to'] is not None:
+                node['to'] = item['to']
+            if item.get('__src'):
+                node['__src'] = item['__src']
+            if item.get('__path'):
+                node['__path'] = item['__path']
+            expanded = _expand_kit_node(node, basedir, ctx, stack + (marker,))
+            items.append({**item, 'node': expanded[0]})
+        point_by_identity = {id(original): rendered['at'] for original, rendered in zip(params['items'], items)}
+        canvas = {'base': spec['base'], 'items': items, 'link_spec': spec.get('link'),
+                  'link_points': [point_by_identity[id(item)] for item in params['link_items']]}
+        return [{**ann, '__kit_role': name, '__canvas': canvas}]
     kit_state = params.pop('state', None) if isinstance(params, dict) else None
     ann_keys = {'name', 'to', 'note', 'spotlight', 'span', 'grow', 'pin', 'modal', 'layer', 'ui-state'}
     unknown = _ckeys(it) - {name} - ann_keys
@@ -2568,7 +2807,7 @@ def _walk_lint(node, path, diag, basedir='.', stack=()):
         try:
             spec = _KIT_COMPONENTS[name]
             params = _kit_params(name, spec, node[name])
-            if spec.get('of'):
+            if spec.get('of') and spec.get('of') != 'canvas':
                 value = dict(params) if isinstance(params, dict) else params
                 if isinstance(value, dict): value.pop('state', None)
                 render_leaf({spec['of']: value}, [], {})

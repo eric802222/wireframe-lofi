@@ -3,4 +3,10 @@ title: Kit 元件庫
 body:
   - text.heading: 專案詞彙
   - stamp-card: {place: 渡月橋, time: "11:08", state: next}
+  - trip-map:
+      items:
+        - {place: 竹林小徑, at: [0.20, 0.72], state: done, time: "08:40"}
+        - {place: 渡月橋, at: [0.56, 0.38], state: next, time: "11:00", to: next}
+        - {place: 嵐山公園, at: [0.82, 0.62], state: todo, time: "13:30"}
+      link: [竹林小徑, 渡月橋, 嵐山公園]
   - jumbo-button: {text: 開始冒險, to: next}
