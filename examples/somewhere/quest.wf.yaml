@@ -1,0 +1,23 @@
+title: Mission 07
+group: Somewhere
+extends: layouts/app
+with: {title: Mission 07}
+slots:
+  main:
+    - chapter-tag: "SIDE QUEST · 07"
+    - text.title: "找到藏在巷子裡的布丁。"
+    - text: "我們不告訴你店名。先相信自己的好奇心。"
+    - box: true
+      col:
+        - text.label: 線索 01
+        - text.strong: "沿著老街往北走。"
+        - text: "看見紅磚拱廊後，找一扇沒有招牌的木門。"
+    - box: true
+      col:
+        - text.label: BONUS CONDITION
+        - text: "☂ 今天下雨時完成"
+        - status.badge: "+20 Memories"
+    - text.hint: "約 650m · 徒步 9 分鐘 · 不需要導航"
+    - primary-action: {text: "開始探索", to: exploring}
+    - button: "先換一個任務"
+      to: home
