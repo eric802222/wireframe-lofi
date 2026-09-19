@@ -442,6 +442,13 @@ def _kit_css():
 
 # bindings 綁「內建元件 role」→ selector（同一套詞彙換元件皮，不另發明語彙）。
 _THEME_ELEMENT_SELECTORS = {
+    # 文字家族：語義角色依用途命名（Material 3 的 type scale 同一哲學），theme 綁得到才有契約可言
+    'text':          '.wf-label:not(.wf-fieldlabel)',
+    'text.title':    '.wf-h1',
+    'text.heading':  '.wf-h2',
+    'text.label':    '.wf-fieldlabel',
+    'text.strong':   '.wf-b',
+    'text.hint':     '.wf-hint',
     'button':        '.wf-btn',
     'button-link':   ':is(a,label.wf-radio-link).wf-btn.wf-link',    # 帶 to: 的按鈕（主要動作/導航）
     'input':         '.wf-input',
@@ -505,6 +512,7 @@ _CSS_PROP_ALLOW = {
     'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
     'gap', 'box-shadow', 'opacity', 'font', 'font-family', 'font-size', 'font-weight',
     'line-height', 'letter-spacing', 'text-transform', 'text-decoration', 'text-align',
+    'font-style',   # 線框用斜體標次要文字；mockup 階段那層 lo-fi 語意沒有意義，theme 要收得回來
     'height', 'min-height', 'max-height', 'width', 'min-width', 'max-width',
     'display', 'align-items', 'justify-content', 'transition', 'cursor',
     'outline', 'outline-offset', 'fill', 'stroke', 'stroke-width', 'stroke-dasharray',
@@ -521,6 +529,48 @@ _THEME_CHROME = {
 
 def _theme_slug(s):
     return re.sub(r'[^a-z0-9-]', '-', str(s).lower())
+
+
+# DTCG 複合型別（gradient / typography）：wfexport 已經在輸出 DTCG，這兩個是同一批規格裡
+# 還沒補的部分。命名哲學抄 Material 3：type scale 依用途命名、每個 scale 是一組
+# family + size + weight + line-height + letter-spacing 的 token。
+_TYPOGRAPHY_SUBS = {'fontFamily': 'font-family', 'fontSize': 'font-size', 'fontWeight': 'font-weight',
+                    'lineHeight': 'line-height', 'letterSpacing': 'letter-spacing'}
+_COMPOSITE_FAMILIES = {'typography', 'gradient'}
+
+
+def _typography_vars(name, value, where):
+    """typography 複合值 → 一組 CSS var（每個子值一條，Material 3 的 --md-sys-typescale-<role>-<prop>）。"""
+    if not isinstance(value, dict):
+        raise ValueError(f'{where} 需要 dict（子值：{sorted(_TYPOGRAPHY_SUBS)}）')
+    unknown = set(value) - set(_TYPOGRAPHY_SUBS)
+    if unknown:
+        raise ValueError(f'{where} 未知子值 {sorted(unknown)}（DTCG typography：{sorted(_TYPOGRAPHY_SUBS)}）')
+    return {f'--wf-typography-{_theme_slug(name)}-{css}': str(value[sub])
+            for sub, css in _TYPOGRAPHY_SUBS.items() if sub in value}
+
+
+def _gradient_value(entry, name, where):
+    """gradient 複合值 → 單一 CSS 漸層字串。
+
+    DTCG 的 gradient 是一組 {color, position}，本身沒有定義方向（見 DTCG issue #101），
+    所以 `angle` 走 $extensions 之外的同層鍵,預設 180deg（由上而下，最常見的暗角）。
+    漸層只住 theme：畫面 YAML 永遠不准寫,跟「產品色只住 theme」是同一條原則。"""
+    stops = entry.get('$value') if isinstance(entry, dict) else entry
+    if not isinstance(stops, list) or not stops:
+        raise ValueError(f'{where} 需要一組色停 list（DTCG gradient：[{{color, position}}, ...]）')
+    angle = str(entry.get('angle', '180deg')) if isinstance(entry, dict) else '180deg'
+    parts = []
+    for i, stop in enumerate(stops):
+        if not isinstance(stop, dict) or 'color' not in stop:
+            raise ValueError(f'{where}[{i}] 需要 {{color, position}}')
+        pos = stop.get('position')
+        if pos is None:
+            parts.append(str(stop['color']))
+        else:
+            pct = f'{float(pos) * 100:g}%' if isinstance(pos, (int, float)) and 0 <= float(pos) <= 1 else str(pos)
+            parts.append(f"{stop['color']} {pct}")
+    return f"linear-gradient({angle}, {', '.join(parts)})"
 
 
 def _theme_var_name(family, name):
@@ -550,6 +600,11 @@ def _flatten_tokens(tokens):
         if not isinstance(entries, dict):
             raise ValueError(f"theme.tokens.{family} 必須是 dict（收到 {type(entries).__name__}）")
         for name, entry in entries.items():
+            if family == 'typography':
+                continue          # 一組子值不是單一值，靠 bindings/components 的 typography: 展開
+            if family == 'gradient':
+                raw[f'{family}.{name}'] = _gradient_value(entry, name, f'theme.tokens.gradient.{name}')
+                continue
             raw[f'{family}.{name}'] = _token_scalar(entry)
     resolved = {}
 
@@ -617,7 +672,10 @@ def _expand_props(rules, where=''):
     return final
 
 
-_THEME_STRUCTURAL_VALUES = {'0', 'none', 'transparent', 'inherit', 'currentColor', 'auto'}
+# 結構性/列舉型關鍵字不是「設計值」：它們沒有級距可言，逼它們走 token 只會產生假 token。
+# 有大小、有色彩的字面值仍然一律擋下（那才是 tokens: 要管的事）。
+_THEME_STRUCTURAL_VALUES = {'0', 'none', 'transparent', 'inherit', 'currentColor', 'auto',
+                            'normal', 'italic'}
 
 
 def _require_token_value(value, where):
@@ -655,7 +713,15 @@ def _theme_tokens_css(tokens):
         if family == 'preset':
             continue
         for name, entry in entries.items():
-            decls.append(f'{_theme_var_name(family, name)}:{_resolve_value(_token_scalar(entry))}')
+            where = f'theme.tokens.{family}.{name}'
+            if family == 'typography':
+                value = entry.get('$value', entry) if isinstance(entry, dict) else entry
+                for var, val in _typography_vars(name, value, where).items():
+                    decls.append(f'{var}:{_resolve_value(val)}')
+            elif family == 'gradient':
+                decls.append(f'{_theme_var_name(family, name)}:{_resolve_value(_gradient_value(entry, name, where))}')
+            else:
+                decls.append(f'{_theme_var_name(family, name)}:{_resolve_value(_token_scalar(entry))}')
     css = [f':root{{{";".join(decls)}}}'] if decls else []
     # 全頁背景：定義了 page 背景 token（--wf-page-bg）就套到 .wf-root（= viewport / app 視窗本體，
     # 非 body 外圍留白），與 chrome 模式解耦。chrome: flat → root 顯示此底、面板浮其上；
@@ -780,6 +846,18 @@ def _theme_components_css(components):
     return '\n'.join(lines)
 
 
+def _typography_decls(value, where):
+    """typography: <token 名> → 一組宣告。只展開該 token 真的有宣告的子值。"""
+    name = str(value).strip('{}').split('.')[-1]
+    keys = (_THEME_TOKENS.get('typography') or {})
+    if name not in keys:
+        raise ValueError(f'{where}: 未定義的 typography token {value!r}（可用：{sorted(keys)}）')
+    entry = keys[name]
+    sub = entry.get('$value', entry) if isinstance(entry, dict) else entry
+    return [f'{css}:var(--wf-typography-{_theme_slug(name)}-{css})'
+            for s_name, css in _TYPOGRAPHY_SUBS.items() if isinstance(sub, dict) and s_name in sub]
+
+
 def _theme_bindings_css(bindings):
     """bindings: 綁 name:/role 的專案微調。相容舊 enum（surface/subtle/md…），並吃 {ref} / raw property。"""
     lines = []
@@ -796,6 +874,9 @@ def _theme_bindings_css(bindings):
         merged.update({k: v for k, v in rules.items() if k != 'apply'})
         for k, v in merged.items():
             if k in ('image', 'icon', 'fit'):
+                continue
+            if k == 'typography':        # 複合值：一個 token 展開成多條宣告，不是單一 property
+                decls.extend(_typography_decls(v, f'bindings.{role}.typography'))
                 continue
             use_enum = k in _THEME_BINDABLE and not (isinstance(v, str) and '{' in v)
             if k in ('padding', 'margin', 'gap') and str(v) not in GAP and str(v) not in (_TOKENS.get('gap') or {}):
