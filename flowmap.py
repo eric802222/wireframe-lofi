@@ -3,7 +3,7 @@
 flowmap.py — 掃一個資料夾下所有 *.wf.yaml，依其中的 `to:` 連結自動生成「畫面互動流程圖」。
 
 節點來自 YAML 的 routes（一頁多路由 = 多個可定址節點），
-連結來自 `to:`（`page` / `page#stage.state` / `#stage.state`）。只有站外連結（`://`）不計入動線。
+連結來自 `to:`（`page` / `page#stage.state` / `#stage.state`）。link:（真超連結）不計入動線。
 來源即真相：改 to: 重跑即同步。需 graphviz `dot`。
 
 用法：python3 flowmap.py <資料夾> [-o out_basename]
@@ -36,15 +36,17 @@ _INLINE_TO = re.compile(r'\[([^\]]+)\]\(to:([^)]+)\)')  # inline 動線連結 [�
 def walk_to(obj):
     """遞迴收集 (target, label)；吃 block 級 to、button 的 to、inline [字](to:目標)。
 
-    外部連結（`to:` 帶 `://`）不計入動線。判準是「目標是不是站外」，不是「用哪個角色寫的」：
-    render 把 `link: {text: 取消, to: feed}` 編成站內導航 href，flow 就必須看得見它，
-    否則正確的原型被報成孤島／死路，真的斷鏈反而靜默放過。"""
+    link:（外部真連結）不計入動線 → 不遞迴其子樹、不收其 to。
+    `link:` 的 to: 由 render 原樣輸出成 href（不補 .html、bundle 也不改成頁內錨點），
+    所以它從來就不是站內動線。拿它寫站內導航是誤用，由 lint 攔下。"""
     edges = []
     if isinstance(obj, dict):
         t = obj.get('to')
         if isinstance(t, str) and '://' not in t:
             edges.append((t, _label(obj)))
         for k, v in obj.items():
+            if k == 'link':                    # link: = 外部，不計入動線
+                continue
             edges += walk_to(v)
     elif isinstance(obj, list):
         for x in obj:

@@ -597,3 +597,23 @@ class TokenNameCollision(unittest.TestCase):
 
     def test_distinct_names_still_load(self):
         self._load("tokens:\n  color:\n    ink: '#111111'\n    warn: '#C00000'\n")
+
+
+class LinkRoleMisuse(unittest.TestCase):
+    """`link:` 的 to: 原樣輸出成 href；拿它寫站內導航會得到死連結，且全程無聲。"""
+
+    def _lint(self, body):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'p.wf.yaml')
+            open(p, 'w', encoding='utf-8').write('viewport: 390x600\nbody:\n' + body)
+            return wf._lint_file(p)
+
+    def test_internal_target_on_link_warns(self):
+        err, warn = self._lint('  - link: { text: 取消, to: feed }\n')
+        self.assertEqual(err, 0)
+        self.assertGreaterEqual(warn, 1)
+
+    def test_real_external_urls_stay_silent(self):
+        for url in ('https://example.com', 'mailto:a@b.c', '#top'):
+            err, warn = self._lint(f'  - link: {{ text: 連結, to: "{url}" }}\n')
+            self.assertEqual((err, warn), (0, 0), url)

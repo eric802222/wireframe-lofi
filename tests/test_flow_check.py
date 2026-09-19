@@ -157,11 +157,11 @@ routes:
 
 
 class LinkAndKitVisibility(unittest.TestCase):
-    """動線看得見與否，判準是「目標是不是站外」，不是「用哪個角色、寫在哪一層」。
+    """kit 元件裡的動線要看得見；`link:` 不是動線。
 
-    舊行為有兩個洞：`link: {to:}` 整棵子樹被跳過、kit 元件不展開。底部導覽這種
-    共用元件本來就該抽進 kit（lint 自己也這樣建議），不展開等於把整條導覽動線
-    從圖上抹掉 —— 正確的原型被報成孤島，真的斷鏈反而靜默放過。
+    底部導覽這種共用元件本來就該抽進 kit（lint 自己也這樣建議），不展開等於把
+    整條導覽動線從圖上抹掉。但 `link:` 是另一回事：它的 to: 由 render 原樣輸出成
+    href，從來就不是站內導航 —— 誤用由 lint 攔下，不是把它算進動線圖。
     """
 
     KIT = ("components:\n  navbar:\n    props: []\n    content:\n"
@@ -176,20 +176,12 @@ class LinkAndKitVisibility(unittest.TestCase):
             'viewport: 390x600\nbody:\n  - navbar: {}\n')
         return [os.path.join(d, 'home.wf.yaml'), os.path.join(d, 'settings.wf.yaml')]
 
-    def test_internal_link_role_counts_as_flow(self):
+    def test_link_role_is_not_a_flow_edge(self):
+        # render 把 link: 的 to: 原樣輸出（href="settings"，不補 .html、bundle 不改錨點），
+        # 算進動線圖等於把死連結當成有效動線 —— 正是這個測試原本背書的錯誤行為。
         with tempfile.TemporaryDirectory() as d:
-            errors, _ = wfcheck.check(self._project(d), entries=('home',), quiet=True)
-            self.assertEqual(errors, [], '`link: {to:}` 是站內導航，必須進動線圖')
-
-    def test_external_url_still_excluded(self):
-        with tempfile.TemporaryDirectory() as d:
-            paths = self._project(d)
-            open(paths[0], 'w', encoding='utf-8').write(
-                'viewport: 390x600\nbody:\n'
-                '  - link: { text: 官網, to: "https://example.com" }\n'
-                '  - link: { text: 去設定, to: settings }\n')
-            errors, _ = wfcheck.check(paths, entries=('home',), quiet=True)
-            self.assertEqual(errors, [], '站外連結不該被當成斷鏈')
+            _, out = flowmap.extract(self._project(d)[0])[1][0]
+            self.assertEqual([t for t, _ in out], [])
 
     def test_flow_inside_kit_component_is_visible(self):
         with tempfile.TemporaryDirectory() as d:
